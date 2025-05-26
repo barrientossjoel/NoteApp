@@ -1,4 +1,21 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# NoteApp (Migrada a Vite + React)
+
+## Scripts
+
+- `npm install` — Instala las dependencias
+- `npm run dev` — Inicia el servidor de desarrollo (Vite)
+- `npm run build` — Compila la app para producción
+- `npm run preview` — Previsualiza la build de producción
+
+## Estructura
+
+- `src/` — Código fuente principal
+- `components/` — Componentes reutilizables
+- `lib/` — Utilidades y lógica compartida
+
+## Notas
+- Asegúrate de tener instaladas las dependencias de Vite y React.
+- Elimina archivos y dependencias de Next.js si ya no los necesitas.
 
 ## Getting Started
 
