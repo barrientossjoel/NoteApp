@@ -6,6 +6,10 @@
             "destination": "/api/ping.js"
         },
         {
+            "source": "/api/test_hono",
+            "destination": "/api/test_hono.js"
+        },
+        {
             "source": "/api/test",
             "destination": "/api/test.ts"
         },
