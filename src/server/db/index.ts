@@ -39,9 +39,13 @@ export function getDb() {
 // Keeping proxy for backward compatibility if possible, 
 // but it's better to use getDb() everywhere.
 export const db = new Proxy({} as any, {
-    get(_, prop) {
-        const database = getDb();
-        return database[prop];
+    get(_, prop: string | symbol) {
+        const d = getDb();
+        const value = Reflect.get(d, prop);
+        if (typeof value === 'function') {
+            return value.bind(d);
+        }
+        return value;
     }
 });
 

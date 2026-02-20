@@ -30,6 +30,8 @@ app.route('/api/uploads', uploadsRouter);
 
 app.get('/api/health', (c) => c.json({ status: 'ok', time: new Date().toISOString() }));
 
+app.get('/api/ping', (c) => c.json({ message: 'pong', env: process.env.NODE_ENV }));
+
 app.get('/api/test-db', async (c) => {
     const result = await checkDbConnection();
     if (result.ok) {
