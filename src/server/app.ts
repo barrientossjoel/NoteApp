@@ -6,7 +6,7 @@ import { uploadsRouter } from './routes/uploads';
 
 import { checkDbConnection } from './db';
 
-const app = new Hono();
+const app = new Hono().basePath('/api');
 
 // Middleware
 app.use('*', logger());
@@ -24,15 +24,21 @@ app.onError((err, c) => {
 
 // Routes
 import { messagesRouter } from './routes/messages';
-app.route('/api/documents', documentsRouter);
-app.route('/api/messages', messagesRouter);
-app.route('/api/uploads', uploadsRouter);
+app.route('/documents', documentsRouter);
+app.route('/messages', messagesRouter);
+app.route('/uploads', uploadsRouter);
 
-app.get('/api/health', (c) => c.json({ status: 'ok', time: new Date().toISOString() }));
+app.get('/health', (c) => c.json({ status: 'ok', time: new Date().toISOString() }));
 
-app.get('/api/ping', (c) => c.json({ message: 'pong', env: process.env.NODE_ENV }));
+app.get('/debug', (c) => {
+    return c.json({
+        env_keys: Object.keys(process.env).filter(k => k.includes('TURSO') || k.includes('CLOUDINARY')),
+        node_version: process.version,
+        timestamp: new Date().toISOString()
+    });
+});
 
-app.get('/api/test-db', async (c) => {
+app.get('/test-db', async (c) => {
     const result = await checkDbConnection();
     if (result.ok) {
         return c.json({ status: 'ok', message: 'Database connection successful' });
