@@ -1,0 +1,301 @@
+import { useState, useRef } from 'react'
+import { Plus, Search, Calendar, Trash2, Settings, LayoutDashboard, FileText, BookOpen, Upload, Loader2 } from 'lucide-react'
+import { Button } from "../../components/ui/button"
+import { Input } from "../../components/ui/input"
+import { ScrollArea } from "../../components/ui/scroll-area"
+import { cn } from "../../lib/utils/utils"
+import { SidebarTree } from "./sidebar-tree"
+import { SettingsDialog } from "../settings/settings-dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../ui/dropdown-menu"
+import { WorkspaceSwitcher } from './workspace-switcher'
+import type { Document, WorkspaceRecord } from "../../../core/types/notes"
+
+export type SidebarView = "search" | "calendar" | "trash" | string // string = documentId
+
+interface SidebarProps {
+  currentView: SidebarView
+  setCurrentView: (view: SidebarView) => void
+  documents: Document[]
+  onCreateDocument: (parentId?: string | null, type?: 'text' | 'canvas') => void
+  onDeleteDocument: (id: string) => void
+  onMoveDocument: (id: string, newParentId: string | null) => void
+  showResizeHandles: boolean
+  onShowResizeHandlesChange: (show: boolean) => void
+  onUpdateDocument: (doc: Document) => void
+  workspaces: WorkspaceRecord[]
+  activeWorkspaceId: string
+  onCreateWorkspace: (name: string) => void
+  onDeleteWorkspace: (id: string) => void
+  onRenameWorkspace: (id: string, newName: string) => void
+  onSwitchWorkspace: (id: string) => void
+  onUploadedPdf: (docId: string) => void
+}
+
+export function Sidebar({
+  currentView,
+  setCurrentView,
+  documents,
+  onCreateDocument,
+  onDeleteDocument,
+  onMoveDocument,
+  showResizeHandles,
+  onShowResizeHandlesChange,
+  onUpdateDocument,
+  workspaces,
+  activeWorkspaceId,
+  onCreateWorkspace,
+  onDeleteWorkspace,
+  onRenameWorkspace,
+  onSwitchWorkspace,
+  onUploadedPdf,
+}: SidebarProps) {
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [isUploading, setIsUploading] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    // Reset input so the same file can be re-selected
+    e.target.value = ''
+
+    setIsUploading(true)
+    try {
+      // 1. Upload file
+      const formData = new FormData()
+      formData.append('file', file)
+      const uploadRes = await fetch('/api/uploads', { method: 'POST', body: formData })
+      if (!uploadRes.ok) throw new Error('Upload failed')
+      const { url } = await uploadRes.json()
+
+      // 2. Create document of type 'pdf'
+      const title = file.name.replace(/\.[^/.]+$/, '') // strip extension
+      const docRes = await fetch('/api/documents', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, type: 'pdf', content: url }),
+      })
+      if (!docRes.ok) throw new Error('Document creation failed')
+      const newDoc = await docRes.json()
+
+      // 3. Navigate to it (parent handles adding to docs list)
+      onUploadedPdf(newDoc.id)
+    } catch (err) {
+      console.error('PDF upload error:', err)
+    } finally {
+      setIsUploading(false)
+    }
+  }
+
+  const filteredDocuments = documents.filter(doc =>
+    doc.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (doc.content && doc.content.toLowerCase().includes(searchQuery.toLowerCase()))
+  )
+
+
+
+  return (
+    <div className="bg-muted/30 flex flex-col h-full bg-sidebar w-full">
+      <SettingsDialog
+        open={isSettingsOpen}
+        onOpenChange={setIsSettingsOpen}
+        showResizeHandles={showResizeHandles}
+        onShowResizeHandlesChange={onShowResizeHandlesChange}
+      />
+
+      {/* Header - Aligned with TabBar */}
+      <div className="h-10 flex items-center px-2 gap-2 bg-muted/30 backdrop-blur z-10 sticky top-0">
+        <div className="relative flex-1">
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+          <Input
+            type="search"
+            placeholder="Search..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full h-7 pl-7 bg-transparent border border-border/30 text-xs focus-visible:ring-0 focus-visible:ring-offset-0"
+          />
+        </div>
+
+        <Button
+          variant={currentView === "" || currentView === "dashboard" ? "secondary" : "ghost"}
+          size="icon"
+          className="h-7 w-7"
+          onClick={() => setCurrentView("dashboard")}
+          title="Home"
+        >
+          <LayoutDashboard className="h-3.5 w-3.5" />
+        </Button>
+        <Button
+          variant={currentView === "calendar" ? "secondary" : "ghost"}
+          size="icon"
+          className="h-7 w-7"
+          onClick={() => setCurrentView("calendar")}
+          title="Calendar"
+        >
+          <Calendar className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+
+
+      {/* Library — PDFs & Ebooks */}
+      {(() => {
+        const pdfDocs = documents.filter(d => d.type === 'pdf')
+        return (
+          <div className="px-2 pt-3 pb-1">
+            <div className="flex items-center justify-between px-2 mb-1">
+              <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+                <BookOpen className="h-3 w-3" />
+                Library
+              </h2>
+              <button
+                className={cn(
+                  'h-6 w-6 flex items-center justify-center rounded hover:bg-muted transition-colors',
+                  isUploading && 'opacity-50 cursor-not-allowed'
+                )}
+                title="Attach PDF or Ebook"
+                onClick={() => !isUploading && fileInputRef.current?.click()}
+                disabled={isUploading}
+              >
+                {isUploading
+                  ? <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                  : <Upload className="h-3.5 w-3.5 text-muted-foreground" />
+                }
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf,.epub,.mobi,.azw,.azw3"
+                className="hidden"
+                onChange={handleFileChange}
+              />
+            </div>
+
+            {pdfDocs.length === 0 ? (
+              <p className="text-xs text-muted-foreground/60 px-2 py-1">
+                No files yet — click ↑ to attach
+              </p>
+            ) : (
+              <div className="space-y-0.5">
+                {pdfDocs.map(doc => (
+                  <Button
+                    key={doc.id}
+                    variant={currentView === doc.id ? 'secondary' : 'ghost'}
+                    size="sm"
+                    className="w-full justify-start px-2 h-8 font-normal"
+                    onClick={() => setCurrentView(doc.id)}
+                  >
+                    <BookOpen className="h-3.5 w-3.5 mr-2 text-muted-foreground shrink-0" />
+                    <span className="truncate flex-1 text-left text-xs">{doc.title || 'Untitled'}</span>
+                  </Button>
+                ))}
+              </div>
+            )}
+          </div>
+        )
+      })()}
+
+      <div className="flex items-center justify-between px-4 my-2">
+        <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+          Documents
+        </h2>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-muted" title="Create New">
+              <Plus className="h-3.5 w-3.5" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            <DropdownMenuItem onClick={() => onCreateDocument(null, 'text')}>
+              <FileText className="mr-2 h-4 w-4" />
+              <span>New Page</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onCreateDocument(null, 'canvas')}>
+              <LayoutDashboard className="mr-2 h-4 w-4" />
+              <span>New Canvas</span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+
+      <ScrollArea className="flex-1">
+        <div className="p-2 pt-0 flex flex-col min-h-full">
+          <SidebarTree
+            documents={filteredDocuments}
+            activeDocumentId={currentView}
+            onSelectDocument={setCurrentView}
+            onCreateDocument={onCreateDocument}
+            onDeleteDocument={onDeleteDocument}
+            onMoveDocument={onMoveDocument}
+            onUpdateDocument={onUpdateDocument}
+          />
+
+
+          {documents.some(d => d.isFavorite) && (
+            <div className="mt-4 mb-2">
+              <h2 className="text-xs font-semibold text-muted-foreground mb-2 px-2 uppercase tracking-wider flex items-center gap-1">
+                Favorites
+              </h2>
+              <div className="space-y-0.5">
+                {documents.filter(d => d.isFavorite).map(doc => (
+                  <Button
+                    key={doc.id}
+                    variant={currentView === doc.id ? "secondary" : "ghost"}
+                    size="sm"
+                    className="w-full justify-start px-2 h-8 font-normal"
+                    onClick={() => setCurrentView(doc.id)}
+                  >
+                    <span className="truncate flex-1 text-left">{doc.title || "Untitled"}</span>
+                  </Button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="mt-auto pt-4">
+            <Button
+              variant={currentView === "trash" ? "secondary" : "ghost"}
+              size="sm"
+              className="w-full justify-start px-2 h-8 font-normal text-muted-foreground hover:text-foreground"
+              onClick={() => setCurrentView("trash")}
+              title="Trash"
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              <span className="text-xs">Trash</span>
+            </Button>
+          </div>
+        </div>
+      </ScrollArea>
+
+      <WorkspaceSwitcher
+        workspaces={workspaces}
+        activeWorkspaceId={activeWorkspaceId}
+        onSwitch={onSwitchWorkspace}
+        onCreate={onCreateWorkspace}
+        onRename={onRenameWorkspace}
+        onDelete={onDeleteWorkspace}
+      />
+
+      <div className="p-3 border-t border-border/40 flex items-center justify-between">
+        <h1 className="text-sm font-bold tracking-tight flex items-center gap-2">
+          <span className="h-5 w-5 rounded-md bg-primary text-primary-foreground flex items-center justify-center text-xs">N</span>
+          NoteApp
+        </h1>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7 text-muted-foreground"
+          title="Settings"
+          onClick={() => setIsSettingsOpen(true)}
+        >
+          <Settings className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+    </div >
+  )
+}

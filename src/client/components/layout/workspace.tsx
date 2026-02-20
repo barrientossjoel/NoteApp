@@ -1,0 +1,767 @@
+'use client'
+
+import React, { useState } from 'react'
+import {
+    Group as PanelGroup,
+    Panel,
+    Separator as PanelResizeHandle,
+    PanelImperativeHandle
+} from 'react-resizable-panels'
+import { useMediaQuery } from '../../hooks/useMediaQuery'
+import { DocumentView } from '../../features/documents/document-view'
+import { Dashboard } from '../../features/dashboard/dashboard'
+import { CalendarView } from '../../features/calendar/calendar-view'
+import { TrashView } from '../../features/trash/trash-view'
+import type { Document as NoteDocument, LayoutNode } from '../../../core/types/notes'
+import { cn } from '../../lib/utils/utils'
+import { TabBar } from './tab-bar'
+import { updateTab, splitNode, addTabToPane, findLayoutNode, swapPaneTabs, replaceTabInPane } from '../../lib/utils/layout-utils'
+import { CanvasView } from '../../features/canvas/canvas-view'
+import { NotesPanel } from '../../features/notes/components/notes-panel'
+import { PdfView } from '../../features/pdf/pdf-view'
+import { Button } from '../../components/ui/button'
+import { PanelRight } from 'lucide-react'
+
+interface WorkspaceProps {
+    layout: LayoutNode
+    documents: NoteDocument[]
+    onUpdateDocument: (doc: NoteDocument) => void
+    onUpdateLayout: (layout: LayoutNode) => void
+    onNavigate: (id: string) => void
+    activePaneId: string
+    setActivePaneId: (id: string) => void
+    currentView?: string
+    showResizeHandles?: boolean
+    showSidebar?: boolean
+    onToggleSidebar?: () => void
+}
+
+export function Workspace({
+    layout,
+    documents,
+    onUpdateDocument,
+    onUpdateLayout,
+    onNavigate,
+    activePaneId,
+    setActivePaneId,
+    currentView,
+    showResizeHandles = true,
+    showSidebar,
+    onToggleSidebar
+}: WorkspaceProps) {
+    const isMobile = useMediaQuery('(max-width: 768px)')
+    const firstPaneId = React.useMemo(() => findFirstPaneId(layout), [layout])
+
+    const [dragPreview, setDragPreview] = React.useState<{ paneId: string, direction: 'right' } | null>(null)
+    const panelRefs = React.useRef<Record<string, PanelImperativeHandle | null>>({})
+    const domRefs = React.useRef<Record<string, HTMLDivElement | null>>({})
+
+    // Refs to always have the latest layout and callback inside event listeners with [] deps
+    const layoutRef = React.useRef(layout)
+    const onUpdateLayoutRef = React.useRef(onUpdateLayout)
+    React.useEffect(() => { layoutRef.current = layout }, [layout])
+    React.useEffect(() => { onUpdateLayoutRef.current = onUpdateLayout }, [onUpdateLayout])
+
+    const resizeState = React.useRef<{
+        active: boolean
+        paneId: string
+        startX: number
+        startY: number
+        targets: {
+            h?: { id: string, sign: number, initialSize: number, initialPixels: number }
+            v?: { id: string, sign: number, initialSize: number, initialPixels: number }
+        }
+    } | null>(null)
+
+    const moveState = React.useRef<{
+        active: boolean
+        sourcePaneId: string
+    } | null>(null)
+    const didMoveRef = React.useRef(false)
+
+    const [moveDragOver, setMoveDragOver] = React.useState<string | null>(null)
+    const [movingSourceId, setMovingSourceId] = React.useState<string | null>(null)
+    const [moveMousePos, setMoveMousePos] = React.useState<{ x: number, y: number } | null>(null)
+    const [forwardPaths, setForwardPaths] = React.useState<Record<string, string[]>>({}) // paneId:tabId -> docIds
+
+
+    React.useEffect(() => {
+        const handleMouseMove = (e: MouseEvent) => {
+            // Resize handler
+            if (resizeState.current?.active) {
+                e.preventDefault()
+                const state = resizeState.current
+                const deltaX = e.clientX - state.startX
+                const deltaY = e.clientY - state.startY
+
+                if (state.targets.h) {
+                    const { id, sign, initialSize, initialPixels } = state.targets.h
+                    const panel = panelRefs.current[id]
+                    if (panel && initialPixels > 0) {
+                        const targetChange = (deltaX / initialPixels) * initialSize * sign
+                        const newSize = Math.max(5, Math.min(95, initialSize + targetChange))
+                        panel.resize(`${newSize}%`)
+                    }
+                }
+
+                if (state.targets.v) {
+                    const { id, sign, initialSize, initialPixels } = state.targets.v
+                    const panel = panelRefs.current[id]
+                    if (panel && initialPixels > 0) {
+                        const targetChange = (deltaY / initialPixels) * initialSize * sign
+                        const newSize = Math.max(5, Math.min(95, initialSize + targetChange))
+                        panel.resize(`${newSize}%`)
+                    }
+                }
+            }
+
+            // Move handler: find which pane the cursor is over
+            if (moveState.current?.active) {
+                setMoveMousePos({ x: e.clientX, y: e.clientY })
+                const el = document.elementFromPoint(e.clientX, e.clientY)
+                // Walk up to find a pane div (they have data-pane-id)
+                let target: Element | null = el
+                let targetPaneId: string | null = null
+                while (target) {
+                    const pid = target.getAttribute('data-pane-id')
+                    if (pid && pid !== moveState.current.sourcePaneId) {
+                        targetPaneId = pid
+                        break
+                    }
+                    target = target.parentElement
+                }
+                setMoveDragOver(targetPaneId)
+            }
+        }
+
+        const handleMouseUp = (e: MouseEvent) => {
+            if (resizeState.current?.active) {
+                resizeState.current = null
+                document.body.style.cursor = ''
+
+                // Persist final panel sizes so they survive page refresh.
+                // Collect asPercentage from every imperative panel ref, then
+                // write them into the layout tree via onUpdateLayout (which
+                // the parent already saves to localStorage).
+                const sizeMap: Record<string, number> = {}
+                Object.entries(panelRefs.current).forEach(([id, ref]) => {
+                    const pct = ref?.getSize()?.asPercentage
+                    if (typeof pct === 'number') sizeMap[id] = pct
+                })
+                if (Object.keys(sizeMap).length > 0) {
+                    onUpdateLayoutRef.current(updateNodeSizes(layoutRef.current, sizeMap))
+                }
+            }
+            if (moveState.current?.active) {
+                const sourcePaneId = moveState.current.sourcePaneId
+                moveState.current = null
+                document.body.style.cursor = ''
+
+                // Determine target pane under cursor
+                const el = document.elementFromPoint(e.clientX, e.clientY)
+                let target: Element | null = el
+                while (target) {
+                    const pid = target.getAttribute('data-pane-id')
+                    if (pid && pid !== sourcePaneId) {
+                        // Swap pane contents using the CURRENT layout (not stale closure)
+                        onUpdateLayoutRef.current(swapPaneTabs(layoutRef.current, sourcePaneId, pid))
+                        break
+                    }
+                    target = target.parentElement
+                }
+                setMoveDragOver(null)
+
+                // Block the spurious click that fires after mouseup
+                didMoveRef.current = true
+                window.addEventListener('click', (ev) => {
+                    ev.stopPropagation()
+                    ev.preventDefault()
+                    didMoveRef.current = false
+                }, { once: true, capture: true })
+
+                setMovingSourceId(null)
+                setMoveMousePos(null)
+            }
+        }
+
+        window.addEventListener('mousemove', handleMouseMove)
+        window.addEventListener('mouseup', handleMouseUp)
+        return () => {
+            window.removeEventListener('mousemove', handleMouseMove)
+            window.removeEventListener('mouseup', handleMouseUp)
+        }
+    }, [])
+
+    const startResize = (paneId: string, x: number, y: number) => {
+        const targets = findResizeTargets(layout, paneId)
+        if (!targets.h && !targets.v) return
+
+        const hTarget = targets.h ? {
+            ...targets.h,
+            initialSize: panelRefs.current[targets.h.id]?.getSize().asPercentage || 50,
+            initialPixels: domRefs.current[targets.h.id]?.getBoundingClientRect().width || 0
+        } : undefined
+
+        const vTarget = targets.v ? {
+            ...targets.v,
+            initialSize: panelRefs.current[targets.v.id]?.getSize().asPercentage || 50,
+            initialPixels: domRefs.current[targets.v.id]?.getBoundingClientRect().height || 0
+        } : undefined
+
+        resizeState.current = {
+            active: true,
+            paneId,
+            startX: x,
+            startY: y,
+            targets: { h: hTarget, v: vTarget }
+        }
+        document.body.style.cursor = 'move'
+    }
+
+    // Keyboard shortcuts
+    React.useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.altKey) {
+                if (e.key === 'h' || e.key === 'H') {
+                    e.preventDefault()
+                    handleSplitPane(activePaneId, 'horizontal')
+                } else if (e.key === 'v' || e.key === 'V') {
+                    e.preventDefault()
+                    handleSplitPane(activePaneId, 'vertical')
+                } else if (e.key === 'q' || e.key === 'Q') {
+                    e.preventDefault()
+                    handleClosePane(activePaneId)
+                }
+            }
+        }
+
+        window.addEventListener('keydown', handleKeyDown)
+        return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [activePaneId, layout, documents])
+
+    const handleMoveTab = (tabId: string, fromPaneId: string, toPaneId: string, index?: number) => {
+        if (fromPaneId === toPaneId) {
+            onUpdateLayout(reorderTab(layout, toPaneId, tabId, index))
+        } else {
+            onUpdateLayout(moveTabBetweenPanes(layout, fromPaneId, toPaneId, tabId, index))
+        }
+        setActivePaneId(toPaneId)
+    }
+
+    const handleMoveTabToSplit = (tabId: string, fromPaneId: string, toPaneId: string, direction: 'right') => {
+        onUpdateLayout(moveTabToNewSplit(layout, fromPaneId, toPaneId, tabId, direction))
+        // New pane ID will be generated, but for now we focus the target group or wait for re-render
+    }
+
+    const handlePaneDragOver = (e: React.DragEvent, paneId: string) => {
+        e.preventDefault()
+        const rect = e.currentTarget.getBoundingClientRect()
+        const x = e.clientX - rect.left
+        const width = rect.width
+
+        // If near right edge (within 80px or 20%)
+        if (x > width - 100) {
+            setDragPreview({ paneId, direction: 'right' })
+            e.dataTransfer.dropEffect = 'move'
+        } else {
+            setDragPreview(null)
+        }
+    }
+
+    const handlePaneDrop = (e: React.DragEvent, paneId: string) => {
+        const tabId = e.dataTransfer.getData('tabId')
+        const fromPaneId = e.dataTransfer.getData('sourcePaneId')
+
+        if (dragPreview && tabId && fromPaneId) {
+            handleMoveTabToSplit(tabId, fromPaneId, paneId, 'right')
+        }
+        setDragPreview(null)
+    }
+
+    const handleToggleTabs = (paneId: string) => {
+        onUpdateLayout(toggleNodeTabs(layout, paneId))
+    }
+
+    const renderNode = (node: LayoutNode) => {
+        if (node.type === 'pane') {
+            const activeTabId = node.activeTabId
+            const doc = documents.find(d => d.id === activeTabId)
+            const isActive = node.id === activePaneId
+            const isFirstPane = node.id === firstPaneId
+            const toggleSidebar = isFirstPane ? onToggleSidebar : undefined
+
+            return (
+                <div
+                    className={cn("h-full overflow-hidden flex flex-col relative", isActive && "ring-2 ring-primary ring-inset z-10")}
+                    data-pane-id={node.id}
+                    onClick={(e) => {
+                        if (!e.altKey && !didMoveRef.current) setActivePaneId(node.id)
+                    }}
+                    onContextMenu={(e) => {
+                        // Suppress browser context menu when Alt is held (used for resize)
+                        if (e.altKey) e.preventDefault()
+                    }}
+                    onMouseDown={(e) => {
+                        if (e.altKey && e.button === 2) {
+                            // Alt + right click → resize
+                            e.preventDefault()
+                            e.stopPropagation()
+                            startResize(node.id, e.clientX, e.clientY)
+                        } else if (e.altKey && e.button === 0) {
+                            // Alt + left drag → move pane (Wayland style)
+                            e.preventDefault()
+                            e.stopPropagation()
+                            moveState.current = { active: true, sourcePaneId: node.id }
+                            setMovingSourceId(node.id)
+                            document.body.style.cursor = 'grabbing'
+                        }
+                    }}
+                    onDragOver={(e) => handlePaneDragOver(e, node.id)}
+                    onDragLeave={() => setDragPreview(null)}
+                    onDrop={(e) => handlePaneDrop(e, node.id)}
+                >
+                    {/* Move-drag: source pane feedback — dimmed "lifted" look */}
+                    {movingSourceId === node.id && (
+                        <div className="absolute inset-0 z-50 pointer-events-none bg-background/60 backdrop-blur-[2px] ring-2 ring-primary/60 ring-inset" />
+                    )}
+
+                    {/* Move-drag drop target highlight */}
+                    {moveDragOver === node.id && (
+                        <div className="absolute inset-0 z-50 pointer-events-none ring-2 ring-primary ring-inset bg-primary/10" />
+                    )}
+
+                    {node.tabs && node.tabs.length > 0 && node.showTabs !== false && (
+                        <TabBar
+                            paneId={node.id}
+                            tabs={node.tabs}
+                            activeTabId={activeTabId || null}
+                            documents={documents}
+                            onSelectTab={(id) => handleSelectTab(node.id, id)}
+                            onCloseTab={(id) => handleCloseTab(node.id, id)}
+                            onMoveTab={handleMoveTab}
+                        />
+                    )}
+
+                    <div className="flex-1 min-h-0 relative">
+                        {activeTabId === 'calendar' ? (
+                            <CalendarView
+                                documents={documents}
+                                onOpenDocument={(docId) => onUpdateLayout(addTabToPane(layout, node.id, docId, false))}
+                                showSidebar={showSidebar}
+                                onToggleSidebar={toggleSidebar}
+                                showTabs={node.showTabs !== false}
+                                onToggleTabs={() => handleToggleTabs(node.id)}
+                            />
+                        ) : activeTabId === 'trash' ? (
+                            <TrashView
+                                showSidebar={showSidebar}
+                                onToggleSidebar={toggleSidebar}
+                                showTabs={node.showTabs !== false}
+                                onToggleTabs={() => handleToggleTabs(node.id)}
+                            />
+                        ) : activeTabId === 'notes' ? (
+                            <div className="h-full w-full bg-background">
+                                <NotesPanel documentId={null} className="h-full border-0" />
+                            </div>
+                        ) : activeTabId === 'dashboard' || !doc ? (
+                            <Dashboard
+                                documents={documents}
+                                onNavigate={onNavigate}
+                                showSidebar={showSidebar}
+                                onToggleSidebar={toggleSidebar}
+                                showTabs={node.showTabs !== false}
+                                onToggleTabs={() => handleToggleTabs(node.id)}
+                            />
+                        ) : doc?.type === 'canvas' ? (
+                            <CanvasView
+                                document={doc}
+                                documents={documents}
+                                onUpdateDocument={onUpdateDocument}
+                                showSidebar={showSidebar}
+                                onToggleSidebar={toggleSidebar}
+                                showTabs={node.showTabs !== false}
+                                onToggleTabs={() => handleToggleTabs(node.id)}
+                                onOpenDocument={(docId) => onUpdateLayout(addTabToPane(layout, node.id, docId, false))}
+                            />
+                        ) : doc?.type === 'pdf' ? (
+                            <PdfView
+                                document={doc}
+                                showSidebar={showSidebar}
+                                onToggleSidebar={toggleSidebar}
+                                showTabs={node.showTabs !== false}
+                                onToggleTabs={() => handleToggleTabs(node.id)}
+                            />
+                        ) : (
+                            <DocumentView
+                                document={doc}
+                                documents={documents}
+                                onUpdateDocument={onUpdateDocument}
+                                onOpenDocument={(docId) => {
+                                    onUpdateLayout(addTabToPane(layoutRef.current, node.id, docId, true))
+                                }}
+                                onReplaceDocument={(newDocId) => {
+                                    const oldDocId = node.activeTabId
+                                    if (oldDocId && oldDocId !== newDocId) {
+                                        const currentForwardKey = `${node.id}:${oldDocId}`
+                                        const currentForward = forwardPaths[currentForwardKey] || []
+                                        const newForwardKey = `${node.id}:${newDocId}`
+
+                                        setForwardPaths(prev => {
+                                            // Is this a forward move? (clicking something in the forward path)
+                                            if (currentForward.includes(newDocId)) {
+                                                // Take everything AFTER newDocId in the forward path
+                                                const idx = currentForward.indexOf(newDocId)
+                                                return {
+                                                    ...prev,
+                                                    [newForwardKey]: currentForward.slice(idx + 1)
+                                                }
+                                            } else {
+                                                // Backward move: add oldDocId to forward path of newDocId
+                                                return {
+                                                    ...prev,
+                                                    [newForwardKey]: [oldDocId, ...currentForward]
+                                                }
+                                            }
+                                        })
+                                        onUpdateLayout(replaceTabInPane(layout, node.id, oldDocId, newDocId))
+                                    }
+                                }}
+                                forwardPath={forwardPaths[`${node.id}:${node.activeTabId}`]}
+                                onClose={() => handleClosePane(node.id)}
+                                onSplit={(direction) => handleSplitPane(node.id, direction)}
+                                showSidebar={showSidebar}
+                                onToggleSidebar={toggleSidebar}
+                                showTabs={node.showTabs !== false} // default true
+                                onToggleTabs={() => handleToggleTabs(node.id)}
+                            />
+                        )}
+                    </div>
+                </div>
+            )
+        }
+
+        if (node.type === 'dashboard') {
+            const isFirstPane = node.id === firstPaneId
+            return <Dashboard
+                documents={documents}
+                onNavigate={onNavigate}
+                showSidebar={showSidebar}
+                onToggleSidebar={isFirstPane ? onToggleSidebar : undefined}
+            />
+        }
+
+        if (node.type === 'group' && node.children) {
+            const isVertical = node.direction === 'vertical' || isMobile
+            return (
+                <PanelGroup orientation={isVertical ? 'vertical' : 'horizontal'}>
+                    {node.children.map((child, index) => (
+                        <React.Fragment key={child.id}>
+                            <Panel
+                                panelRef={(el) => { panelRefs.current[child.id] = el }}
+                                defaultSize={child.size || 100 / node.children!.length}
+                            >
+                                <div ref={(el) => { domRefs.current[child.id] = el }} className="h-full w-full">
+                                    {renderNode(child)}
+                                </div>
+                            </Panel>
+                            {index < node.children!.length - 1 && (
+                                <PanelResizeHandle
+                                    disabled={!showResizeHandles}
+                                    className={cn(
+                                        "bg-border hover:bg-primary/50 transition-colors z-50",
+                                        isVertical
+                                            ? cn("h-px w-full", showResizeHandles && "cursor-row-resize")
+                                            : cn("w-px h-full", showResizeHandles && "cursor-col-resize")
+                                    )}
+                                />
+                            )}
+                        </React.Fragment>
+                    ))}
+                </PanelGroup>
+            )
+        }
+
+        return null
+    }
+
+    const handleSelectTab = (paneId: string, tabId: string) => {
+        onUpdateLayout(updateTab(layout, paneId, tabId))
+    }
+
+    const handleCloseTab = (paneId: string, tabId: string) => {
+        const node = findLayoutNode(layout, paneId)
+        if (node && node.tabs && node.tabs.length === 1 && node.tabs[0] === tabId) {
+            handleClosePane(paneId)
+        } else {
+            onUpdateLayout(closeTab(layout, paneId, tabId))
+        }
+    }
+
+    const handleClosePane = (paneId: string) => {
+        const newLayout = removeNode(layout, paneId)
+        if (!newLayout || (newLayout.type === 'group' && (!newLayout.children || newLayout.children.length === 0))) {
+            onUpdateLayout({ id: 'root', type: 'dashboard' })
+        } else {
+            onUpdateLayout(newLayout)
+        }
+    }
+
+    const handleSplitPane = (paneId: string, direction: 'horizontal' | 'vertical') => {
+        const newLayout = splitNode(layout, paneId, direction)
+        onUpdateLayout(newLayout)
+    }
+
+    // Find active document ID
+    const activePane = findLayoutNode(layout, activePaneId)
+    const activeTabId = activePane?.activeTabId
+    const activeDoc = documents.find(d => d.id === activeTabId)
+
+    const movingPane = movingSourceId ? findLayoutNode(layout, movingSourceId) : null
+    const movingTabId = movingPane?.activeTabId
+    const movingDoc = documents.find(d => d.id === movingTabId)
+    const movingLabel = movingDoc?.title || movingTabId || 'Panel'
+
+    return (
+        <div className="flex-1 h-full overflow-hidden flex flex-row relative">
+            <div className="flex-1 h-full overflow-hidden flex flex-col">
+                {renderNode(layout)}
+            </div>
+
+            {/* Wayland-style floating ghost: follows cursor during Alt+drag */}
+            {moveMousePos && movingSourceId && (
+                <div
+                    className="fixed z-[9999] pointer-events-none select-none"
+                    style={{
+                        left: moveMousePos.x + 14,
+                        top: moveMousePos.y - 16,
+                    }}
+                >
+                    <div className="bg-background/90 backdrop-blur-md border border-primary/50 shadow-2xl rounded-lg overflow-hidden"
+                        style={{ minWidth: 140, maxWidth: 260 }}>
+                        {/* Ghost title bar */}
+                        <div className="flex items-center gap-2 px-3 py-2 bg-primary/10 border-b border-primary/20">
+                            <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+                            <span className="text-xs font-medium text-foreground truncate">{movingLabel}</span>
+                        </div>
+                        {/* Ghost content hint */}
+                        <div className="px-3 py-2 space-y-1.5">
+                            <div className="h-1.5 rounded-full bg-muted-foreground/20 w-full" />
+                            <div className="h-1.5 rounded-full bg-muted-foreground/15 w-3/4" />
+                            <div className="h-1.5 rounded-full bg-muted-foreground/10 w-5/6" />
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    )
+}
+
+
+
+function findActiveTabId(node: LayoutNode, paneId: string): string | null | undefined {
+    if (node.id === paneId) return node.activeTabId
+    if (node.children) {
+        for (const child of node.children) {
+            const found = findActiveTabId(child, paneId)
+            if (found !== undefined) return found
+        }
+    }
+    return undefined
+}
+
+function reorderTab(node: LayoutNode, paneId: string, tabId: string, targetIndex?: number): LayoutNode {
+    if (node.id === paneId && node.tabs) {
+        const newTabs = node.tabs.filter(t => t !== tabId)
+        const index = targetIndex ?? newTabs.length
+        newTabs.splice(index, 0, tabId)
+        return { ...node, tabs: newTabs, activeTabId: tabId }
+    }
+    if (node.children) {
+        return { ...node, children: node.children.map(c => reorderTab(c, paneId, tabId, targetIndex)) }
+    }
+    return node
+}
+
+function moveTabBetweenPanes(node: LayoutNode, fromId: string, toId: string, tabId: string, index?: number): LayoutNode {
+    // 1. Remove from source
+    const remove = (n: LayoutNode): LayoutNode => {
+        if (n.id === fromId && n.tabs) {
+            const newTabs = n.tabs.filter(t => t !== tabId)
+            let newActiveId = n.activeTabId
+            if (newActiveId === tabId) {
+                newActiveId = newTabs.length > 0 ? newTabs[newTabs.length - 1] : null
+            }
+            return { ...n, tabs: newTabs, activeTabId: newActiveId }
+        }
+        if (n.children) {
+            return { ...n, children: n.children.map(remove) }
+        }
+        return n
+    }
+
+    // 2. Add to target
+    const add = (n: LayoutNode): LayoutNode => {
+        if (n.id === toId && n.tabs) {
+            const newTabs = n.tabs.filter(t => t !== tabId)
+            const targetIndex = index ?? newTabs.length
+            newTabs.splice(targetIndex, 0, tabId)
+            return { ...n, tabs: newTabs, activeTabId: tabId }
+        }
+        if (n.children) {
+            return { ...n, children: n.children.map(add) }
+        }
+        return n
+    }
+
+    return add(remove(node))
+}
+
+function moveTabToNewSplit(node: LayoutNode, fromId: string, toId: string, tabId: string, direction: 'right'): LayoutNode {
+    const newNodeId = Math.random().toString(36).substring(7)
+
+    // 1. Remove from source
+    const remove = (n: LayoutNode): LayoutNode => {
+        if (n.id === fromId && n.tabs) {
+            const newTabs = n.tabs.filter(t => t !== tabId)
+            let newActiveId = n.activeTabId
+            if (newActiveId === tabId) {
+                newActiveId = newTabs.length > 0 ? newTabs[newTabs.length - 1] : null
+            }
+            return { ...n, tabs: newTabs, activeTabId: newActiveId }
+        }
+        if (n.children) {
+            return { ...n, children: n.children.map(remove) }
+        }
+        return n
+    }
+
+    // 2. Split target and add tab
+    const splitAndAdd = (n: LayoutNode): LayoutNode => {
+        if (n.id === toId) {
+            return {
+                id: `group-${n.id}`,
+                type: 'group',
+                direction: 'horizontal',
+                children: [
+                    { ...n, size: 50 },
+                    {
+                        id: newNodeId,
+                        type: 'pane',
+                        tabs: [tabId],
+                        activeTabId: tabId,
+                        size: 50
+                    }
+                ]
+            }
+        }
+        if (n.children) {
+            return { ...n, children: n.children.map(splitAndAdd) }
+        }
+        return n
+    }
+
+    return splitAndAdd(remove(node))
+}
+
+function findResizeTargets(layout: LayoutNode, paneId: string) {
+    let h: { id: string, sign: number } | undefined
+    let v: { id: string, sign: number } | undefined
+
+    const traverse = (node: LayoutNode): boolean => {
+        if (node.id === paneId) return true
+        if (node.children) {
+            for (let i = 0; i < node.children.length; i++) {
+                const child = node.children[i]
+                if (traverse(child)) {
+                    // sign: +1 if this child is first (left/top side of divider)
+                    //       -1 if this child is last (right/bottom side — moving outward shrinks)
+                    const isLast = i === node.children.length - 1
+                    const sign = isLast ? -1 : 1
+                    if (node.type === 'group' && node.direction === 'horizontal') {
+                        if (!h) h = { id: child.id, sign }
+                    }
+                    if (node.type === 'group' && node.direction === 'vertical') {
+                        if (!v) v = { id: child.id, sign }
+                    }
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
+    traverse(layout)
+    return { h, v }
+}
+
+function toggleNodeTabs(node: LayoutNode, paneId: string): LayoutNode {
+    if (node.id === paneId) {
+        return { ...node, showTabs: node.showTabs === false ? true : false }
+    }
+    if (node.children) {
+        return { ...node, children: node.children.map(c => toggleNodeTabs(c, paneId)) }
+    }
+    return node
+}
+
+
+
+function closeTab(node: LayoutNode, paneId: string, tabId: string): LayoutNode {
+    if (node.id === paneId && node.tabs) {
+        const newTabs = node.tabs.filter(t => t !== tabId)
+        if (newTabs.length === 0) {
+            // If no tabs left, switch to dashboard or close pane?
+            // Let's switch to dashboard state to keep pane open but empty
+            return { ...node, tabs: [], activeTabId: null }
+        }
+
+        let newActiveId = node.activeTabId
+        if (node.activeTabId === tabId) {
+            newActiveId = newTabs[newTabs.length - 1] // Select last
+        }
+        return { ...node, tabs: newTabs, activeTabId: newActiveId }
+    }
+    if (node.children) {
+        // If child becomes null/dashboard because of closeTab logic? No, closeTab just updates state
+        return { ...node, children: node.children.map(c => closeTab(c, paneId, tabId)) }
+    }
+    return node
+}
+
+
+function removeNode(node: LayoutNode, id: string): LayoutNode | null {
+    if (node.id === id) return null
+    if (node.children) {
+        const newChildren = node.children
+            .map(child => removeNode(child, id))
+            .filter((n): n is LayoutNode => n !== null)
+
+        if (newChildren.length === 1 && node.id !== 'root') {
+            return newChildren[0]
+        }
+        return { ...node, children: newChildren }
+    }
+    return node
+}
+
+function findFirstPaneId(node: LayoutNode): string | null {
+    if (node.type === 'pane' || node.type === 'dashboard') {
+        return node.id
+    }
+    if (node.children && node.children.length > 0) {
+        return findFirstPaneId(node.children[0])
+    }
+    return null
+}
+
+/**
+ * Deep-updates the `size` field on any layout node whose id appears in sizeMap.
+ * Called after a drag-resize to persist the final panel percentages.
+ */
+function updateNodeSizes(node: LayoutNode, sizeMap: Record<string, number>): LayoutNode {
+    const withSize = node.id in sizeMap ? { ...node, size: sizeMap[node.id] } : node
+    if (withSize.children) {
+        return { ...withSize, children: withSize.children.map(c => updateNodeSizes(c, sizeMap)) }
+    }
+    return withSize
+}
