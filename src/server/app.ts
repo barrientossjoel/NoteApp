@@ -1,8 +1,6 @@
 import { Hono } from 'hono';
 import { logger } from 'hono/logger';
 import { cors } from 'hono/cors';
-import { readFileSync, existsSync } from 'fs';
-import { join, extname } from 'path';
 import { documentsRouter } from './routes/documents';
 import { uploadsRouter } from './routes/uploads';
 
