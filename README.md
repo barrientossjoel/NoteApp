@@ -1,163 +1,91 @@
 # NoteApp 📝
 
-Una aplicación moderna de notas construida con React, TypeScript, Vite y MySQL. Permite a los usuarios crear, organizar, buscar y gestionar sus notas de manera eficiente.
+Una aplicación moderna de notas y canvas construida con React, TypeScript, Hono, Drizzle ORM y SQLite (Turso). Permite a los usuarios crear, organizar y visualizar sus ideas de manera eficiente.
 
-## ✨ Características
+## ✨ Características Principales
 
-- 📝 **Gestión de Notas**: Crear, editar, eliminar y organizar notas
-- 📁 **Sistema de Carpetas**: Organizar notas en carpetas personalizables
-- 🗓️ **Vista de Calendario**: Visualizar notas por fecha
-- 🗑️ **Papelera**: Recuperar notas eliminadas
-- 🔍 **Búsqueda Avanzada**: Buscar en títulos y contenido
-- 🎨 **Colores Personalizables**: Personalizar el color de notas y carpetas
-- 📱 **Responsive**: Diseño adaptativo para todos los dispositivos
-- 🚀 **Drag & Drop**: Reorganizar notas y carpetas fácilmente
+### 📝 Notas y Documentos
+- **Editor de Texto Rico**: Basado en Tiptap, soporta formato, listas, tareas y más.
+- **Soporte Multimedia**: Agrega imágenes y audio directamente en tus notas mediante comandos slash (`/image`, `/audio`).
+- **Documentos Anidados**: Estructura de documentos jerárquica ilimitada.
 
-## 🏗️ Estructura del Proyecto
+### 🎨 Canvas Infinito
+- **Pizarra Visual**: Integración completa con `tldraw` para dibujar, crear diagramas y organizar ideas espacialmente.
+- **Tipos de Documento**: Crea documentos de tipo "Texto" o "Canvas" indistintamente.
+- **Context Menu Personalizado**: Acciones rápidas adaptadas al flujo de trabajo.
 
-```
-src/
-├── components/
-│   ├── features/           # Componentes específicos por funcionalidad
-│   │   ├── notes/         # Componentes relacionados con notas
-│   │   ├── folders/       # Componentes relacionados con carpetas
-│   │   ├── calendar/      # Componentes de vista de calendario
-│   │   └── trash/         # Componentes de papelera
-│   ├── layout/            # Componentes de layout (header, sidebar)
-│   └── ui/               # Componentes de UI reutilizables
-├── services/
-│   ├── api/              # Servicios de API para MySQL
-│   └── database/         # Configuración y esquemas de BD
-├── lib/
-│   ├── utils/            # Utilidades generales
-│   └── validations/      # Esquemas de validación con Zod
-├── constants/            # Constantes de la aplicación
-├── types/               # Definiciones de tipos TypeScript
-└── hooks/               # Hooks personalizados de React
-```
+### 🖥️ Interfaz y Navegación
+- **Sistema de Pestañas (Tabs)**: Abre múltiples documentos simultáneamente.
+- **Split Panes**: Divide la vista horizontal o verticalmente para multitarea.
+- **Persistencia de Estado**: La aplicación recuerda tu layout y pestañas abiertas al recargar.
+- **Sidebar Dinámico**: Navegación fluida con soporte para arrastrar y soltar (Drag & Drop).
+- **Vistas del Sistema**: Dashboard, Calendario y Papelera integrados como pestañas.
+
+### 🔍 Herramientas
+- **Búsqueda Global (Command K/Alt+B)**: Acceso rápido a cualquier documento.
+- **Favoritos**: Acceso directo a tus documentos más importantes.
+- **Modo Oscuro/Claro**: Adaptable a tus preferencias.
+
+## 🏗️ Stack Tecnológico
+
+- **Frontend**: React 18, TypeScript, Vite, Tailwind CSS, Shadcn UI.
+- **Backend**: Hono (API), Bun (Runtime).
+- **Base de Datos**: SQLite (LibSQL/Turso), Drizzle ORM.
+- **Editor**: Tiptap.
+- **Canvas**: tldraw.
+- **Estado/Gestión**: React Query, Zustand (si aplica), LocalStorage para persistencia de UI.
 
 ## 🚀 Instalación y Configuración
 
 ### Prerrequisitos
 
-- Node.js 18+ 
-- MySQL 8.0+
-- npm, yarn, pnpm o bun
+- [Bun](https://bun.sh/) instalado.
+- Cuenta en [Turso](https://turso.tech/) (opcional si usas SQLite local).
 
 ### 1. Instalar Dependencias
 
 ```bash
-npm install
-# o
-yarn install
-# o
-pnpm install
+bun install
 ```
 
 ### 2. Configurar Base de Datos
 
-1. Crea una base de datos MySQL:
-```sql
-CREATE DATABASE notes_app;
+Crea un archivo `.env` basado en `.env.example`:
+
+```env
+DATABASE_URL=libsql://...
+DATABASE_AUTH_TOKEN=...
 ```
 
-2. Ejecuta el script de esquema:
-```bash
-mysql -u root -p notes_app < src/services/database/schema.sql
-```
+Ejecuta las migraciones:
 
-3. Configura las variables de entorno:
 ```bash
-cp env.example .env
-# Edita .env con tus credenciales de MySQL
+bun db:push
 ```
 
 ### 3. Ejecutar la Aplicación
 
 ```bash
-npm run dev
-# o
-yarn dev
-# o
-pnpm dev
+bun run dev
 ```
 
-La aplicación estará disponible en `http://localhost:3000`
+La aplicación estará disponible en `http://localhost:5173` (o el puerto que indique Vite).
 
-## 📜 Scripts Disponibles
+## 🗄️ Estructura de Base de Datos
 
-- `npm run dev` — Inicia el servidor de desarrollo
-- `npm run build` — Compila la app para producción
-- `npm run preview` — Previsualiza la build de producción
-- `npm run lint` — Ejecuta el linter
-- `npm run type-check` — Verifica tipos TypeScript
+El esquema principal utiliza una tabla `documents` recursiva:
 
-## 🗄️ Base de Datos
-
-### Esquema Principal
-
-- **users**: Información de usuarios
-- **folders**: Carpetas de organización
-- **notes**: Notas del usuario
-
-### Características de la BD
-
-- ✅ Soft delete para notas y carpetas
-- ✅ Índices optimizados para búsquedas
-- ✅ Búsqueda full-text en contenido
-- ✅ Relaciones con claves foráneas
-- ✅ Timestamps automáticos
-
-## 🛠️ Tecnologías Utilizadas
-
-- **Frontend**: React 18, TypeScript, Vite
-- **UI**: Radix UI, Tailwind CSS, Lucide React
-- **Base de Datos**: MySQL 8.0, mysql2
-- **Validación**: Zod
-- **Drag & Drop**: react-beautiful-dnd
-- **Calendario**: react-day-picker
-- **Utilidades**: date-fns, clsx, tailwind-merge
-
-## 🔧 Configuración Avanzada
-
-### Variables de Entorno
-
-```env
-# Base de datos
-DB_HOST=localhost
-DB_PORT=3306
-DB_USER=root
-DB_PASSWORD=tu_password
-DB_NAME=notes_app
-
-# Aplicación
-NODE_ENV=development
-PORT=3000
-```
-
-### Personalización
-
-- **Colores**: Edita `src/constants/colors.ts`
-- **Configuración BD**: Modifica `src/constants/database.ts`
-- **Validaciones**: Ajusta esquemas en `src/lib/validations/`
-
-## 📝 Próximas Características
-
-- [ ] Autenticación de usuarios
-- [ ] Sincronización en tiempo real
-- [ ] Exportar/Importar notas
-- [ ] Temas personalizables
-- [ ] Notas colaborativas
-- [ ] Aplicación móvil
+- `id`: UUID
+- `type`: 'text' | 'canvas'
+- `parentId`: Referencia al documento padre
+- `content`: JSON o HTML (dependiendo del tipo)
+- `isFavorite`: Booleano
+- `isExpanded`: Estado de la UI en el sidebar
 
 ## 🤝 Contribuir
 
 1. Fork el proyecto
-2. Crea una rama para tu feature (`git checkout -b feature/AmazingFeature`)
+2. Crea una rama (`git checkout -b feature/AmazingFeature`)
 3. Commit tus cambios (`git commit -m 'Add some AmazingFeature'`)
 4. Push a la rama (`git push origin feature/AmazingFeature`)
 5. Abre un Pull Request
-
-## 📄 Licencia
-
-Este proyecto está bajo la Licencia MIT. Ver `LICENSE` para más detalles.
