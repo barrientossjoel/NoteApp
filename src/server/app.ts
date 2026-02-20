@@ -6,7 +6,7 @@ import { join, extname } from 'path';
 import { documentsRouter } from './routes/documents';
 import { uploadsRouter } from './routes/uploads';
 
-const app = new Hono();
+const app = new Hono().basePath('/api');
 
 // Middleware
 app.use('*', logger());
@@ -20,14 +20,14 @@ app.onError((err, c) => {
 
 // Routes
 import { messagesRouter } from './routes/messages';
-app.route('/api/documents', documentsRouter);
-app.route('/api/messages', messagesRouter);
-app.route('/api/uploads', uploadsRouter);
+app.route('/documents', documentsRouter);
+app.route('/messages', messagesRouter);
+app.route('/uploads', uploadsRouter);
 
 // Static serving of uploads is disabled in production (Vercel).
 // Use Cloudinary URLs instead.
 
-app.get('/', (c) => c.text('NoteApp API is running!'));
+app.get('/health', (c) => c.text('NoteApp API is running!'));
 
 export default app;
 
