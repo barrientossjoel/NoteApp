@@ -16,13 +16,24 @@ export function getDb() {
         console.warn('TURSO_DATABASE_URL is missing. DB operations will fail.');
     }
 
-    _client = createClient({
-        url: url || 'http://localhost:8080', // Fallback to avoid constructor crash
-        authToken: authToken,
-    });
+    try {
+        _client = createClient({
+            // Web client requires https:// or wss:// or libsql:// (which it converts to https)
+            url: url || 'https://example.com',
+            authToken: authToken,
+        });
 
-    _db = drizzle(_client, { schema });
-    return _db;
+        _db = drizzle(_client, { schema });
+        return _db;
+    } catch (e) {
+        console.error('CRITICAL: Failed to create LibSQL client', e);
+        // Return a dummy object to prevent top-level crash, 
+        // actual queries will fail later but the function will start.
+        return {
+            run: () => Promise.reject(new Error('DB not initialized')),
+            select: () => ({ from: () => ({ where: () => ({ get: () => Promise.reject(new Error('DB not initialized')) }) }) }),
+        } as any;
+    }
 }
 
 // Keeping proxy for backward compatibility if possible, 

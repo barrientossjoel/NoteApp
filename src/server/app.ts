@@ -6,7 +6,7 @@ import { uploadsRouter } from './routes/uploads';
 
 import { checkDbConnection } from './db';
 
-const app = new Hono().basePath('/api');
+const app = new Hono();
 
 // Middleware
 app.use('*', logger());
@@ -24,13 +24,13 @@ app.onError((err, c) => {
 
 // Routes
 import { messagesRouter } from './routes/messages';
-app.route('/documents', documentsRouter);
-app.route('/messages', messagesRouter);
-app.route('/uploads', uploadsRouter);
+app.route('/api/documents', documentsRouter);
+app.route('/api/messages', messagesRouter);
+app.route('/api/uploads', uploadsRouter);
 
-app.get('/health', (c) => c.json({ status: 'ok', time: new Date().toISOString() }));
+app.get('/api/health', (c) => c.json({ status: 'ok', time: new Date().toISOString() }));
 
-app.get('/test-db', async (c) => {
+app.get('/api/test-db', async (c) => {
     const result = await checkDbConnection();
     if (result.ok) {
         return c.json({ status: 'ok', message: 'Database connection successful' });
