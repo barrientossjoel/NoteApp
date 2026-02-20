@@ -10,7 +10,10 @@ const mapItem = (item: any) => ({
 
 export async function getDocuments(status: 'active' | 'deleted' = 'active') {
     const res = await api.documents.$get({ query: { status } });
-    if (!res.ok) throw new Error('Failed to fetch documents');
+    if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(`Failed to fetch documents: ${res.status} ${res.statusText}. ${errorData.message || ''}`);
+    }
     const data = await res.json();
     return Array.isArray(data) ? data.map(mapItem) : [];
 }
