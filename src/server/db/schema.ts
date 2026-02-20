@@ -1,9 +1,7 @@
 import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
 import { sql } from 'drizzle-orm';
-import { v4 as uuidv4 } from 'uuid';
-
 export const users = sqliteTable('users', {
-    id: text('id').primaryKey().$defaultFn(() => uuidv4()),
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
     email: text('email').unique().notNull(),
     name: text('name').notNull(),
     createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
@@ -11,7 +9,7 @@ export const users = sqliteTable('users', {
 });
 
 export const documents = sqliteTable('documents', {
-    id: text('id').primaryKey().$defaultFn(() => uuidv4()),
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
     userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
     title: text('title').notNull(),
     content: text('content').default(''),
@@ -27,7 +25,7 @@ export const documents = sqliteTable('documents', {
 });
 
 export const messages = sqliteTable('messages', {
-    id: text('id').primaryKey().$defaultFn(() => uuidv4()),
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
     content: text('content').notNull(),
     type: text('type', { enum: ['text', 'audio'] }).notNull().default('text'),
     documentId: text('document_id'), // Nullable for global notes
