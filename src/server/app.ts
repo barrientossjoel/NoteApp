@@ -9,8 +9,8 @@ import { checkDbConnection } from './db';
 const app = new Hono().basePath('/api');
 
 // Middleware
-app.use('*', logger());
-app.use('*', cors());
+// app.use('*', logger());
+// app.use('*', cors());
 
 // Error handling middleware
 app.onError((err, c) => {
