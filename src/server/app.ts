@@ -30,22 +30,6 @@ app.route('/uploads', uploadsRouter);
 
 app.get('/health', (c) => c.json({ status: 'ok', time: new Date().toISOString() }));
 
-app.get('/debug', (c) => {
-    return c.json({
-        env_keys: Object.keys(process.env).filter(k => k.includes('TURSO') || k.includes('CLOUDINARY')),
-        node_version: process.version,
-        timestamp: new Date().toISOString()
-    });
-});
-
-app.get('/test-db', async (c) => {
-    const result = await checkDbConnection();
-    if (result.ok) {
-        return c.json({ status: 'ok', message: 'Database connection successful' });
-    }
-    return c.json({ status: 'error', message: result.error }, 500);
-});
-
 export default app;
 
 export type AppType = typeof app;

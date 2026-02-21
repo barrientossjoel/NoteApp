@@ -3,8 +3,9 @@ import app from '../src/server/app';
 export default async function handler(req: any, res: any) {
     try {
         const { url, method, headers } = req;
-        // Vercel's req.url is the path + query. Hono needs a full URL.
-        const fullUrl = `https://${headers.host || 'localhost'}${url}`;
+        const protocol = headers['x-forwarded-proto'] || 'https';
+        const host = headers.host || 'localhost';
+        const fullUrl = `${protocol}://${host}${url}`;
 
         // Prepare the body for the Web Request
         let body = undefined;
@@ -18,17 +19,14 @@ export default async function handler(req: any, res: any) {
             body
         });
 
-        // Execute Hono's fetch logic
         const response = await app.fetch(request);
 
-        // Copy headers from Hono response to Node response
         response.headers.forEach((value, key) => {
             res.setHeader(key, value);
         });
 
         res.statusCode = response.status;
 
-        // Stream or send the body
         const contentType = response.headers.get('content-type') || '';
         if (contentType.includes('application/json')) {
             const data = await response.json();
@@ -42,9 +40,8 @@ export default async function handler(req: any, res: any) {
         res.statusCode = 500;
         res.setHeader('Content-Type', 'application/json');
         res.end(JSON.stringify({
-            error: 'Internal Server Error (Bridge)',
-            message: e.message,
-            stack: process.env.NODE_ENV === 'development' ? e.stack : undefined
+            error: 'Internal Server Error',
+            message: e.message
         }));
     }
 }
