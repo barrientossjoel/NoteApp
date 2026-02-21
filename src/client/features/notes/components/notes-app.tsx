@@ -22,6 +22,7 @@ import { CanvasView } from '../../canvas/canvas-view'
 import { Button } from '../../../components/ui/button'
 import { PanelLeft } from 'lucide-react'
 import { useWorkspaces } from '../../../hooks/useWorkspaces'
+import { MobileNav } from '../../../components/layout/mobile-nav'
 
 export default function NotesApp() {
   const isMobile = useMediaQuery('(max-width: 768px)')
@@ -319,9 +320,10 @@ export default function NotesApp() {
               onRenameWorkspace={renameWorkspace}
               onSwitchWorkspace={switchWorkspace}
               onUploadedPdf={handleUploadedPdf}
+              onCloseMobile={() => setShowSidebar(false)}
             />
           </div>
-          <main className="flex-1 overflow-hidden bg-background flex flex-col">
+          <main className="flex-1 overflow-hidden bg-background flex flex-col relative">
             {(() => {
               const activeDoc = documents.find(d => d.id === currentView)
 
@@ -341,6 +343,22 @@ export default function NotesApp() {
                 />
               )
             })()}
+
+            {/* Mobile Navigation */}
+            {isMobile && (
+              <MobileNav
+                currentView={currentView}
+                onNavigate={(view) => {
+                  if (view === 'search') {
+                    setIsSearchOpen(true)
+                  } else {
+                    handleNavigate(view)
+                  }
+                }}
+                onOpenSidebar={() => setShowSidebar(true)}
+                onCreateNote={() => handleCreateDocument(null, 'text')}
+              />
+            )}
           </main>
         </div>
       </div>

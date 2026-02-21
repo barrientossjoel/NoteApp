@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react'
-import { Plus, Search, Calendar, Trash2, Settings, LayoutDashboard, FileText, BookOpen, Upload, Loader2 } from 'lucide-react'
+import { Plus, Search, Calendar, Trash2, Settings, LayoutDashboard, FileText, BookOpen, Upload, Loader2, X } from 'lucide-react'
 import { Button } from "../../components/ui/button"
 import { Input } from "../../components/ui/input"
 import { ScrollArea } from "../../components/ui/scroll-area"
@@ -34,6 +34,7 @@ interface SidebarProps {
   onRenameWorkspace: (id: string, newName: string) => void
   onSwitchWorkspace: (id: string) => void
   onUploadedPdf: (docId: string) => void
+  onCloseMobile?: () => void
 }
 
 export function Sidebar({
@@ -53,6 +54,7 @@ export function Sidebar({
   onRenameWorkspace,
   onSwitchWorkspace,
   onUploadedPdf,
+  onCloseMobile,
 }: SidebarProps) {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
@@ -140,6 +142,18 @@ export function Sidebar({
         >
           <Calendar className="h-3.5 w-3.5" />
         </Button>
+
+        {onCloseMobile && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 md:hidden"
+            onClick={onCloseMobile}
+            title="Close Menu"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        )}
       </div>
 
 

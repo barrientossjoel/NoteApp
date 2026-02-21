@@ -101,6 +101,8 @@ export function CanvasView({
     const [isSpacePressed, setIsSpacePressed] = useState(false)
     const [contextMenu, setContextMenu] = useState<{ x: number, y: number } | null>(null)
     const [isFullscreen, setIsFullscreen] = useState(false)
+    const lastTouchDistance = useRef<number | null>(null)
+    const lastTouchCenter = useRef<{ x: number, y: number } | null>(null)
 
     // Modal State
     const [isModalOpen, setIsModalOpen] = useState(false)
@@ -359,6 +361,80 @@ export function CanvasView({
                 y: prev.y - e.deltaY
             }))
         }
+    }
+
+    const handleTouchStart = (e: React.TouchEvent) => {
+        if (e.touches.length === 2) {
+            const t1 = e.touches[0]
+            const t2 = e.touches[1]
+            const dist = Math.sqrt(Math.pow(t2.clientX - t1.clientX, 2) + Math.pow(t2.clientY - t1.clientY, 2))
+            lastTouchDistance.current = dist
+            lastTouchCenter.current = {
+                x: (t1.clientX + t2.clientX) / 2,
+                y: (t1.clientY + t2.clientY) / 2
+            }
+        } else if (e.touches.length === 1) {
+            if (e.target === containerRef.current) {
+                setIsPanning(true)
+                setLastMousePos({ x: e.touches[0].clientX, y: e.touches[0].clientY })
+            }
+        }
+    }
+
+    const handleTouchMove = (e: React.TouchEvent) => {
+        if (e.touches.length === 2 && lastTouchDistance.current !== null && lastTouchCenter.current !== null) {
+            // Stop browser zoom/scroll only if we are handling it
+            if (e.cancelable) e.preventDefault()
+
+            const t1 = e.touches[0]
+            const t2 = e.touches[1]
+            const dist = Math.sqrt(Math.pow(t2.clientX - t1.clientX, 2) + Math.pow(t2.clientY - t1.clientY, 2))
+            const center = {
+                x: (t1.clientX + t2.clientX) / 2,
+                y: (t1.clientY + t2.clientY) / 2
+            }
+
+            const zoomDelta = dist / lastTouchDistance.current
+            const newZoom = Math.min(Math.max(camera.zoom * zoomDelta, 0.1), 5)
+
+            const rect = containerRef.current?.getBoundingClientRect()
+            if (!rect) return
+
+            const mouseX = center.x - rect.left
+            const mouseY = center.y - rect.top
+
+            // Point under touch in canvas space before zoom
+            const canvasX = (mouseX - camera.x) / camera.zoom
+            const canvasY = (mouseY - camera.y) / camera.zoom
+
+            // Pan delta from center movement
+            const dx = center.x - lastTouchCenter.current.x
+            const dy = center.y - lastTouchCenter.current.y
+
+            setCamera({
+                x: mouseX - canvasX * newZoom + dx,
+                y: mouseY - canvasY * newZoom + dy,
+                zoom: newZoom
+            })
+
+            lastTouchDistance.current = dist
+            lastTouchCenter.current = center
+        } else if (e.touches.length === 1 && isPanning) {
+            const dx = e.touches[0].clientX - lastMousePos.x
+            const dy = e.touches[0].clientY - lastMousePos.y
+            setCamera(prev => ({
+                ...prev,
+                x: prev.x + dx,
+                y: prev.y + dy
+            }))
+            setLastMousePos({ x: e.touches[0].clientX, y: e.touches[0].clientY })
+        }
+    }
+
+    const handleTouchEnd = () => {
+        lastTouchDistance.current = null
+        lastTouchCenter.current = null
+        setIsPanning(false)
     }
 
     const getGroupNodes = (nodeId: string, currentNodes: CanvasNode[] = nodes) => {
@@ -1145,8 +1221,15 @@ export function CanvasView({
             {/* Canvas Layers */}
             <div
                 ref={containerRef}
-                className="absolute inset-0 outline-none"
+                className={cn(
+                    "flex-1 relative overflow-hidden bg-background select-none cursor-crosshair touch-none",
+                    isPanning && "cursor-grabbing",
+                    isSpacePressed && "cursor-grab"
+                )}
                 onWheel={handleWheel}
+                onTouchStart={handleTouchStart}
+                onTouchMove={handleTouchMove}
+                onTouchEnd={handleTouchEnd}
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}

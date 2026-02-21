@@ -523,7 +523,7 @@ export function Workspace({
 
     return (
         <div className="flex-1 h-full overflow-hidden flex flex-row relative">
-            <div className="flex-1 h-full overflow-hidden flex flex-col">
+            <div className={cn("flex-1 h-full overflow-hidden flex flex-col", isMobile && "pb-16")}>
                 {renderNode(layout)}
             </div>
 
