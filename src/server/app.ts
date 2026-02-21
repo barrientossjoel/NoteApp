@@ -8,7 +8,6 @@ import { uploadsRouter } from './routes/uploads.js';
 const app = new Hono().basePath('/api');
 
 // Middleware
-app.use('*', logger());
 app.use('*', cors());
 
 // Error handling middleware

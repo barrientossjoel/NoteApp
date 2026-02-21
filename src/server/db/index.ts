@@ -21,13 +21,14 @@ export function getDb() {
     }
 }
 
-export const db = new Proxy({} as any, {
-    get(_, prop) {
-        const d = getDb();
-        const val = d[prop];
-        return typeof val === 'function' ? val.bind(d) : val;
-    }
-});
+// Export a getter object instead of a Proxy for stability
+export const db = {
+    select: (...args: any[]) => getDb().select(...args),
+    insert: (...args: any[]) => getDb().insert(...args),
+    update: (...args: any[]) => getDb().update(...args),
+    delete: (...args: any[]) => getDb().delete(...args),
+    run: (...args: any[]) => getDb().run(...args),
+};
 
 export type DbClient = typeof _db;
 
