@@ -1,20 +1,14 @@
-import { Hono } from 'hono';
-import { handle } from 'hono/vercel';
-
-export const config = {
-    runtime: 'nodejs'
-};
-
-const app = new Hono().basePath('/api');
-
-app.get('/test', (c) => c.json({
-    message: 'Self-contained Hono in TS works!',
-    timestamp: new Date().toISOString()
-}));
-
-app.get('/documents', (c) => c.json({
-    message: 'Self-contained Hono /documents works!',
-    timestamp: new Date().toISOString()
-}));
-
-export default handle(app);
+export default async function handler(req: any, res: any) {
+    try {
+        res.statusCode = 200;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({
+            message: 'Raw Node.js in TS works! (Hono is out)',
+            path: req.url,
+            timestamp: new Date().toISOString()
+        }));
+    } catch (e: any) {
+        res.statusCode = 500;
+        res.end(JSON.stringify({ error: e.message }));
+    }
+}
