@@ -17,8 +17,8 @@ export default async function handler(req: any, res: any) {
         // Route: /api/documents
         if (pathname.startsWith('/api/documents')) {
             try {
-                // Dynamically import DB modules to catch boot errors
-                const { db } = await import('../src/server/db');
+                // Dynamically import DB modules with EXPLICIT file names (Fixes ERR_UNSUPPORTED_DIR_IMPORT)
+                const { db } = await import('../src/server/db/index');
                 const { documents } = await import('../src/server/db/schema');
                 const { eq } = await import('drizzle-orm');
 
@@ -36,7 +36,8 @@ export default async function handler(req: any, res: any) {
                     error: 'Database Loading Error',
                     message: importError.message,
                     stack: importError.stack,
-                    type: importError.constructor.name
+                    type: importError.constructor.name,
+                    instruction: "Make sure you are not importing directories directly in ESM"
                 }));
             }
             return;
@@ -47,7 +48,8 @@ export default async function handler(req: any, res: any) {
         res.setHeader('Content-Type', 'application/json');
         res.end(JSON.stringify({
             message: 'Raw Node.js Bridge Active (Debug Mode)',
-            path: pathname
+            path: pathname,
+            info: "Fix applied for ERR_UNSUPPORTED_DIR_IMPORT"
         }));
     } catch (e: any) {
         console.error('Bridge Error:', e);
