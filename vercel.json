@@ -2,30 +2,6 @@
     "version": 2,
     "rewrites": [
         {
-            "source": "/api/ping",
-            "destination": "/api/ping.js"
-        },
-        {
-            "source": "/api/test_hono_local",
-            "destination": "/api/test_hono_local.ts"
-        },
-        {
-            "source": "/api/test_edge",
-            "destination": "/api/test_edge.ts"
-        },
-        {
-            "source": "/api/test_naked",
-            "destination": "/api/test_naked.ts"
-        },
-        {
-            "source": "/api/test_hono",
-            "destination": "/api/test_hono.js"
-        },
-        {
-            "source": "/api/test",
-            "destination": "/api/test.ts"
-        },
-        {
             "source": "/api/(.*)",
             "destination": "/api/index.ts"
         }
