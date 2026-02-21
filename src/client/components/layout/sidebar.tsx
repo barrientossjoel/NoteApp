@@ -35,6 +35,7 @@ interface SidebarProps {
   onSwitchWorkspace: (id: string) => void
   onUploadedPdf: (docId: string) => void
   onCloseMobile?: () => void
+  onOpenSettings?: () => void
 }
 
 export function Sidebar({
@@ -55,8 +56,8 @@ export function Sidebar({
   onSwitchWorkspace,
   onUploadedPdf,
   onCloseMobile,
+  onOpenSettings,
 }: SidebarProps) {
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [isUploading, setIsUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -104,12 +105,6 @@ export function Sidebar({
 
   return (
     <div className="bg-muted/30 flex flex-col h-full bg-sidebar w-full">
-      <SettingsDialog
-        open={isSettingsOpen}
-        onOpenChange={setIsSettingsOpen}
-        showResizeHandles={showResizeHandles}
-        onShowResizeHandlesChange={onShowResizeHandlesChange}
-      />
 
       {/* Header - Aligned with TabBar */}
       <div className="h-10 flex items-center px-2 gap-2 bg-muted/30 backdrop-blur z-10 sticky top-0">
@@ -295,21 +290,6 @@ export function Sidebar({
         onDelete={onDeleteWorkspace}
       />
 
-      <div className="p-3 border-t border-border/40 flex items-center justify-between">
-        <h1 className="text-sm font-bold tracking-tight flex items-center gap-2">
-          <span className="h-5 w-5 rounded-md bg-primary text-primary-foreground flex items-center justify-center text-xs">N</span>
-          NoteApp
-        </h1>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7 text-muted-foreground"
-          title="Settings"
-          onClick={() => setIsSettingsOpen(true)}
-        >
-          <Settings className="h-3.5 w-3.5" />
-        </Button>
-      </div>
-    </div >
+    </div>
   )
 }

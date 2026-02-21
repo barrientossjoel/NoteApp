@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from 'react'
 import { useMediaQuery } from '../../../hooks/useMediaQuery'
 import { Sidebar, SidebarView } from "../../../components/layout/sidebar"
 import { DocumentView } from "../../documents/document-view"
+import { SettingsDialog } from "../../../components/settings/settings-dialog"
 import { useNotesData } from '../../../hooks/useNotesData'
 import { ErrorBoundary } from '../../../components/error-boundary'
 import { createDocument, deleteDocument, updateDocument } from '../../../actions/actions'
@@ -60,6 +61,7 @@ export default function NotesApp() {
   }
   const setShowResizeHandles = (show: boolean) => saveWorkspaceState({ showResizeHandles: show })
 
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [isSearchOpen, setIsSearchOpen] = useState(false)
 
   // Global search shortcut
@@ -321,6 +323,7 @@ export default function NotesApp() {
               onSwitchWorkspace={switchWorkspace}
               onUploadedPdf={handleUploadedPdf}
               onCloseMobile={() => setShowSidebar(false)}
+              onOpenSettings={() => setIsSettingsOpen(true)}
             />
           </div>
           <main className="flex-1 overflow-hidden bg-background flex flex-col relative">
@@ -351,12 +354,17 @@ export default function NotesApp() {
                 onNavigate={(view) => {
                   if (view === 'search') {
                     setIsSearchOpen(true)
+                    if (isMobile) setShowSidebar(false)
                   } else {
                     handleNavigate(view)
                   }
                 }}
                 onOpenSidebar={() => setShowSidebar(true)}
                 onCreateNote={() => handleCreateDocument(null, 'text')}
+                onOpenSettings={() => {
+                  setIsSettingsOpen(true)
+                  if (isMobile) setShowSidebar(false)
+                }}
               />
             )}
           </main>
@@ -367,6 +375,12 @@ export default function NotesApp() {
         onOpenChange={setIsSearchOpen}
         documents={documents}
         onSelect={handleNavigate}
+      />
+      <SettingsDialog
+        open={isSettingsOpen}
+        onOpenChange={setIsSettingsOpen}
+        showResizeHandles={showResizeHandles}
+        onShowResizeHandlesChange={setShowResizeHandles}
       />
     </ErrorBoundary>
   )

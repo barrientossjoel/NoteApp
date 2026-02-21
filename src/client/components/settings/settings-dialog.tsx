@@ -82,7 +82,10 @@ export function SettingsDialog({
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-[425px] flex flex-col max-h-[85vh] rounded-none border-foreground/30 shadow-2xl">
+            <DialogContent
+                className="sm:max-w-[425px] flex flex-col max-h-[85vh] rounded-none border-foreground/30 shadow-2xl"
+                onOpenAutoFocus={(e) => e.preventDefault()}
+            >
                 <DialogHeader className="shrink-0">
                     <DialogTitle>Settings</DialogTitle>
                     <DialogDescription>
