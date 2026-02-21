@@ -1,21 +1,20 @@
-import app from '../src/server/app';
+import { Hono } from 'hono';
+import { handle } from 'hono/vercel';
 
-export default async function handler(req: any, res: any) {
-    try {
-        res.statusCode = 200;
-        res.setHeader('Content-Type', 'application/json');
-        res.end(JSON.stringify({
-            message: 'Smoke Test: Bridge imported app successfully',
-            app_exists: !!app,
-            timestamp: new Date().toISOString()
-        }));
-    } catch (e: any) {
-        res.statusCode = 500;
-        res.setHeader('Content-Type', 'application/json');
-        res.end(JSON.stringify({
-            error: 'Smoke Test Failed',
-            message: e.message,
-            stack: e.stack
-        }));
-    }
-}
+export const config = {
+    runtime: 'nodejs'
+};
+
+const app = new Hono().basePath('/api');
+
+app.get('/test', (c) => c.json({
+    message: 'Self-contained Hono in TS works!',
+    timestamp: new Date().toISOString()
+}));
+
+app.get('/documents', (c) => c.json({
+    message: 'Self-contained Hono /documents works!',
+    timestamp: new Date().toISOString()
+}));
+
+export default handle(app);
