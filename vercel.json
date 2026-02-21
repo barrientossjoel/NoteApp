@@ -6,6 +6,10 @@
             "destination": "/api/ping.js"
         },
         {
+            "source": "/api/test_edge",
+            "destination": "/api/test_edge.ts"
+        },
+        {
             "source": "/api/test_naked",
             "destination": "/api/test_naked.ts"
         },
