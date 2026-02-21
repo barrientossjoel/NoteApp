@@ -1,23 +1,11 @@
+import app from '../src/server/app';
+
 export default async function handler(req: any, res: any) {
     try {
         const { url, method, headers } = req;
         const protocol = headers['x-forwarded-proto'] || 'https';
         const host = headers.host || 'localhost';
         const fullUrl = `${protocol}://${host}${url}`;
-
-        console.log(`Bridge Request: ${method} ${fullUrl}`);
-
-        // Simple direct diagnostic bypass
-        if (url === '/api/bridge-ok') {
-            res.statusCode = 200;
-            res.setHeader('Content-Type', 'application/json');
-            res.end(JSON.stringify({ status: 'ok', source: 'bridge' }));
-            return;
-        }
-
-        // Dynamic import to capture loading crashes
-        console.log('Dynamically importing app...');
-        const { default: app } = await import('../src/server/app');
 
         // Prepare the body for the Web Request
         let body = undefined;
@@ -32,9 +20,7 @@ export default async function handler(req: any, res: any) {
         });
 
         // Execute Hono's fetch logic
-        console.log('Invoking app.fetch...');
         const response = await app.fetch(request);
-        console.log(`App responded with status: ${response.status}`);
 
         response.headers.forEach((value, key) => {
             res.setHeader(key, value);
