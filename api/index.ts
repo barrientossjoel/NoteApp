@@ -1,7 +1,3 @@
-import { db } from '../src/server/db';
-import { documents } from '../src/server/db/schema';
-import { eq } from 'drizzle-orm';
-
 export default async function handler(req: any, res: any) {
     // CORS Manual
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -20,12 +16,29 @@ export default async function handler(req: any, res: any) {
 
         // Route: /api/documents
         if (pathname.startsWith('/api/documents')) {
-            const status = url.searchParams.get('status') || 'active';
-            const results = await db.select().from(documents).where(eq(documents.status, status as any));
+            try {
+                // Dynamically import DB modules to catch boot errors
+                const { db } = await import('../src/server/db');
+                const { documents } = await import('../src/server/db/schema');
+                const { eq } = await import('drizzle-orm');
 
-            res.statusCode = 200;
-            res.setHeader('Content-Type', 'application/json');
-            res.end(JSON.stringify(results));
+                const status = url.searchParams.get('status') || 'active';
+                const results = await db.select().from(documents).where(eq(documents.status, status as any));
+
+                res.statusCode = 200;
+                res.setHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify(results));
+            } catch (importError: any) {
+                console.error('DATABASE IMPORT ERROR:', importError);
+                res.statusCode = 500;
+                res.setHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify({
+                    error: 'Database Loading Error',
+                    message: importError.message,
+                    stack: importError.stack,
+                    type: importError.constructor.name
+                }));
+            }
             return;
         }
 
@@ -33,16 +46,15 @@ export default async function handler(req: any, res: any) {
         res.statusCode = 200;
         res.setHeader('Content-Type', 'application/json');
         res.end(JSON.stringify({
-            message: 'Raw Node.js Bridge Active',
-            path: pathname,
-            db_status: 'Imported'
+            message: 'Raw Node.js Bridge Active (Debug Mode)',
+            path: pathname
         }));
     } catch (e: any) {
         console.error('Bridge Error:', e);
         res.statusCode = 500;
         res.setHeader('Content-Type', 'application/json');
         res.end(JSON.stringify({
-            error: 'Internal Server Error (Bridge)',
+            error: 'Internal Server Error (General Bridge)',
             message: e.message,
             stack: e.stack
         }));
