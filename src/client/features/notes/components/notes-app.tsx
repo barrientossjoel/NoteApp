@@ -295,10 +295,10 @@ export default function NotesApp() {
           )}
 
           <div className={cn(
-            "flex flex-col h-full bg-sidebar transition-all duration-300 ease-in-out z-[100] flex-shrink-0 pointer-events-auto",
-            isMobile ? "fixed inset-y-0 left-0 border-r shadow-lg" : "relative border-r border-border/40",
-            // Removed -ml-[250px] to prevent layout shift on desktop
-            // Refined animation logic:
+            "flex flex-col bg-sidebar transition-all duration-300 ease-in-out z-[100] flex-shrink-0 pointer-events-auto",
+            isMobile
+              ? "fixed top-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] left-0 border-r shadow-lg"
+              : "relative h-full border-r border-border/40",
             isMobile
               ? (showSidebar ? "w-[85vw] max-w-[300px] translate-x-0" : "w-[85vw] max-w-[300px] -translate-x-full")
               : (showSidebar ? "w-[250px]" : "w-0 overflow-hidden border-none opacity-0")

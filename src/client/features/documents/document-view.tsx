@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo, useRef } from 'react'
+import { useMediaQuery } from '../../hooks/useMediaQuery'
 import { useAutoSave } from '../../hooks/useAutoSave'
 import { Button } from "../../components/ui/button"
 import { Input } from "../../components/ui/input"
@@ -72,6 +73,7 @@ export function DocumentView({
     const [localShowNotes, setLocalShowNotes] = useState(false)
     const [tags, setTags] = useState<string[]>(tryParseTags(document.tags))
     const [tagInput, setTagInput] = useState('')
+    const isMobile = useMediaQuery('(max-width: 768px)')
 
     // Command Menu State
     const [commandMenu, setCommandMenu] = useState<{
@@ -286,80 +288,94 @@ export function DocumentView({
                         </Button>
                     )}
 
-                    <Breadcrumb>
-                        <BreadcrumbList>
-                            {breadcrumbItems.map((item, index) => {
-                                const isCurrent = item.id === document.id;
-                                const isLast = index === breadcrumbItems.length - 1;
+                    {!isMobile && (
+                        <Breadcrumb>
+                            <BreadcrumbList>
+                                {breadcrumbItems.map((item, index) => {
+                                    const isCurrent = item.id === document.id;
+                                    const isLast = index === breadcrumbItems.length - 1;
 
-                                return (
-                                    <div key={item.id} className="flex items-center">
-                                        <BreadcrumbItem>
-                                            {isCurrent ? (
-                                                <BreadcrumbPage className="font-bold">{item.title || "Untitled"}</BreadcrumbPage>
-                                            ) : (
-                                                <BreadcrumbLink
-                                                    className={cn(
-                                                        "cursor-pointer hover:text-foreground transition-colors",
-                                                        item.isForward ? "text-muted-foreground/40 italic" : "text-muted-foreground"
-                                                    )}
-                                                    onClick={() => {
-                                                        if (item.isForward || index < breadcrumbs.length - 1) {
-                                                            onReplaceDocument?.(item.id);
-                                                        }
-                                                    }}
-                                                >
-                                                    {item.title || "Untitled"}
-                                                </BreadcrumbLink>
-                                            )}
-                                        </BreadcrumbItem>
-                                        {!isLast && <BreadcrumbSeparator />}
-                                    </div>
-                                );
-                            })}
-                        </BreadcrumbList>
-                    </Breadcrumb>
+                                    return (
+                                        <div key={item.id} className="flex items-center">
+                                            <BreadcrumbItem>
+                                                {isCurrent ? (
+                                                    <BreadcrumbPage className="font-bold">{item.title || "Untitled"}</BreadcrumbPage>
+                                                ) : (
+                                                    <BreadcrumbLink
+                                                        className={cn(
+                                                            "cursor-pointer hover:text-foreground transition-colors",
+                                                            item.isForward ? "text-muted-foreground/40 italic" : "text-muted-foreground"
+                                                        )}
+                                                        onClick={() => {
+                                                            if (item.isForward || index < breadcrumbs.length - 1) {
+                                                                onReplaceDocument?.(item.id);
+                                                            }
+                                                        }}
+                                                    >
+                                                        {item.title || "Untitled"}
+                                                    </BreadcrumbLink>
+                                                )}
+                                            </BreadcrumbItem>
+                                            {!isLast && <BreadcrumbSeparator />}
+                                        </div>
+                                    );
+                                })}
+                            </BreadcrumbList>
+                        </Breadcrumb>
+                    )}
                 </div>
 
+                {isMobile && (
+                    <div className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center max-w-[50%] pointer-events-none">
+                        <span className="text-sm font-bold truncate pointer-events-auto">
+                            {document.title || "Untitled"}
+                        </span>
+                    </div>
+                )}
+
                 <div className="flex items-center gap-1">
-                    <span className="text-xs text-muted-foreground flex items-center gap-1.5 transition-opacity duration-300 min-w-[100px] justify-end mr-2">
-                        {isSaving ? (
-                            <>
-                                <Loader2 className="h-3 w-3 animate-spin" />
-                                Saving...
-                            </>
-                        ) : lastSaved ? (
-                            `Saved`
-                        ) : (
-                            `All changes saved`
-                        )}
-                    </span>
+                    {!isMobile && (
+                        <>
+                            <span className="text-xs text-muted-foreground flex items-center gap-1.5 transition-opacity duration-300 min-w-[100px] justify-end mr-2">
+                                {isSaving ? (
+                                    <>
+                                        <Loader2 className="h-3 w-3 animate-spin" />
+                                        Saving...
+                                    </>
+                                ) : lastSaved ? (
+                                    `Saved`
+                                ) : (
+                                    `All changes saved`
+                                )}
+                            </span>
 
-                    <Button variant="ghost" size="icon" onClick={() => setIsEditing(!isEditing)} title={isEditing ? "View Mode" : "Edit Mode"}>
-                        {isEditing ? <Eye className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
-                    </Button>
+                            <Button variant="ghost" size="icon" onClick={() => setIsEditing(!isEditing)} title={isEditing ? "View Mode" : "Edit Mode"}>
+                                {isEditing ? <Eye className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
+                            </Button>
 
-                    {onToggleTabs && (
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={onToggleTabs}
-                            title={showTabs ? "Hide Tabs" : "Show Tabs"}
-                            className={cn(!showTabs && "text-muted-foreground/50")}
-                        >
-                            <PanelTop className="h-4 w-4" />
-                        </Button>
+                            {onToggleTabs && (
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={onToggleTabs}
+                                    title={showTabs ? "Hide Tabs" : "Show Tabs"}
+                                    className={cn(!showTabs && "text-muted-foreground/50")}
+                                >
+                                    <PanelTop className="h-4 w-4" />
+                                </Button>
+                            )}
+
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => setLocalShowNotes(!localShowNotes)}
+                                title={localShowNotes ? "Close Notes" : "Open Notes"}
+                                className={cn(localShowNotes && "bg-accent text-accent-foreground")}
+                            >
+                                <MessageSquare className="h-4 w-4" />
+                            </Button>
+                        </>
                     )}
-
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setLocalShowNotes(!localShowNotes)}
-                        title={localShowNotes ? "Close Notes" : "Open Notes"}
-                        className={cn(localShowNotes && "bg-accent text-accent-foreground")}
-                    >
-                        <MessageSquare className="h-4 w-4" />
-                    </Button>
 
 
                     <DropdownMenu>
@@ -370,6 +386,31 @@ export function DocumentView({
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="w-56">
                             <div className="p-2">
+                                {isMobile && (
+                                    <>
+                                        <div className="flex items-center justify-between px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground rounded-sm cursor-pointer" onClick={() => setIsEditing(!isEditing)}>
+                                            <div className="flex items-center gap-2">
+                                                {isEditing ? <Eye className="h-4 w-4 text-muted-foreground" /> : <Pencil className="h-4 w-4 text-muted-foreground" />}
+                                                <span>{isEditing ? "View Mode" : "Edit Mode"}</span>
+                                            </div>
+                                        </div>
+                                        {onToggleTabs && (
+                                            <div className="flex items-center justify-between px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground rounded-sm cursor-pointer" onClick={onToggleTabs}>
+                                                <div className="flex items-center gap-2">
+                                                    <PanelTop className="h-4 w-4 text-muted-foreground" />
+                                                    <span>{showTabs ? "Hide Tabs" : "Show Tabs"}</span>
+                                                </div>
+                                            </div>
+                                        )}
+                                        <div className="flex items-center justify-between px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground rounded-sm cursor-pointer" onClick={() => setLocalShowNotes(!localShowNotes)}>
+                                            <div className="flex items-center gap-2">
+                                                <MessageSquare className="h-4 w-4 text-muted-foreground" />
+                                                <span>{localShowNotes ? "Close Notes" : "Open Notes"}</span>
+                                            </div>
+                                        </div>
+                                        <DropdownMenuSeparator />
+                                    </>
+                                )}
                                 <div className="flex items-center justify-between px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground rounded-sm cursor-pointer" onClick={toggleFavorite}>
                                     <div className="flex items-center gap-2">
                                         <Star className="h-4 w-4 text-muted-foreground" />

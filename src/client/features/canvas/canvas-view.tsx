@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useRef, useEffect, useCallback } from 'react'
+import { useMediaQuery } from '../../hooks/useMediaQuery'
 import { GripVertical, Plus, Trash2, Type, Move, MousePointer2, Image, Maximize, Minimize, X, Check, Link, PanelLeft, PanelTop, FileText, MessageSquare, Frame, ArrowRight, Square, Circle, FolderDown, Upload, ExternalLink, ZoomIn, ZoomOut } from 'lucide-react'
 import { cn } from '../../lib/utils/utils'
 import { Button } from '../../components/ui/button'
@@ -67,6 +68,7 @@ export function CanvasView({
 }: CanvasViewProps) {
     const containerRef = useRef<HTMLDivElement>(null)
     const wrapperRef = useRef<HTMLDivElement>(null)
+    const isMobile = useMediaQuery('(max-width: 768px)')
 
     // Parse initial content
     // Parse initial content
@@ -1200,12 +1202,22 @@ export function CanvasView({
                         </Button>
                     )}
 
-                    <div className="flex items-center gap-2 text-sm text-foreground/80 pr-2">
-                        <span className="text-muted-foreground">Documents</span>
-                        <span className="text-muted-foreground">/</span>
-                        <span className="font-medium">{doc.title}</span>
-                    </div>
+                    {!isMobile && (
+                        <div className="flex items-center gap-2 text-sm text-foreground/80 pr-2">
+                            <span className="text-muted-foreground">Documents</span>
+                            <span className="text-muted-foreground">/</span>
+                            <span className="font-medium">{doc.title}</span>
+                        </div>
+                    )}
                 </div>
+
+                {isMobile && (
+                    <div className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center max-w-[50%] pointer-events-none">
+                        <span className="text-sm font-bold truncate pointer-events-auto">
+                            {doc.title || "Untitled"}
+                        </span>
+                    </div>
+                )}
             </div>
 
             {/* Grid Pattern */}
@@ -1796,7 +1808,10 @@ export function CanvasView({
             }
 
             {/* Toolbar (Pill Shape) - No Border */}
-            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-1 p-1 bg-secondary rounded-full shadow-lg z-50 px-2 h-12">
+            <div className={cn(
+                "absolute left-1/2 -translate-x-1/2 flex items-center gap-1 p-1 bg-secondary rounded-full shadow-lg z-50 px-2 h-12 transition-all duration-300",
+                isMobile ? "bottom-20" : "bottom-6"
+            )}>
                 <div className="flex items-center gap-1 pr-2 border-r border-border/10 mr-1">
                     <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full opacity-50"><MousePointer2 className="h-4 w-4" /></Button>
                     {/* Removed Pan/Move Button as requested */}
@@ -1887,43 +1902,92 @@ export function CanvasView({
 
             {/* Toolbar (Top Right) */}
             <div className="absolute top-0 right-4 z-50 pointer-events-auto flex items-center gap-1 h-16">
-                {onToggleTabs && (
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={onToggleTabs}
-                        className={cn(
-                            "h-9 w-9 text-muted-foreground hover:text-foreground bg-transparent",
-                            !showTabs && "text-muted-foreground/50"
+                {!isMobile && (
+                    <>
+                        {onToggleTabs && (
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={onToggleTabs}
+                                className={cn(
+                                    "h-9 w-9 text-muted-foreground hover:text-foreground bg-transparent",
+                                    !showTabs && "text-muted-foreground/50"
+                                )}
+                                title={showTabs ? "Hide Tabs" : "Show Tabs"}
+                            >
+                                <PanelTop className="h-4 w-4" />
+                            </Button>
                         )}
-                        title={showTabs ? "Hide Tabs" : "Show Tabs"}
-                    >
-                        <PanelTop className="h-4 w-4" />
-                    </Button>
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setLocalShowNotes(!localShowNotes)}
+                            title={localShowNotes ? "Close Notes" : "Open Notes"}
+                            className={cn(
+                                "h-9 w-9 text-muted-foreground hover:text-foreground bg-transparent",
+                                localShowNotes && "text-primary bg-primary/10"
+                            )}
+                        >
+                            <MessageSquare className="h-4 w-4" />
+                        </Button>
+                    </>
                 )}
-                <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => setLocalShowNotes(!localShowNotes)}
-                    title={localShowNotes ? "Close Notes" : "Open Notes"}
-                    className={cn(
-                        "h-9 w-9 text-muted-foreground hover:text-foreground bg-transparent",
-                        localShowNotes && "text-primary bg-primary/10"
-                    )}
-                >
-                    <MessageSquare className="h-4 w-4" />
-                </Button>
+
+                <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-9 w-9">
+                            <MoreVertical className="h-4 w-4" />
+                        </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-56">
+                        {isMobile && (
+                            <div className="p-2 border-b border-border/50">
+                                {onToggleTabs && (
+                                    <div className="flex items-center gap-2 px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground rounded-sm cursor-pointer" onClick={onToggleTabs}>
+                                        <PanelTop className="h-4 w-4 text-muted-foreground" />
+                                        <span>{showTabs ? "Hide Tabs" : "Show Tabs"}</span>
+                                    </div>
+                                )}
+                                <div className="flex items-center gap-2 px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground rounded-sm cursor-pointer" onClick={() => setLocalShowNotes(!localShowNotes)}>
+                                    <MessageSquare className="h-4 w-4 text-muted-foreground" />
+                                    <span>{localShowNotes ? "Close Notes" : "Open Notes"}</span>
+                                </div>
+                            </div>
+                        )}
+                        <div className="p-2">
+                            <DropdownMenuItem onClick={toggleFullscreen}>
+                                {isFullscreen ? (
+                                    <>
+                                        <Minimize className="h-4 w-4 mr-2" />
+                                        <span>Exit Fullscreen</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <Maximize className="h-4 w-4 mr-2" />
+                                        <span>Enter Fullscreen</span>
+                                    </>
+                                )}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => setCamera({ x: 0, y: 0, zoom: 1 })}>
+                                <Move className="h-4 w-4 mr-2" />
+                                <span>Reset View</span>
+                            </DropdownMenuItem>
+                        </div>
+                    </DropdownMenuContent>
+                </DropdownMenu>
             </div>
 
             {/* Fullscreen Toggle (Bottom Right) */}
             <div className="absolute bottom-6 right-6 flex items-center gap-2 z-50">
-                <div className="flex flex-col items-end mr-4 gap-1 text-[10px] text-muted-foreground opacity-50 hover:opacity-100 transition-opacity">
-                    <div className="flex gap-2">
-                        <span>Space + Drag to Pan</span>
-                        <span>•</span>
-                        <span>Ctrl + Scroll to Zoom</span>
+                {!isMobile && (
+                    <div className="flex flex-col items-end mr-4 gap-1 text-[10px] text-muted-foreground opacity-50 hover:opacity-100 transition-opacity">
+                        <div className="flex gap-2">
+                            <span>Space + Drag to Pan</span>
+                            <span>•</span>
+                            <span>Ctrl + Scroll to Zoom</span>
+                        </div>
                     </div>
-                </div>
+                )}
                 <div className="flex items-center gap-1 mr-2 bg-secondary rounded-full p-1 shadow-lg">
                     <Button
                         variant="ghost"
