@@ -1,3 +1,9 @@
+/**
+ * ARCHITECTURAL NOTE: 
+ * All relative imports MUST include the .js extension for Vercel ESM compatibility.
+ * This bridge uses a manual fetch adaptation with an 8s safety timeout to prevent
+ * permanent Gateway Timeouts (504) during Hono initialization.
+ */
 import app from '../src/server/app.js';
 
 export default async function handler(req: any, res: any) {

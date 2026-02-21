@@ -1,3 +1,8 @@
+/**
+ * ARCHITECTURAL NOTE: 
+ * All relative imports MUST include the .js extension for Vercel ESM compatibility.
+ * DO NOT use Proxy for the database connection; it causes Gateway Timeouts/Hangs in Serverless.
+ */
 import { sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/libsql';
 import { createClient } from '@libsql/client/web';
