@@ -2,12 +2,8 @@
     "version": 2,
     "rewrites": [
         {
-            "source": "/api/edge-check",
-            "destination": "/api/edge-check.ts"
-        },
-        {
-            "source": "/api/hono-edge-check",
-            "destination": "/api/hono-edge-check.ts"
+            "source": "/api/node-diag",
+            "destination": "/api/node-diag.js"
         },
         {
             "source": "/api/(.*)",
