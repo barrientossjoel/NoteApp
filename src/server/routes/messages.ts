@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
-import { db } from '../db';
-import { messages } from '../db/schema';
+import { db } from '../db/index.js';
+import { messages } from '../db/schema.js';
 import { eq, desc, isNull, and } from 'drizzle-orm';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';

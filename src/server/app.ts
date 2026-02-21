@@ -1,10 +1,32 @@
 import { Hono } from 'hono';
+import { logger } from 'hono/logger';
+import { cors } from 'hono/cors';
+import { documentsRouter } from './routes/documents.js';
+import { messagesRouter } from './routes/messages.js';
+import { uploadsRouter } from './routes/uploads.js';
 
 const app = new Hono().basePath('/api');
 
-// Minimum routes for smoke test
+// Middleware
+app.use('*', logger());
+app.use('*', cors());
+
+// Error handling middleware
+app.onError((err, c) => {
+    console.error(`GLOBAL ERROR: ${err}`);
+    return c.json({
+        error: 'Internal Server Error',
+        message: err.message,
+        stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
+    }, 500);
+});
+
+// Routes
+app.route('/documents', documentsRouter);
+app.route('/messages', messagesRouter);
+app.route('/uploads', uploadsRouter);
+
 app.get('/health', (c) => c.json({ status: 'ok', time: new Date().toISOString() }));
-app.get('/documents', (c) => c.json({ message: "Smoke test bypass", hints: "Routers are disabled" }));
 
 export default app;
 
