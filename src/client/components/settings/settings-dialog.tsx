@@ -11,8 +11,9 @@ import {
 import { Badge } from "../../components/ui/badge"
 import { Button } from "../../components/ui/button"
 import { Input } from "../../components/ui/input"
-import { Search } from "lucide-react"
+import { Search, Sun, Moon, Monitor } from "lucide-react"
 import { cn } from "../../lib/utils/utils"
+import { useTheme } from "../theme-provider"
 
 interface ShortcutItem {
     label: string
@@ -65,6 +66,7 @@ export function SettingsDialog({
     onShowResizeHandlesChange
 }: SettingsDialogProps) {
     const [searchQuery, setSearchQuery] = React.useState("")
+    const { theme, setTheme } = useTheme()
 
     const filteredShortcuts = SHORTCUTS.map(category => ({
         ...category,
@@ -118,6 +120,38 @@ export function SettingsDialog({
                                     >
                                         {showResizeHandles ? "Enabled" : "Disabled"}
                                     </Button>
+                                </div>
+                                <div className="flex items-center justify-between">
+                                    <span className="text-sm text-muted-foreground">Appearance</span>
+                                    <div className="flex items-center gap-1 border border-foreground/20 p-0.5">
+                                        <Button
+                                            variant={theme === "light" ? "secondary" : "ghost"}
+                                            size="sm"
+                                            className="h-7 px-2 rounded-none gap-2 text-xs"
+                                            onClick={() => setTheme("light")}
+                                        >
+                                            <Sun className="h-3 w-3" />
+                                            Light
+                                        </Button>
+                                        <Button
+                                            variant={theme === "dark" ? "secondary" : "ghost"}
+                                            size="sm"
+                                            className="h-7 px-2 rounded-none gap-2 text-xs"
+                                            onClick={() => setTheme("dark")}
+                                        >
+                                            <Moon className="h-3 w-3" />
+                                            Dark
+                                        </Button>
+                                        <Button
+                                            variant={theme === "system" ? "secondary" : "ghost"}
+                                            size="sm"
+                                            className="h-7 px-2 rounded-none gap-2 text-xs"
+                                            onClick={() => setTheme("system")}
+                                        >
+                                            <Monitor className="h-3 w-3" />
+                                            System
+                                        </Button>
+                                    </div>
                                 </div>
                             </div>
                         )}

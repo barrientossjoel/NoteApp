@@ -247,7 +247,7 @@ export function PdfRenderer({ url, invertColors, scale }: PdfRendererProps) {
             ref={containerRef}
             tabIndex={0}
             onScroll={handleScroll}
-            className="flex-1 overflow-auto bg-muted/50 scrollbar-thin scrollbar-thumb-border/30 hover:scrollbar-thumb-border/50 focus:outline-none outline-none"
+            className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-border/30 hover:scrollbar-thumb-border/50 focus:outline-none outline-none"
             style={{ height: '100%' }}
         >
             <div style={{ height: `${rowVirtualizer.getTotalSize()}px`, width: '100%', position: 'relative' }}>
@@ -268,7 +268,7 @@ export function PdfRenderer({ url, invertColors, scale }: PdfRendererProps) {
                         <PageCanvas
                             pdf={pdf!}
                             pageNumber={virtualItem.index + 1}
-                            invert={invertColors && virtualItem.index >= 1}
+                            invert={invertColors}
                             scale={scale}
                         />
                     </div>
@@ -325,7 +325,7 @@ function PageCanvas({ pdf, pageNumber, invert, scale }: PageCanvasProps) {
                 if (cancelled) return
 
                 const viewport = page.getViewport({ scale: scale * 1.5 })
-                const ctx = canvas.getContext('2d', { alpha: false })
+                const ctx = canvas.getContext('2d', { alpha: true })
                 if (!ctx) return
 
                 canvas.height = viewport.height
@@ -335,11 +335,6 @@ function PageCanvas({ pdf, pageNumber, invert, scale }: PageCanvasProps) {
                     canvasContext: ctx,
                     canvas,
                     viewport,
-                    // @ts-ignore — pageColors is available in pdfjs-dist v4+
-                    pageColors: {
-                        background: invert ? '#e8e8e8' : '#ffffff',
-                        foreground: '#000000',
-                    },
                 })
 
                 await renderTask.promise
@@ -371,7 +366,7 @@ function PageCanvas({ pdf, pageNumber, invert, scale }: PageCanvasProps) {
     const knownHeight = getHeightCache(pdf).get(`${scale.toFixed(2)}:${pageNumber}`)
 
     return (
-        <div className={cn('relative', invert ? 'bg-transparent' : 'bg-white')}>
+        <div className="relative">
             {!ready && (
                 <div
                     className="absolute inset-0 flex items-center justify-center bg-muted/10 animate-pulse"
@@ -382,7 +377,7 @@ function PageCanvas({ pdf, pageNumber, invert, scale }: PageCanvasProps) {
             )}
             <canvas
                 ref={canvasRef}
-                className={cn('max-w-full block', invert ? 'invert hue-rotate-180' : '')}
+                className={cn('max-w-full block', invert ? 'invert hue-rotate-180 contrast-[0.92] brightness-[1.3]' : '')}
             />
             <div className={cn(
                 'absolute top-2 right-2 px-2 py-0.5 rounded text-[10px] font-mono',

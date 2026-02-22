@@ -292,7 +292,7 @@ export function Workspace({
 
             return (
                 <div
-                    className={cn("h-full overflow-hidden flex flex-col relative", isActive && "ring-2 ring-primary ring-inset z-10")}
+                    className={cn("h-full overflow-hidden flex flex-col relative", isActive && "z-10")}
                     data-pane-id={node.id}
                     onClick={(e) => {
                         if (!e.altKey && !didMoveRef.current) setActivePaneId(node.id)
@@ -320,14 +320,17 @@ export function Workspace({
                     onDragLeave={() => setDragPreview(null)}
                     onDrop={(e) => handlePaneDrop(e, node.id)}
                 >
+                    {isActive && (
+                        <div className="absolute inset-0 border border-primary pointer-events-none z-[100]" />
+                    )}
                     {/* Move-drag: source pane feedback — dimmed "lifted" look */}
                     {movingSourceId === node.id && (
-                        <div className="absolute inset-0 z-50 pointer-events-none bg-background/60 backdrop-blur-[2px] ring-2 ring-primary/60 ring-inset" />
+                        <div className="absolute inset-0 z-50 pointer-events-none bg-background/60 backdrop-blur-[2px] ring-1 ring-secondary/60 ring-inset" />
                     )}
 
                     {/* Move-drag drop target highlight */}
                     {moveDragOver === node.id && (
-                        <div className="absolute inset-0 z-50 pointer-events-none ring-2 ring-primary ring-inset bg-primary/10" />
+                        <div className="absolute inset-0 z-50 pointer-events-none ring-1 ring-secondary ring-inset bg-secondary/10" />
                     )}
 
                     {node.tabs && node.tabs.length > 0 && node.showTabs !== false && (

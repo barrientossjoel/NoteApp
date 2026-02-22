@@ -1187,16 +1187,13 @@ export function CanvasView({
             {/* Header / Breadcrumb - Hidden in Fullscreen or depending on design preferences */}
             {/* Sidebar Toggle and Breadcrumb */}
             <div className="absolute top-3 left-4 z-50 flex items-center h-10 gap-2 pointer-events-none">
-                <div className="flex items-center gap-2 p-1 rounded-md backdrop-blur-sm pointer-events-auto">
+                <div className="flex items-center gap-2 p-1 rounded-md pointer-events-auto">
                     {onToggleSidebar && (
                         <Button
                             variant="ghost"
                             size="icon"
                             onClick={onToggleSidebar}
-                            className={cn(
-                                "h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-transparent",
-                                !showSidebar && "text-foreground"
-                            )}
+                            className="bg-transparent h-8 w-8 text-muted-foreground hover:text-foreground"
                         >
                             <PanelLeft className="h-4 w-4" />
                         </Button>

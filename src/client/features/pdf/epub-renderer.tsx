@@ -160,23 +160,25 @@ export function EpubRenderer({ url, invertColors, scale }: EpubRendererProps) {
         )
     }
 
-    const isInvertedPage = invertColors && currentIndex > 0
+    const isInvertedPage = invertColors
 
     return (
         <div
             ref={containerRef}
             tabIndex={0}
             onKeyDown={handleKeyDown}
-            className="flex flex-col h-full animate-in fade-in outline-none focus:outline-none bg-muted/50"
+            className="flex flex-col h-full animate-in fade-in outline-none focus:outline-none"
         >
             <ScrollArea className="flex-1">
                 <div className="p-8 lg:p-12">
                     <div
                         className={cn(
                             "prose prose-sm md:prose-base dark:prose-invert max-w-2xl mx-auto transition-all duration-500",
-                            isInvertedPage ? "filter invert hue-rotate-180 brightness-90 contrast-110" : ""
+                            isInvertedPage ? "filter invert hue-rotate-180 contrast(0.7) brightness(1.3)" : ""
                         )}
-                        style={{ fontSize: `${scale * 100}%` }}
+                        style={{
+                            fontSize: `${scale * 100}%`
+                        }}
                         dangerouslySetInnerHTML={{ __html: currentHtml }}
                     />
                 </div>

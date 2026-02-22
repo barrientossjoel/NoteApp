@@ -30,7 +30,7 @@ export function Dashboard({
     return (
         <div className="flex flex-col h-full bg-muted/50 animate-in fade-in duration-300">
             {/* Header */}
-            <div className="h-16 flex items-center justify-between px-4 bg-transparent backdrop-blur-sm sticky top-0 z-10 shrink-0">
+            <div className="h-16 flex items-center justify-between px-4 bg-transparent sticky top-0 z-10 shrink-0">
                 <div className="flex items-center gap-2">
                     {onToggleSidebar && (
                         <Button
@@ -38,7 +38,7 @@ export function Dashboard({
                             size="icon"
                             onClick={onToggleSidebar}
                             title={showSidebar ? "Close Sidebar" : "Open Sidebar"}
-                            className={cn(showSidebar && "bg-transparent")}
+                            className="bg-transparent"
                         >
                             <PanelLeft className="h-4 w-4" />
                         </Button>

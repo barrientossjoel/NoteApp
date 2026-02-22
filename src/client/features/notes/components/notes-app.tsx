@@ -291,16 +291,17 @@ export default function NotesApp() {
           {/* Mobile Overlay Backdrop */}
           {isMobile && showSidebar && (
             <div
-              className="fixed inset-0 bg-background/80 backdrop-blur-sm z-40"
+              className="fixed inset-y-0 right-0 bg-background/80 backdrop-blur-sm z-40"
+              style={{ left: 'calc(min(85vw, 300px) + 1px)' }}
               onClick={() => setShowSidebar(false)}
             />
           )}
 
           <div className={cn(
-            "flex flex-col bg-sidebar transition-all duration-300 ease-in-out z-[100] flex-shrink-0 pointer-events-auto",
+            "flex flex-col bg-background transition-all duration-300 ease-in-out z-[100] flex-shrink-0 pointer-events-auto",
             isMobile
-              ? "fixed top-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] left-0 border-r shadow-lg"
-              : "relative h-full border-r border-border/40",
+              ? "fixed top-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] left-0 border-r"
+              : "relative h-full border-r border-border",
             isMobile
               ? (showSidebar ? "w-[85vw] max-w-[300px] translate-x-0" : "w-[85vw] max-w-[300px] -translate-x-full")
               : (showSidebar ? "w-[250px]" : "w-0 overflow-hidden border-none opacity-0")

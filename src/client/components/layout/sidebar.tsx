@@ -1,11 +1,10 @@
 import { useState, useRef } from 'react'
-import { Plus, Search, Calendar, Trash2, Settings, LayoutDashboard, FileText, BookOpen, Upload, Loader2, X } from 'lucide-react'
+import { Plus, Search, Calendar, Trash2, LayoutDashboard, FileText, BookOpen, Upload, Loader2, X } from 'lucide-react'
 import { Button } from "../../components/ui/button"
 import { Input } from "../../components/ui/input"
 import { ScrollArea } from "../../components/ui/scroll-area"
 import { cn } from "../../lib/utils/utils"
 import { SidebarTree } from "./sidebar-tree"
-import { SettingsDialog } from "../settings/settings-dialog"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -104,10 +103,10 @@ export function Sidebar({
 
 
   return (
-    <div className="bg-muted/30 flex flex-col h-full bg-sidebar w-full">
+    <div className="flex flex-col h-full bg-background w-full">
 
       {/* Header - Aligned with TabBar */}
-      <div className="h-10 flex items-center px-2 gap-2 bg-muted/30 backdrop-blur z-10 sticky top-0">
+      <div className="h-10 flex items-center px-2 gap-2 bg-background z-10 sticky top-0">
         <div className="relative flex-1">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
           <Input
@@ -120,18 +119,18 @@ export function Sidebar({
         </div>
 
         <Button
-          variant={currentView === "" || currentView === "dashboard" ? "secondary" : "ghost"}
+          variant="ghost"
           size="icon"
-          className="h-7 w-7"
+          className={cn("h-7 w-7", (currentView === "" || currentView === "dashboard") && "text-primary")}
           onClick={() => setCurrentView("dashboard")}
           title="Home"
         >
           <LayoutDashboard className="h-3.5 w-3.5" />
         </Button>
         <Button
-          variant={currentView === "calendar" ? "secondary" : "ghost"}
+          variant="ghost"
           size="icon"
-          className="h-7 w-7"
+          className={cn("h-7 w-7", currentView === "calendar" && "text-primary")}
           onClick={() => setCurrentView("calendar")}
           title="Calendar"
         >
@@ -288,6 +287,7 @@ export function Sidebar({
         onCreate={onCreateWorkspace}
         onRename={onRenameWorkspace}
         onDelete={onDeleteWorkspace}
+        onOpenSettings={onOpenSettings}
       />
 
     </div>

@@ -39,7 +39,7 @@ export function TabBar({ paneId, tabs, activeTabId, documents, onSelectTab, onCl
 
     return (
         <div
-            className="flex items-center bg-muted/50 border-b border-border/30 overflow-x-auto no-scrollbar min-h-[36px]"
+            className="flex items-center bg-background border-b overflow-x-auto no-scrollbar min-h-[36px]"
             onDragOver={handleDragOver}
             onDrop={(e) => handleDrop(e)}
         >
@@ -79,8 +79,8 @@ export function TabBar({ paneId, tabs, activeTabId, documents, onSelectTab, onCl
                             handleDrop(e, index)
                         }}
                         className={cn(
-                            "group flex items-center gap-2 px-3 py-2 text-sm max-w-[200px] border-r border-transparent cursor-pointer select-none hover:bg-muted/50 min-w-[120px] relative transition-colors",
-                            isActive && "bg-transparent font-medium border-b-2 border-b-primary"
+                            "group flex items-center gap-2 px-2 py-1.5 text-xs max-w-[180px] border-r border-border cursor-pointer select-none transition-colors min-w-[100px] relative",
+                            isActive ? "bg-muted/30 font-medium border-b-[1.5px] border-b-muted-foreground/40" : "bg-muted/10 font-normal hover:bg-muted/20"
                         )}
                         onClick={(e) => {
                             e.stopPropagation()

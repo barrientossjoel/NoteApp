@@ -3,6 +3,7 @@
 import React, { useEffect, useState, Suspense, lazy, useRef } from 'react'
 import { Button } from '../../components/ui/button'
 import { cn } from '../../lib/utils/utils'
+import { useTheme } from '../../components/theme-provider'
 import { PanelLeft, Maximize2, Minimize2, Download, FileText, BookOpen, Loader2 } from 'lucide-react'
 import type { Document } from '../../../core/types/notes'
 
@@ -33,8 +34,11 @@ export function PdfView({
     onToggleTabs,
 }: PdfViewProps) {
     const containerRef = useRef<HTMLDivElement>(null)
+    const { theme } = useTheme()
     const url = doc.content || ''
     const isEbookFile = isEbook(url)
+
+    const isDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
 
     // Panel-overlay expand (multiple panels) — tracks the pane's bounding rect
     const [isExpanded, setIsExpanded] = useState(false)
@@ -112,7 +116,7 @@ export function PdfView({
     return (
         <div
             ref={containerRef}
-            className="group/pdf flex flex-col h-full bg-background animate-in fade-in duration-500 overflow-hidden relative"
+            className="group/pdf flex flex-col h-full dark:bg-zinc-920 bg-background animate-in fade-in duration-500 overflow-hidden relative"
             style={expandedStyle}
         >
             {/* Sentinel strip: invisible top-edge zone that reveals the header on hover */}
@@ -129,24 +133,21 @@ export function PdfView({
                     "flex items-center justify-between px-4 transition-all duration-200 border-b-transparent",
                     anyExpanded
                         ? cn(
-                            "absolute top-0 left-0 right-0 h-16 z-20 shadow-lg backdrop-blur-md bg-background/85",
+                            "absolute top-0 left-0 right-0 h-16 z-20 shadow-lg bg-background/85",
                             showHeader ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-full pointer-events-none"
                         )
-                        : "h-[4.5rem] pb-2 shrink-0 border-b bg-muted/50"
+                        : "h-[4.5rem] pb-2 shrink-0 border-b dark:bg-zinc-905 bg-background"
                 )}
                 onMouseLeave={() => anyExpanded && setShowHeader(false)}
             >
                 <div className="flex items-center gap-2 min-w-0">
                     {onToggleSidebar && (
                         <Button
-                            variant={showSidebar ? 'ghost' : 'secondary'}
+                            variant="ghost"
                             size="icon"
                             onClick={onToggleSidebar}
                             title={showSidebar ? 'Close Sidebar' : 'Open Sidebar'}
-                            className={cn(
-                                'transition-colors h-8 w-8',
-                                !showSidebar && 'bg-primary/10 text-primary hover:bg-primary/20'
-                            )}
+                            className="bg-transparent h-8 w-8"
                         >
                             <PanelLeft className="h-4 w-4" />
                         </Button>
@@ -207,9 +208,9 @@ export function PdfView({
                         </div>
                     }>
                         {isEbookFile ? (
-                            <EpubRenderer url={url} invertColors={true} scale={scale} />
+                            <EpubRenderer url={url} invertColors={isDark} scale={scale} />
                         ) : (
-                            <PdfRenderer url={url} invertColors={true} scale={scale} />
+                            <PdfRenderer url={url} invertColors={isDark} scale={scale} />
                         )}
                     </Suspense>
                 )}

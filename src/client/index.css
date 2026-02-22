@@ -36,37 +36,41 @@
   }
 
   .dark {
-    --background: 240 6% 7%;
+    --background: 240 6% 4.5%;
     --foreground: 0 0% 98%;
 
     --card: 240 10% 3.9%;
     --card-foreground: 0 0% 98%;
 
-    --popover: 240 10% 3.9%;
+    --popover: 240 10% 4.5%;
     --popover-foreground: 0 0% 98%;
 
-    --primary: 0 0% 98%;
+    --primary: 240 6% 35%;
     --primary-foreground: 240 5.9% 10%;
 
-    --secondary: 240 3.7% 15.9%;
+    --secondary: 240 6% 8%;
     --secondary-foreground: 0 0% 98%;
 
-    --muted: 240 3.7% 15.9%;
+    --muted: 240 6% 8%;
     --muted-foreground: 240 5% 64.9%;
 
-    --accent: 240 3.7% 15.9%;
+    --accent: 240 6% 10%;
     --accent-foreground: 0 0% 98%;
 
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 0 0% 98%;
 
-    --border: 240 3.7% 15.9%;
-    --input: 240 3.7% 15.9%;
+    --border: 240 6% 10%;
+    --input: 240 6% 10%;
     --ring: 240 4.9% 83.9%;
   }
 }
 
 @layer base {
+  :root {
+    --radius: 0rem;
+  }
+
   * {
     @apply border-border;
   }
@@ -140,6 +144,7 @@
 .tl-ui-layout__toasts {
   display: none !important;
 }
+
 /* Smooth Theme Transitions */
 * {
   transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease;

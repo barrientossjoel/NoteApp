@@ -76,7 +76,7 @@ export function TrashView({
   return (
     <div className="flex flex-col h-full bg-muted/30 animate-in fade-in duration-300">
       {/* Header */}
-      <div className="h-16 flex items-center justify-between px-4 bg-background/50 backdrop-blur-sm sticky top-0 z-10 shrink-0">
+      <div className="h-16 flex items-center justify-between px-4 bg-background/50 sticky top-0 z-10 shrink-0">
         <div className="flex items-center gap-2">
           {onToggleSidebar && (
             <Button
@@ -84,7 +84,7 @@ export function TrashView({
               size="icon"
               onClick={onToggleSidebar}
               title={showSidebar ? "Close Sidebar" : "Open Sidebar"}
-              className={cn(showSidebar && "bg-muted/50")}
+              className="bg-transparent"
             >
               <PanelLeft className="h-4 w-4" />
             </Button>

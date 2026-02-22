@@ -1,4 +1,4 @@
-import { Plus, MoreHorizontal, Trash2, Edit2, Layers } from 'lucide-react';
+import { Plus, MoreHorizontal, Trash2, Edit2, Layers, Settings as SettingsIcon } from 'lucide-react';
 import { Button } from "../ui/button";
 import {
     DropdownMenu,
@@ -19,6 +19,7 @@ interface WorkspaceSwitcherProps {
     onCreate: (name: string) => void;
     onRename: (id: string, newName: string) => void;
     onDelete: (id: string) => void;
+    onOpenSettings?: () => void;
 }
 
 export function WorkspaceSwitcher({
@@ -27,7 +28,8 @@ export function WorkspaceSwitcher({
     onSwitch,
     onCreate,
     onRename,
-    onDelete
+    onDelete,
+    onOpenSettings
 }: WorkspaceSwitcherProps) {
     const activeWorkspace = workspaces.find(ws => ws.id === activeWorkspaceId) || workspaces[0];
     const [editingId, setEditingId] = useState<string | null>(null);
@@ -86,11 +88,11 @@ export function WorkspaceSwitcher({
     };
 
     return (
-        <div className="px-3 py-2 border-t border-border/40">
+        <div className="px-3 py-2 border-t border-border/40 flex items-center gap-1">
             <DropdownMenu open={open} onOpenChange={setOpen}>
                 <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" className="w-full justify-start gap-2 h-9 px-2 hover:bg-muted/50 group">
-                        <div className="h-5 w-5 rounded-md bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                    <Button variant="ghost" className="flex-1 justify-start gap-2 h-9 px-2 hover:bg-muted/50 group">
+                        <div className="h-5 w-5 rounded-md text-primary flex items-center justify-center shrink-0">
                             <Layers className="h-3.5 w-3.5" />
                         </div>
                         <span className="truncate flex-1 text-left text-sm font-medium">
@@ -188,8 +190,35 @@ export function WorkspaceSwitcher({
                         <Plus className="h-4 w-4 text-muted-foreground" />
                         <span className="text-sm">New Workspace</span>
                     </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onOpenSettings?.();
+                            setOpen(false);
+                        }}
+                        className="gap-2 px-2 py-1.5 cursor-pointer lg:hidden"
+                    >
+                        <SettingsIcon className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-sm">Settings</span>
+                    </DropdownMenuItem>
                 </DropdownMenuContent>
             </DropdownMenu>
+
+            <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-muted-foreground hover:text-foreground hidden lg:flex"
+                onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onOpenSettings?.();
+                }}
+                title="Settings"
+            >
+                <SettingsIcon className="h-3.5 w-3.5" />
+            </Button>
         </div>
     );
 }

@@ -53,8 +53,8 @@ function TreeNode({ node, level, index, activeDocumentId, onSelectDocument, onCr
                 >
                     <div
                         className={cn(
-                            "group flex items-center gap-1 py-1 px-2 rounded-md hover:bg-accent/50 cursor-pointer transition-colors min-h-[32px]",
-                            activeDocumentId === node.id && "bg-accent text-accent-foreground font-medium",
+                            "group flex items-center gap-1 py-0.5 px-2 rounded-none hover:bg-muted/30 cursor-pointer transition-colors min-h-[28px]",
+                            activeDocumentId === node.id && "bg-muted text-foreground font-medium",
                             snapshot.isDragging && "opacity-50"
                         )}
                         style={{ paddingLeft: `${level * 12 + 8}px` }}

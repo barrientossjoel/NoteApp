@@ -265,24 +265,16 @@ export function DocumentView({
     return (
         <div className="flex flex-col h-full bg-muted/50 animate-in fade-in duration-300">
             {/* Header / Toolbar */}
-            <div className="h-16 flex items-center justify-between px-4 bg-transparent backdrop-blur-sm sticky top-0 z-10">
+            <div className="h-16 flex items-center justify-between px-4 bg-transparent sticky top-0 z-10">
                 <div className="flex items-center gap-2">
-                    {onClose && (
-                        <Button variant="ghost" size="icon" onClick={onClose} className="md:hidden">
-                            <ChevronLeft className="h-5 w-5" />
-                        </Button>
-                    )}
 
                     {onToggleSidebar && (
                         <Button
-                            variant={showSidebar ? "ghost" : "secondary"}
+                            variant="ghost"
                             size="icon"
                             onClick={onToggleSidebar}
                             title={showSidebar ? "Close Sidebar" : "Open Sidebar"}
-                            className={cn(
-                                "transition-colors",
-                                showSidebar ? "bg-transparent" : "bg-primary/10 text-primary hover:bg-primary/20"
-                            )}
+                            className="bg-transparent"
                         >
                             <PanelLeft className="h-4 w-4" />
                         </Button>
