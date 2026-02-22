@@ -146,8 +146,8 @@ export function CanvasView({
             const newNode: CanvasNode = {
                 id: Math.random().toString(36).substring(7),
                 type: 'image',
-                x: -camera.x / camera.zoom + window.innerWidth / 2 / camera.zoom - 150,
-                y: -camera.y / camera.zoom + window.innerHeight / 2 / camera.zoom - 100,
+                x: -camera.x / camera.zoom + (containerRef.current?.clientWidth || window.innerWidth) / 2 / camera.zoom - 150,
+                y: -camera.y / camera.zoom + (containerRef.current?.clientHeight || window.innerHeight) / 2 / camera.zoom - 100,
                 width: 300,
                 height: 200,
                 content: content
@@ -185,8 +185,8 @@ export function CanvasView({
         const newNode: CanvasNode = {
             id: Math.random().toString(36).substring(7),
             type: 'document',
-            x: -camera.x / camera.zoom + window.innerWidth / 2 / camera.zoom - 150,
-            y: -camera.y / camera.zoom + window.innerHeight / 2 / camera.zoom - 100,
+            x: -camera.x / camera.zoom + (containerRef.current?.clientWidth || window.innerWidth) / 2 / camera.zoom - 150,
+            y: -camera.y / camera.zoom + (containerRef.current?.clientHeight || window.innerHeight) / 2 / camera.zoom - 100,
             width: 320,
             height: 400,
             content: importedDoc.id
@@ -1132,8 +1132,8 @@ export function CanvasView({
             const newNode: CanvasNode = {
                 id: Math.random().toString(36).substring(7),
                 type: 'image',
-                x: (window.innerWidth / 2 - camera.x) / camera.zoom - 150,
-                y: (window.innerHeight / 2 - camera.y) / camera.zoom - 100,
+                x: ((containerRef.current?.clientWidth || window.innerWidth) / 2 - camera.x) / camera.zoom - 150,
+                y: ((containerRef.current?.clientHeight || window.innerHeight) / 2 - camera.y) / camera.zoom - 100,
                 width: 300,
                 height: 200,
                 content: imageUrlInput
@@ -1153,8 +1153,8 @@ export function CanvasView({
         const newNode: CanvasNode = {
             id: Math.random().toString(36).substring(7),
             type: 'note',
-            x: (window.innerWidth / 2 - camera.x) / camera.zoom - 100,
-            y: (window.innerHeight / 2 - camera.y) / camera.zoom - 75,
+            x: ((containerRef.current?.clientWidth || window.innerWidth) / 2 - camera.x) / camera.zoom - 100,
+            y: ((containerRef.current?.clientHeight || window.innerHeight) / 2 - camera.y) / camera.zoom - 75,
             width: 200,
             height: 150,
             content: ''
@@ -1172,8 +1172,8 @@ export function CanvasView({
             id: Math.random().toString(36).substring(7),
             type: 'shape',
             shapeType,
-            x: (window.innerWidth / 2 - camera.x) / camera.zoom - 100,
-            y: (window.innerHeight / 2 - camera.y) / camera.zoom - 100,
+            x: ((containerRef.current?.clientWidth || window.innerWidth) / 2 - camera.x) / camera.zoom - 100,
+            y: ((containerRef.current?.clientHeight || window.innerHeight) / 2 - camera.y) / camera.zoom - 100,
             width: 200,
             height: 200,
             content: ''
@@ -1183,7 +1183,7 @@ export function CanvasView({
     }
 
     return (
-        <div ref={wrapperRef} className="w-full h-full relative overflow-hidden bg-muted/50 select-none touch-none group/canvas">
+        <div ref={wrapperRef} className="flex flex-col w-full h-full relative overflow-hidden bg-muted/50 select-none touch-none group/canvas">
             {/* Header / Breadcrumb - Hidden in Fullscreen or depending on design preferences */}
             {/* Sidebar Toggle and Breadcrumb */}
             <div className="absolute top-3 left-4 z-50 flex items-center h-10 gap-2 pointer-events-none">

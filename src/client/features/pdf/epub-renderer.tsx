@@ -174,7 +174,7 @@ export function EpubRenderer({ url, invertColors, scale }: EpubRendererProps) {
                     <div
                         className={cn(
                             "prose prose-sm md:prose-base dark:prose-invert max-w-2xl mx-auto transition-all duration-500",
-                            isInvertedPage ? "filter invert hue-rotate-180 contrast(0.7) brightness(1.3)" : ""
+                            isInvertedPage ? "filter invert hue-rotate-180 contrast(0.9) brightness(1.3)" : ""
                         )}
                         style={{
                             fontSize: `${scale * 100}%`
