@@ -15,7 +15,7 @@ import type { Document } from '../../../core/types/notes'
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd'
 
 import { RenameDialog } from '../../components/ui/rename-dialog'
-import { Pencil } from 'lucide-react'
+import { Pencil, Link2 } from 'lucide-react'
 
 interface SidebarTreeProps {
     documents: Document[]
@@ -50,10 +50,11 @@ function TreeNode({ node, level, index, activeDocumentId, onSelectDocument, onCr
                     ref={provided.innerRef}
                     {...provided.draggableProps}
                     {...provided.dragHandleProps}
+                    className="w-full overflow-hidden"
                 >
                     <div
                         className={cn(
-                            "group flex items-center gap-1 py-0.5 px-2 rounded-none hover:bg-muted/30 cursor-pointer transition-colors min-h-[28px]",
+                            "group relative flex items-center gap-1 py-0.5 pl-2 pr-12 rounded-none hover:bg-muted/30 cursor-pointer transition-colors min-h-[28px] w-full overflow-hidden",
                             activeDocumentId === node.id && "bg-muted text-foreground font-medium",
                             snapshot.isDragging && "opacity-50"
                         )}
@@ -85,10 +86,10 @@ function TreeNode({ node, level, index, activeDocumentId, onSelectDocument, onCr
 
                         <span className="truncate flex-1 text-sm min-w-0">{node.title || "Untitled"}</span>
 
-                        <div className="opacity-0 group-hover:opacity-100 flex items-center">
+                        <div className="absolute right-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 flex items-center shrink-0 pr-1">
                             <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
-                                    <Button variant="ghost" className="h-6 w-6 p-0 hover:bg-background">
+                                    <Button variant="ghost" className="h-6 w-6 p-0 hover:bg-accent text-muted-foreground hover:text-foreground">
                                         <MoreHorizontal className="h-3.5 w-3.5" />
                                     </Button>
                                 </DropdownMenuTrigger>
@@ -116,7 +117,7 @@ function TreeNode({ node, level, index, activeDocumentId, onSelectDocument, onCr
 
                             <Button
                                 variant="ghost"
-                                className="h-6 w-6 p-0 hover:bg-background ml-0.5"
+                                className="h-6 w-6 p-0 hover:bg-accent text-muted-foreground hover:text-foreground ml-0.5"
                                 onClick={(e) => { e.stopPropagation(); onCreateDocument(node.id); }}
                             >
                                 <Plus className="h-3.5 w-3.5" />
@@ -130,7 +131,7 @@ function TreeNode({ node, level, index, activeDocumentId, onSelectDocument, onCr
                                 <div
                                     ref={provided.innerRef}
                                     {...provided.droppableProps}
-                                    className="flex flex-col"
+                                    className="flex flex-col w-full"
                                 >
                                     {node.children && node.children.map((child, childIndex) => (
                                         <TreeNode
@@ -235,7 +236,7 @@ export function SidebarTree({ documents, activeDocumentId, onSelectDocument, onC
             <Droppable droppableId="root" type="DOCUMENT" isCombineEnabled>
                 {(provided) => (
                     <div
-                        className="flex flex-col gap-0.5 py-2"
+                        className="flex flex-col gap-0.5 py-2 w-full overflow-hidden"
                         {...provided.droppableProps}
                         ref={provided.innerRef}
                     >

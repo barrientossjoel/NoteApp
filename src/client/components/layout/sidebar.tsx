@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react'
-import { Plus, Search, Calendar, Trash2, LayoutDashboard, FileText, BookOpen, Upload, Loader2, X } from 'lucide-react'
+import { Plus, Search, Calendar, Trash2, LayoutDashboard, FileText, BookOpen, Upload, Loader2, X, MoreHorizontal, Pencil, Link2 } from 'lucide-react'
 import { Button } from "../../components/ui/button"
 import { Input } from "../../components/ui/input"
 import { ScrollArea } from "../../components/ui/scroll-area"
@@ -10,8 +10,10 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
 } from "../ui/dropdown-menu"
 import { WorkspaceSwitcher } from './workspace-switcher'
+import { RenameDialog } from '../../components/ui/rename-dialog'
 import type { Document, WorkspaceRecord } from "../../../core/types/notes"
 
 export type SidebarView = "search" | "calendar" | "trash" | string // string = documentId
@@ -61,6 +63,25 @@ export function Sidebar({
   const [isUploading, setIsUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  const [renameNode, setRenameNode] = useState<Document | null>(null)
+
+  const handleRename = (newName: string) => {
+    if (!renameNode) return
+    let updatedDoc = { ...renameNode, title: newName }
+    if (renameNode.type === 'text' || !renameNode.type) {
+      const content = renameNode.content || ''
+      const lines = content.split('\n')
+      if (lines.length > 0 && lines[0].startsWith('# ')) {
+        lines[0] = `# ${newName}`
+      } else {
+        lines.unshift(`# ${newName}`)
+      }
+      updatedDoc.content = lines.join('\n')
+    }
+    onUpdateDocument(updatedDoc)
+    setRenameNode(null)
+  }
+
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -96,8 +117,10 @@ export function Sidebar({
   }
 
   const filteredDocuments = documents.filter(doc =>
-    doc.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (doc.content && doc.content.toLowerCase().includes(searchQuery.toLowerCase()))
+    doc.type !== 'pdf' && (
+      doc.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (doc.content && doc.content.toLowerCase().includes(searchQuery.toLowerCase()))
+    )
   )
 
 
@@ -191,16 +214,37 @@ export function Sidebar({
             ) : (
               <div className="space-y-0.5">
                 {pdfDocs.map(doc => (
-                  <Button
-                    key={doc.id}
-                    variant={currentView === doc.id ? 'secondary' : 'ghost'}
-                    size="sm"
-                    className="w-full justify-start px-2 h-8 font-normal"
-                    onClick={() => setCurrentView(doc.id)}
-                  >
-                    <BookOpen className="h-3.5 w-3.5 mr-2 text-muted-foreground shrink-0" />
-                    <span className="truncate flex-1 text-left text-xs">{doc.title || 'Untitled'}</span>
-                  </Button>
+                  <div key={doc.id} className="group relative flex items-center w-full">
+                    <Button
+                      variant={currentView === doc.id ? 'secondary' : 'ghost'}
+                      size="sm"
+                      className="w-full justify-start px-2 h-8 font-normal pr-8"
+                      onClick={() => setCurrentView(doc.id)}
+                    >
+                      <BookOpen className="h-3.5 w-3.5 mr-2 text-muted-foreground shrink-0" />
+                      <span className="truncate flex-1 text-left text-xs">{doc.title || 'Untitled'}</span>
+                    </Button>
+                    <div className="absolute right-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 flex items-center shrink-0">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" className="h-6 w-6 p-0 hover:bg-accent text-muted-foreground hover:text-foreground">
+                            <MoreHorizontal className="h-3.5 w-3.5" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="start">
+                          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setRenameNode(doc); }}>
+                            <Pencil className="mr-2 h-4 w-4" />
+                            Rename
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onDeleteDocument(doc.id); }} className="text-destructive">
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </div>
                 ))}
               </div>
             )}
@@ -251,15 +295,36 @@ export function Sidebar({
               </h2>
               <div className="space-y-0.5">
                 {documents.filter(d => d.isFavorite).map(doc => (
-                  <Button
-                    key={doc.id}
-                    variant={currentView === doc.id ? "secondary" : "ghost"}
-                    size="sm"
-                    className="w-full justify-start px-2 h-8 font-normal"
-                    onClick={() => setCurrentView(doc.id)}
-                  >
-                    <span className="truncate flex-1 text-left">{doc.title || "Untitled"}</span>
-                  </Button>
+                  <div key={doc.id} className="group relative flex items-center w-full">
+                    <Button
+                      variant={currentView === doc.id ? "secondary" : "ghost"}
+                      size="sm"
+                      className="w-full justify-start px-2 h-8 font-normal pr-8"
+                      onClick={() => setCurrentView(doc.id)}
+                    >
+                      <span className="truncate flex-1 text-left">{doc.title || "Untitled"}</span>
+                    </Button>
+                    <div className="absolute right-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 flex items-center shrink-0">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" className="h-6 w-6 p-0 hover:bg-accent text-muted-foreground hover:text-foreground">
+                            <MoreHorizontal className="h-3.5 w-3.5" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="start">
+                          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setRenameNode(doc); }}>
+                            <Pencil className="mr-2 h-4 w-4" />
+                            Rename
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onDeleteDocument(doc.id); }} className="text-destructive">
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </div>
                 ))}
               </div>
             </div>
@@ -288,6 +353,14 @@ export function Sidebar({
         onRename={onRenameWorkspace}
         onDelete={onDeleteWorkspace}
         onOpenSettings={onOpenSettings}
+      />
+
+      <RenameDialog
+        isOpen={!!renameNode}
+        onClose={() => setRenameNode(null)}
+        onRename={handleRename}
+        initialValue={renameNode?.title || ''}
+        title={`Rename ${renameNode?.type === 'canvas' ? 'Canvas' : 'Page'}`}
       />
 
     </div>

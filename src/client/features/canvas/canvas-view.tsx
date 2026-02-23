@@ -14,8 +14,9 @@ import {
     DropdownMenuContent,
     DropdownMenuItem,
     DropdownMenuTrigger,
+    DropdownMenuSeparator,
 } from "../../components/ui/dropdown-menu"
-import { MoreVertical, Pencil } from 'lucide-react'
+import { MoreVertical, Pencil, Link2 } from 'lucide-react'
 import { NotesPanel } from '../notes/components/notes-panel'
 
 interface CanvasNode {
@@ -1952,6 +1953,11 @@ export function CanvasView({
                             </div>
                         )}
                         <div className="p-2">
+                            <DropdownMenuItem onClick={() => navigator.clipboard.writeText(`${window.location.origin}/${doc.id}`)}>
+                                <Link2 className="mr-2 h-4 w-4" />
+                                <span>Share</span>
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
                             <DropdownMenuItem onClick={toggleFullscreen}>
                                 {isFullscreen ? (
                                     <>
