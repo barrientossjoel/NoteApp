@@ -14,6 +14,7 @@ import { Input } from "../../components/ui/input"
 import { Search, Sun, Moon, Monitor } from "lucide-react"
 import { cn } from "../../lib/utils/utils"
 import { useTheme } from "../theme-provider"
+import { useMediaQuery } from "../../hooks/useMediaQuery"
 
 interface ShortcutItem {
     label: string
@@ -67,6 +68,7 @@ export function SettingsDialog({
 }: SettingsDialogProps) {
     const [searchQuery, setSearchQuery] = React.useState("")
     const { theme, setTheme } = useTheme()
+    const isMobile = useMediaQuery('(max-width: 768px)')
 
     const filteredShortcuts = SHORTCUTS.map(category => ({
         ...category,
@@ -110,17 +112,19 @@ export function SettingsDialog({
                         {showPreferences && (
                             <div className="space-y-4">
                                 <h4 className="text-sm font-medium leading-none">Preferences</h4>
-                                <div className="flex items-center justify-between">
-                                    <span className="text-sm text-muted-foreground">Show Resize Handles</span>
-                                    <Button
-                                        variant={showResizeHandles ? "default" : "outline"}
-                                        size="sm"
-                                        className="rounded-none border-foreground/20"
-                                        onClick={() => onShowResizeHandlesChange(!showResizeHandles)}
-                                    >
-                                        {showResizeHandles ? "Enabled" : "Disabled"}
-                                    </Button>
-                                </div>
+                                {!isMobile && (
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-sm text-muted-foreground">Show Resize Handles</span>
+                                        <Button
+                                            variant={showResizeHandles ? "default" : "outline"}
+                                            size="sm"
+                                            className="rounded-none border-foreground/20"
+                                            onClick={() => onShowResizeHandlesChange(!showResizeHandles)}
+                                        >
+                                            {showResizeHandles ? "Enabled" : "Disabled"}
+                                        </Button>
+                                    </div>
+                                )}
                                 <div className="flex items-center justify-between">
                                     <span className="text-sm text-muted-foreground">Appearance</span>
                                     <div className="flex items-center gap-1 border border-foreground/20 p-0.5">

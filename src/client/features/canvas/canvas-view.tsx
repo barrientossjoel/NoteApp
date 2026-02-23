@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useRef, useEffect, useCallback } from 'react'
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { useMediaQuery } from '../../hooks/useMediaQuery'
 import { GripVertical, Plus, Trash2, Type, Move, MousePointer2, Image, Maximize, Minimize, X, Check, Link, PanelLeft, PanelTop, FileText, MessageSquare, Frame, ArrowRight, Square, Circle, FolderDown, Upload, ExternalLink, ZoomIn, ZoomOut } from 'lucide-react'
 import { cn } from '../../lib/utils/utils'
@@ -18,6 +18,14 @@ import {
 } from "../../components/ui/dropdown-menu"
 import { MoreVertical, Pencil, Link2 } from 'lucide-react'
 import { NotesPanel } from '../notes/components/notes-panel'
+import {
+    Breadcrumb,
+    BreadcrumbItem,
+    BreadcrumbLink,
+    BreadcrumbList,
+    BreadcrumbPage,
+    BreadcrumbSeparator,
+} from "../../components/ui/breadcrumb"
 
 interface CanvasNode {
     id: string
@@ -138,6 +146,22 @@ export function CanvasView({
 
     // Import State
     const [isImportOpen, setIsImportOpen] = useState(false)
+
+    // Calculate breadcrumbs
+    const breadcrumbs = useMemo(() => {
+        const path: Array<{ id: string, title?: string, isRoot?: boolean }> = [];
+        let current: Document | undefined = doc;
+        while (current) {
+            path.unshift({ id: current.id, title: current.title });
+            if (current.parentId) {
+                current = documents?.find(d => d.id === current?.parentId);
+            } else {
+                current = undefined;
+            }
+        }
+        path.unshift({ id: 'dashboard', title: 'Documents', isRoot: true });
+        return path;
+    }, [doc, documents]);
     const fileInputRef = useRef<HTMLInputElement>(null)
 
     const handleImageUpload = (file: File) => {
@@ -1201,22 +1225,60 @@ export function CanvasView({
                     )}
 
                     {!isMobile && (
-                        <div className="flex items-center gap-2 text-sm text-foreground/80 pr-2">
-                            <span className="text-muted-foreground">Documents</span>
+                        <div className="flex items-center gap-2 text-sm text-foreground/80 pr-2 pointer-events-auto">
+                            <span
+                                className="text-muted-foreground cursor-pointer hover:text-foreground transition-colors"
+                                onClick={() => onOpenDocument?.('dashboard')}
+                            >
+                                Documents
+                            </span>
                             <span className="text-muted-foreground">/</span>
                             <span className="font-medium">{doc.title}</span>
                         </div>
                     )}
                 </div>
-
-                {isMobile && (
-                    <div className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center max-w-[50%] pointer-events-none">
-                        <span className="text-sm font-bold truncate pointer-events-auto">
-                            {doc.title || "Untitled"}
-                        </span>
-                    </div>
-                )}
             </div>
+
+            {isMobile && (
+                <div className="absolute top-3 left-0 right-0 z-40 flex items-center justify-center h-10 pointer-events-none">
+                    <div className="max-w-[50%] overflow-hidden pointer-events-none">
+                        <Breadcrumb className="pointer-events-auto flex items-center justify-center bg-background/50 backdrop-blur px-3 py-1.5 rounded-full shadow-sm border border-border/50">
+                            <BreadcrumbList className="flex-nowrap no-scrollbar overflow-x-auto justify-center">
+                                {breadcrumbs.map((item, index) => {
+                                    const isCurrent = item.id === doc.id;
+                                    const isLast = index === breadcrumbs.length - 1;
+
+                                    return (
+                                        <div key={item.id} className="flex items-center shrink-0">
+                                            <BreadcrumbItem>
+                                                {isCurrent ? (
+                                                    <BreadcrumbPage className="font-bold text-xs truncate max-w-[80px]">
+                                                        {item.title || "Untitled"}
+                                                    </BreadcrumbPage>
+                                                ) : (
+                                                    <BreadcrumbLink
+                                                        asChild
+                                                        className="cursor-pointer hover:text-foreground transition-colors text-xs truncate max-w-[80px] text-muted-foreground"
+                                                    >
+                                                        <button onClick={(e) => {
+                                                            e.preventDefault();
+                                                            e.stopPropagation();
+                                                            onOpenDocument?.(item.id);
+                                                        }}>
+                                                            {item.title || "Untitled"}
+                                                        </button>
+                                                    </BreadcrumbLink>
+                                                )}
+                                            </BreadcrumbItem>
+                                            {!isLast && <BreadcrumbSeparator className="mx-1" />}
+                                        </div>
+                                    );
+                                })}
+                            </BreadcrumbList>
+                        </Breadcrumb>
+                    </div>
+                </div>
+            )}
 
             {/* Grid Pattern */}
             <div
@@ -1981,9 +2043,17 @@ export function CanvasView({
             </div>
 
             {/* Fullscreen Toggle (Bottom Right) */}
-            <div className="absolute bottom-6 right-6 flex items-center gap-2 z-50">
-                {!isMobile && (
-                    <div className="flex flex-col items-end mr-4 gap-1 text-[10px] text-muted-foreground opacity-50 hover:opacity-100 transition-opacity">
+            <div className="absolute bottom-6 right-6 flex flex-col items-end gap-2 z-50">
+                {isMobile ? (
+                    <div className="text-[10px] text-muted-foreground opacity-50 hover:opacity-100 transition-opacity">
+                        <div className="flex gap-2">
+                            <span>Two fingers to Pan</span>
+                            <span>•</span>
+                            <span>Pinch to Zoom</span>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="text-[10px] text-muted-foreground opacity-50 hover:opacity-100 transition-opacity">
                         <div className="flex gap-2">
                             <span>Space + Drag to Pan</span>
                             <span>•</span>
@@ -1991,38 +2061,40 @@ export function CanvasView({
                         </div>
                     </div>
                 )}
-                <div className="flex items-center gap-1 mr-2 bg-secondary rounded-full p-1 shadow-lg">
+                <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1 bg-secondary rounded-full p-1 shadow-lg">
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 rounded-full hover:bg-background/50"
+                            onClick={() => handleZoom(-0.25)}
+                            title="Zoom Out"
+                        >
+                            <ZoomOut className="h-4 w-4" />
+                        </Button>
+                        <span className="text-[10px] w-8 text-center font-mono opacity-50 select-none">
+                            {Math.round(camera.zoom * 100)}%
+                        </span>
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 rounded-full hover:bg-background/50"
+                            onClick={() => handleZoom(0.25)}
+                            title="Zoom In"
+                        >
+                            <ZoomIn className="h-4 w-4" />
+                        </Button>
+                    </div>
                     <Button
                         variant="ghost"
                         size="icon"
-                        className="h-8 w-8 rounded-full hover:bg-background/50"
-                        onClick={() => handleZoom(-0.25)}
-                        title="Zoom Out"
+                        className="h-9 w-9 rounded-full bg-secondary hover:bg-background/50 opacity-50 hover:opacity-100 transition-opacity shadow-lg"
+                        onClick={toggleFullscreen}
+                        title={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
                     >
-                        <ZoomOut className="h-4 w-4" />
-                    </Button>
-                    <span className="text-[10px] w-8 text-center font-mono opacity-50 select-none">
-                        {Math.round(camera.zoom * 100)}%
-                    </span>
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 rounded-full hover:bg-background/50"
-                        onClick={() => handleZoom(0.25)}
-                        title="Zoom In"
-                    >
-                        <ZoomIn className="h-4 w-4" />
+                        {isFullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
                     </Button>
                 </div>
-                <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-9 w-9 rounded-full bg-secondary hover:bg-background/50 opacity-50 hover:opacity-100 transition-opacity"
-                    onClick={toggleFullscreen}
-                    title={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
-                >
-                    {isFullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
-                </Button>
             </div>
 
             {/* Context Menu */}

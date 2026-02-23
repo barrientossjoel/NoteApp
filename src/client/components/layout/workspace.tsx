@@ -384,7 +384,7 @@ export function Workspace({
                                 onToggleSidebar={toggleSidebar}
                                 showTabs={node.showTabs !== false}
                                 onToggleTabs={() => handleToggleTabs(node.id)}
-                                onOpenDocument={(docId) => onUpdateLayout(addTabToPane(layout, node.id, docId, false))}
+                                onOpenDocument={(docId) => onUpdateLayout(addTabToPane(layout, node.id, docId, true))}
                             />
                         ) : doc?.type === 'pdf' ? (
                             <PdfView
@@ -709,7 +709,7 @@ function toggleNodeTabs(node: LayoutNode, paneId: string): LayoutNode {
 
 
 
-function closeTab(node: LayoutNode, paneId: string, tabId: string): LayoutNode {
+export function closeTab(node: LayoutNode, paneId: string, tabId: string): LayoutNode {
     if (node.id === paneId && node.tabs) {
         const newTabs = node.tabs.filter(t => t !== tabId)
         if (newTabs.length === 0) {
@@ -747,7 +747,7 @@ function removeNode(node: LayoutNode, id: string): LayoutNode | null {
     return node
 }
 
-function findFirstPaneId(node: LayoutNode): string | null {
+export function findFirstPaneId(node: LayoutNode): string | null {
     if (node.type === 'pane' || node.type === 'dashboard') {
         return node.id
     }

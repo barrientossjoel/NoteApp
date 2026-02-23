@@ -1,8 +1,10 @@
 'use client'
 
 import React from 'react'
-import { X, FileText, LayoutDashboard, Calendar, Trash2, Frame } from 'lucide-react'
+import { X, FileText, LayoutDashboard, Calendar, Trash2, Frame, Copy, Plus } from 'lucide-react'
 import { cn } from '../../lib/utils/utils'
+import { useMediaQuery } from '../../hooks/useMediaQuery'
+import { Button } from '../ui/button'
 import type { Document } from '../../../core/types/notes'
 
 interface TabBarProps {
@@ -35,6 +37,12 @@ export function TabBar({ paneId, tabs, activeTabId, documents, onSelectTab, onCl
         if (tabId) {
             onMoveTab(tabId, sourcePaneId, paneId, targetIndex)
         }
+    }
+
+    const isMobile = useMediaQuery('(max-width: 768px)')
+
+    if (isMobile) {
+        return null;
     }
 
     return (

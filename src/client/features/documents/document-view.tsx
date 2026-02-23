@@ -157,7 +157,10 @@ export function DocumentView({
 
     // Calculate breadcrumb items including forward path
     const breadcrumbItems = useMemo(() => {
-        const items = breadcrumbs.map(doc => ({ ...doc, isForward: false }));
+        const items: Array<{ id: string, title?: string, isForward: boolean, isRoot?: boolean }> = [
+            { id: 'dashboard', title: 'Documents', isForward: false, isRoot: true },
+            ...breadcrumbs.map(doc => ({ id: doc.id, title: doc.title, isForward: false }))
+        ];
 
         if (forwardPath && forwardPath.length > 0) {
             // Find the documents for the forward path, filtering those already in parent path
@@ -293,18 +296,22 @@ export function DocumentView({
                                                 {isCurrent ? (
                                                     <BreadcrumbPage className="font-bold">{item.title || "Untitled"}</BreadcrumbPage>
                                                 ) : (
-                                                    <BreadcrumbLink
-                                                        className={cn(
-                                                            "cursor-pointer hover:text-foreground transition-colors",
-                                                            item.isForward ? "text-muted-foreground/40 italic" : "text-muted-foreground"
-                                                        )}
-                                                        onClick={() => {
-                                                            if (item.isForward || index < breadcrumbs.length - 1) {
-                                                                onReplaceDocument?.(item.id);
-                                                            }
-                                                        }}
-                                                    >
-                                                        {item.title || "Untitled"}
+                                                    <BreadcrumbLink asChild>
+                                                        <button
+                                                            className={cn(
+                                                                "cursor-pointer hover:text-foreground transition-colors",
+                                                                item.isForward ? "text-muted-foreground/40 italic" : "text-muted-foreground"
+                                                            )}
+                                                            onClick={(e) => {
+                                                                e.preventDefault();
+                                                                e.stopPropagation();
+                                                                if (item.id !== document.id) {
+                                                                    onReplaceDocument?.(item.id);
+                                                                }
+                                                            }}
+                                                        >
+                                                            {item.title || "Untitled"}
+                                                        </button>
                                                     </BreadcrumbLink>
                                                 )}
                                             </BreadcrumbItem>
@@ -318,10 +325,46 @@ export function DocumentView({
                 </div>
 
                 {isMobile && (
-                    <div className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center max-w-[50%] pointer-events-none">
-                        <span className="text-sm font-bold truncate pointer-events-auto">
-                            {document.title || "Untitled"}
-                        </span>
+                    <div className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center max-w-[50%] overflow-hidden pointer-events-none">
+                        <Breadcrumb className="pointer-events-auto">
+                            <BreadcrumbList className="flex-nowrap no-scrollbar overflow-x-auto justify-center">
+                                {breadcrumbItems.map((item, index) => {
+                                    const isCurrent = item.id === document.id;
+                                    const isLast = index === breadcrumbItems.length - 1;
+
+                                    return (
+                                        <div key={item.id} className="flex items-center shrink-0">
+                                            <BreadcrumbItem>
+                                                {isCurrent ? (
+                                                    <BreadcrumbPage className="font-bold text-xs truncate max-w-[80px]">
+                                                        {item.title || "Untitled"}
+                                                    </BreadcrumbPage>
+                                                ) : (
+                                                    <BreadcrumbLink asChild>
+                                                        <button
+                                                            className={cn(
+                                                                "cursor-pointer hover:text-foreground transition-colors text-xs truncate max-w-[80px]",
+                                                                item.isForward ? "text-muted-foreground/40 italic" : "text-muted-foreground"
+                                                            )}
+                                                            onClick={(e) => {
+                                                                e.preventDefault();
+                                                                e.stopPropagation();
+                                                                if (item.id !== document.id) {
+                                                                    onReplaceDocument?.(item.id);
+                                                                }
+                                                            }}
+                                                        >
+                                                            {item.title || "Untitled"}
+                                                        </button>
+                                                    </BreadcrumbLink>
+                                                )}
+                                            </BreadcrumbItem>
+                                            {!isLast && <BreadcrumbSeparator className="mx-1" />}
+                                        </div>
+                                    );
+                                })}
+                            </BreadcrumbList>
+                        </Breadcrumb>
                     </div>
                 )}
 
@@ -420,7 +463,7 @@ export function DocumentView({
                                     </div>
                                 </div>
 
-                                {onSplit && (
+                                {onSplit && !isMobile && (
                                     <>
                                         <DropdownMenuSeparator />
                                         <DropdownMenuItem onClick={() => onSplit('horizontal')}>

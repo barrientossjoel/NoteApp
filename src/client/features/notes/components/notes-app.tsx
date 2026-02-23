@@ -10,7 +10,7 @@ import type { Document, LayoutNode, WorkspaceState } from '../../../../core/type
 import { Dashboard } from '../../dashboard/dashboard'
 import { CalendarView } from '../../calendar/calendar-view'
 import { TrashView } from '../../trash/trash-view'
-import { Workspace } from '../../../components/layout/workspace'
+import { Workspace, closeTab, findFirstPaneId } from '../../../components/layout/workspace'
 import {
   Group as PanelGroup,
   Panel,
@@ -349,25 +349,39 @@ export default function NotesApp() {
             })()}
 
             {/* Mobile Navigation */}
-            {isMobile && (
-              <MobileNav
-                currentView={currentView}
-                onNavigate={(view) => {
-                  if (view === 'search') {
-                    setIsSearchOpen(true)
+            {isMobile && (() => {
+              const activePane = findLayoutNode(layout, activePaneId) || findLayoutNode(layout, findFirstPaneId(layout) || '')
+              const activeTabs = activePane?.type === 'pane' ? (activePane.tabs || []) : []
+
+              return (
+                <MobileNav
+                  currentView={currentView}
+                  documents={documents}
+                  tabs={activeTabs}
+                  onSelectTab={(id) => handleNavigate(id)}
+                  onCloseTab={(id) => {
+                    if (activePane?.id) {
+                      const newLayout = closeTab(layout, activePane.id, id)
+                      setLayout(newLayout)
+                    }
+                  }}
+                  onNavigate={(view) => {
+                    if (view === 'search') {
+                      setIsSearchOpen(true)
+                      if (isMobile) setShowSidebar(false)
+                    } else {
+                      handleNavigate(view)
+                    }
+                  }}
+                  onOpenSidebar={() => setShowSidebar(true)}
+                  onCreateDocument={(type) => handleCreateDocument(null, type)}
+                  onOpenSettings={() => {
+                    setIsSettingsOpen(true)
                     if (isMobile) setShowSidebar(false)
-                  } else {
-                    handleNavigate(view)
-                  }
-                }}
-                onOpenSidebar={() => setShowSidebar(true)}
-                onCreateNote={() => handleCreateDocument(null, 'text')}
-                onOpenSettings={() => {
-                  setIsSettingsOpen(true)
-                  if (isMobile) setShowSidebar(false)
-                }}
-              />
-            )}
+                  }}
+                />
+              )
+            })()}
           </main>
         </div>
       </div>
