@@ -4,6 +4,7 @@ import { cors } from 'hono/cors';
 import { documentsRouter } from './routes/documents.js';
 import { messagesRouter } from './routes/messages.js';
 import { uploadsRouter } from './routes/uploads.js';
+import { authRouter } from './routes/auth.js';
 
 const app = new Hono().basePath('/api');
 
@@ -21,6 +22,7 @@ app.onError((err, c) => {
 });
 
 // Routes
+app.route('/auth', authRouter);
 app.route('/documents', documentsRouter);
 app.route('/messages', messagesRouter);
 app.route('/uploads', uploadsRouter);
