@@ -1,5 +1,7 @@
 import { Hono } from 'hono';
 import { v2 as cloudinary } from 'cloudinary';
+import { put } from '@vercel/blob';
+import { handleUpload } from '@vercel/blob/client';
 
 export const uploadsRouter = new Hono();
 
@@ -18,6 +20,34 @@ const ALLOWED_TYPES = [
 ];
 
 const ALLOWED_EXTENSIONS = ['.pdf', '.epub', '.mobi', '.azw', '.azw3'];
+const MAX_CLOUDINARY_SIZE = 20 * 1024 * 1024; // 20 MB
+
+// Vercel Blob Client Upload Endpoint
+uploadsRouter.post('/blob-token', async (c) => {
+    try {
+        const body = await c.req.json();
+        const request = c.req.raw;
+
+        const jsonResponse = await handleUpload({
+            body,
+            request,
+            onBeforeGenerateToken: async (pathname) => {
+                // Note: Verifying auth or user privileges here is recommended
+                return {
+                    allowedContentTypes: ALLOWED_TYPES,
+                };
+            },
+            onUploadCompleted: async ({ blob, tokenPayload }) => {
+                console.log('Client-side Blob upload completed:', blob.url);
+            },
+        });
+
+        return c.json(jsonResponse);
+    } catch (error) {
+        console.error('Blob token generation error:', error);
+        return c.json({ error: (error as Error).message }, 400);
+    }
+});
 
 uploadsRouter.post('/', async (c) => {
     try {
@@ -36,7 +66,33 @@ uploadsRouter.post('/', async (c) => {
             return c.json({ error: 'Only PDF and ebook files are allowed' }, 400);
         }
 
+        const timestamp = Date.now();
+        const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+
+        // Fallback to Vercel Blob for large files (>20MB) to avoid Cloudinary free tier limitations
+        if (file.size > MAX_CLOUDINARY_SIZE) {
+            console.log(`[Uploads] File size (${file.size} bytes) is over 20MB. Using Vercel Blob...`);
+
+            if (!process.env.BLOB_READ_WRITE_TOKEN) {
+                return c.json({ error: 'BLOB_READ_WRITE_TOKEN is not configured for large file uploads.' }, 500);
+            }
+
+            const blob = await put(`noteapp/uploads/${timestamp}_${safeName}`, file, {
+                access: 'public',
+                token: process.env.BLOB_READ_WRITE_TOKEN
+            });
+
+            return c.json({
+                url: blob.url,
+                filename: file.name,
+                size: file.size,
+                type: file.type || 'application/pdf',
+                storage: 'vercel_blob'
+            }, 201);
+        }
+
         // Convert File to Buffer for Cloudinary
+        console.log(`[Uploads] File size (${file.size} bytes) is under 20MB. Using Cloudinary...`);
         const arrayBuffer = await file.arrayBuffer();
         const buffer = Buffer.from(arrayBuffer);
 
@@ -45,7 +101,7 @@ uploadsRouter.post('/', async (c) => {
             const uploadStream = cloudinary.uploader.upload_stream(
                 {
                     resource_type: 'raw',
-                    public_id: `noteapp/uploads/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`,
+                    public_id: `noteapp/uploads/${timestamp}_${safeName}`,
                 },
                 (error, result) => {
                     if (error || !result) {
@@ -59,6 +115,7 @@ uploadsRouter.post('/', async (c) => {
                         filename: file.name,
                         size: file.size,
                         type: file.type || 'application/pdf',
+                        storage: 'cloudinary'
                     }, 201) as any);
                 }
             );

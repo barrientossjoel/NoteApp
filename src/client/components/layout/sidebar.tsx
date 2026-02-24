@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react'
 import { Plus, Search, Calendar, Trash2, LayoutDashboard, FileText, BookOpen, Upload, Loader2, X, MoreHorizontal, Pencil, Link2 } from 'lucide-react'
+import { upload } from '@vercel/blob/client'
 import { Button } from "../../components/ui/button"
 import { Input } from "../../components/ui/input"
 import { ScrollArea } from "../../components/ui/scroll-area"
@@ -90,19 +91,32 @@ export function Sidebar({
 
     setIsUploading(true)
     try {
+      let documentUrl = '';
+
       // 1. Upload file
-      const formData = new FormData()
-      formData.append('file', file)
-      const uploadRes = await fetch('/api/uploads', { method: 'POST', body: formData })
-      if (!uploadRes.ok) throw new Error('Upload failed')
-      const { url } = await uploadRes.json()
+      if (file.size > 20 * 1024 * 1024) {
+        // Large file: Client-Side Upload to Vercel Blob
+        const blob = await upload(file.name, file, {
+          access: 'public',
+          handleUploadUrl: '/api/uploads/blob-token',
+        })
+        documentUrl = blob.url
+      } else {
+        // Small file: Server-Side Upload to Cloudinary/Blob
+        const formData = new FormData()
+        formData.append('file', file)
+        const uploadRes = await fetch('/api/uploads', { method: 'POST', body: formData })
+        if (!uploadRes.ok) throw new Error('Upload failed')
+        const { url } = await uploadRes.json()
+        documentUrl = url
+      }
 
       // 2. Create document of type 'pdf'
       const title = file.name.replace(/\.[^/.]+$/, '') // strip extension
       const docRes = await fetch('/api/documents', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, type: 'pdf', content: url }),
+        body: JSON.stringify({ title, type: 'pdf', content: documentUrl }),
       })
       if (!docRes.ok) throw new Error('Document creation failed')
       const newDoc = await docRes.json()
