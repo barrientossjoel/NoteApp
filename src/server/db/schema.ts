@@ -35,6 +35,7 @@ export const documents = sqliteTable('documents', {
 
 export const messages = sqliteTable('messages', {
     id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
     content: text('content').notNull(),
     type: text('type', { enum: ['text', 'audio'] }).notNull().default('text'),
     documentId: text('document_id'), // Nullable for global notes

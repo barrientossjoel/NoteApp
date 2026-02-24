@@ -4,10 +4,9 @@ import { documents } from '../db/schema.js';
 import { eq, and, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
+import { requireAuth, type Env } from '../middleware/auth.js';
 
-export const documentsRouter = new Hono();
-
-const DEFAULT_USER_ID = 'default-user';
+export const documentsRouter = new Hono<Env>();
 
 const documentSchema = z.object({
     title: z.string().min(1).optional(),
@@ -22,15 +21,16 @@ const documentSchema = z.object({
 });
 
 // Get documents filtered by status
-documentsRouter.get('/', async (c) => {
+documentsRouter.get('/', requireAuth, async (c) => {
     const status = c.req.query('status') || 'active';
+    const user = c.get('user');
 
     const allDocs = await db
         .select()
         .from(documents)
         .where(
             and(
-                eq(documents.userId, DEFAULT_USER_ID),
+                eq(documents.userId, user.id),
                 eq(documents.status, status as any)
             )
         )
@@ -40,11 +40,12 @@ documentsRouter.get('/', async (c) => {
 });
 
 // Create a new document
-documentsRouter.post('/', zValidator('json', documentSchema), async (c) => {
+documentsRouter.post('/', requireAuth, zValidator('json', documentSchema), async (c) => {
     const data = c.req.valid('json');
+    const user = c.get('user');
 
     const [newDoc] = await db.insert(documents).values({
-        userId: DEFAULT_USER_ID,
+        userId: user.id,
         title: data.title || 'Untitled',
         content: data.content || '',
         parentId: data.parentId ?? null,
@@ -57,9 +58,10 @@ documentsRouter.post('/', zValidator('json', documentSchema), async (c) => {
 });
 
 // Update a document
-documentsRouter.patch('/:id', zValidator('json', documentSchema), async (c) => {
+documentsRouter.patch('/:id', requireAuth, zValidator('json', documentSchema), async (c) => {
     const id = c.req.param('id');
     const data = c.req.valid('json');
+    const user = c.get('user');
 
     const [updatedDoc] = await db
         .update(documents)
@@ -67,7 +69,7 @@ documentsRouter.patch('/:id', zValidator('json', documentSchema), async (c) => {
             ...data,
             updatedAt: new Date(),
         })
-        .where(and(eq(documents.id, id), eq(documents.userId, DEFAULT_USER_ID)))
+        .where(and(eq(documents.id, id), eq(documents.userId, user.id)))
         .returning();
 
     if (!updatedDoc) {
@@ -78,8 +80,9 @@ documentsRouter.patch('/:id', zValidator('json', documentSchema), async (c) => {
 });
 
 // Restore a deleted document
-documentsRouter.patch('/:id/restore', async (c) => {
+documentsRouter.patch('/:id/restore', requireAuth, async (c) => {
     const id = c.req.param('id');
+    const user = c.get('user');
 
     const [restoredDoc] = await db
         .update(documents)
@@ -87,7 +90,7 @@ documentsRouter.patch('/:id/restore', async (c) => {
             status: 'active',
             updatedAt: new Date(),
         })
-        .where(and(eq(documents.id, id), eq(documents.userId, DEFAULT_USER_ID)))
+        .where(and(eq(documents.id, id), eq(documents.userId, user.id)))
         .returning();
 
     if (!restoredDoc) {
@@ -98,8 +101,9 @@ documentsRouter.patch('/:id/restore', async (c) => {
 });
 
 // Soft delete a document
-documentsRouter.delete('/:id', async (c) => {
+documentsRouter.delete('/:id', requireAuth, async (c) => {
     const id = c.req.param('id');
+    const user = c.get('user');
 
     const [deletedDoc] = await db
         .update(documents)
@@ -107,7 +111,7 @@ documentsRouter.delete('/:id', async (c) => {
             status: 'deleted',
             updatedAt: new Date(),
         })
-        .where(and(eq(documents.id, id), eq(documents.userId, DEFAULT_USER_ID)))
+        .where(and(eq(documents.id, id), eq(documents.userId, user.id)))
         .returning();
 
     if (!deletedDoc) {
@@ -118,12 +122,13 @@ documentsRouter.delete('/:id', async (c) => {
 });
 
 // Permanently delete a document
-documentsRouter.delete('/:id/permanent', async (c) => {
+documentsRouter.delete('/:id/permanent', requireAuth, async (c) => {
     const id = c.req.param('id');
+    const user = c.get('user');
 
     const result = await db
         .delete(documents)
-        .where(and(eq(documents.id, id), eq(documents.userId, DEFAULT_USER_ID)))
+        .where(and(eq(documents.id, id), eq(documents.userId, user.id)))
         .returning();
 
     if (result.length === 0) {
@@ -134,12 +139,13 @@ documentsRouter.delete('/:id/permanent', async (c) => {
 });
 
 // Empty trash
-documentsRouter.delete('/trash/empty', async (c) => {
+documentsRouter.delete('/trash/empty', requireAuth, async (c) => {
+    const user = c.get('user');
     const result = await db
         .delete(documents)
         .where(
             and(
-                eq(documents.userId, DEFAULT_USER_ID),
+                eq(documents.userId, user.id),
                 eq(documents.status, 'deleted')
             )
         )
@@ -149,9 +155,10 @@ documentsRouter.delete('/trash/empty', async (c) => {
 });
 
 // Get specific document
-documentsRouter.get('/:id', async (c) => {
+documentsRouter.get('/:id', requireAuth, async (c) => {
     const id = c.req.param('id');
-    const doc = await db.select().from(documents).where(and(eq(documents.id, id), eq(documents.userId, DEFAULT_USER_ID))).get();
+    const user = c.get('user');
+    const doc = await db.select().from(documents).where(and(eq(documents.id, id), eq(documents.userId, user.id))).get();
 
     if (!doc) return c.json({ error: 'Not found' }, 404);
     return c.json(doc);
