@@ -146,15 +146,10 @@ authRouter.get('/google', async (c) => {
     const state = generateState();
     const codeVerifier = generateCodeVerifier();
 
-    // store them in cookies
-    setCookie(c, 'google_oauth_state', state, {
-        path: '/',
-        secure: process.env.NODE_ENV === 'production',
-        httpOnly: true,
-        maxAge: 60 * 10,
-        sameSite: 'Lax'
-    });
-    setCookie(c, 'google_code_verifier', codeVerifier, {
+    // Store both in a single cookie to avoid Vercel/Node multiple Set-Cookie header drops
+    const cookieData = JSON.stringify({ state, codeVerifier });
+
+    setCookie(c, 'google_oauth_data', cookieData, {
         path: '/',
         secure: process.env.NODE_ENV === 'production',
         httpOnly: true,
@@ -173,8 +168,20 @@ authRouter.get('/google/callback', async (c) => {
     const googleAuth = getGoogleAuth(c.req.url);
     const code = c.req.query('code');
     const state = c.req.query('state');
-    const storedState = getCookie(c, 'google_oauth_state');
-    const storedCodeVerifier = getCookie(c, 'google_code_verifier');
+    const storedCookieData = getCookie(c, 'google_oauth_data');
+
+    let storedState = null;
+    let storedCodeVerifier = null;
+
+    if (storedCookieData) {
+        try {
+            const parsed = JSON.parse(storedCookieData);
+            storedState = parsed.state;
+            storedCodeVerifier = parsed.codeVerifier;
+        } catch (e) {
+            console.error('Failed to parse oauth cookie', e);
+        }
+    }
 
     if (!code || !state || !storedState || !storedCodeVerifier || state !== storedState) {
         return c.json({
