@@ -185,7 +185,7 @@ authRouter.get('/google/callback', async (c) => {
 
         const googleUserResponse = await fetch('https://openidconnect.googleapis.com/v1/userinfo', {
             headers: {
-                Authorization: `Bearer ${tokens.accessToken}`
+                Authorization: `Bearer ${tokens.accessToken()}`
             }
         });
         const googleUser = await googleUserResponse.json() as {
