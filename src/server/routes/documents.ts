@@ -105,20 +105,24 @@ documentsRouter.delete('/:id', requireAuth, async (c) => {
     const id = c.req.param('id');
     const user = c.get('user');
 
-    const [deletedDoc] = await db
-        .update(documents)
-        .set({
-            status: 'deleted',
-            updatedAt: new Date(),
-        })
-        .where(and(eq(documents.id, id), eq(documents.userId, user.id)))
-        .returning();
+    const deleteRecursive = async (docId: string) => {
+        const children = await db.select({ id: documents.id }).from(documents).where(eq(documents.parentId, docId));
+        await db.update(documents).set({ status: 'deleted', updatedAt: new Date() }).where(and(eq(documents.id, docId), eq(documents.userId, user.id)));
+        for (const child of children) {
+            await deleteRecursive(child.id);
+        }
+    };
 
-    if (!deletedDoc) {
-        return c.json({ error: 'Document not found' }, 404);
+    try {
+        const [doc] = await db.select({ id: documents.id }).from(documents).where(and(eq(documents.id, id), eq(documents.userId, user.id)));
+        if (!doc) {
+            return c.json({ error: 'Document not found' }, 404);
+        }
+        await deleteRecursive(id);
+        return c.json({ message: 'Document moved to trash', id });
+    } catch (e) {
+        return c.json({ error: 'Failed to delete' }, 500);
     }
-
-    return c.json({ message: 'Document moved to trash', id });
 });
 
 // Permanently delete a document

@@ -135,25 +135,34 @@ export default function NotesApp() {
 
       if (currentView === id) {
         // We are deleting the currently viewed document.
-        // We need to find where to go next to avoid falling back to dashboard
-        // if there are other tabs open.
-
-        // Try to find the active pane in the new layout
         const activePane = findLayoutNode(newLayout, activePaneId);
 
         if (activePane && activePane.type === 'pane' && activePane.activeTabId) {
           // Switch to the new active tab of the active pane
           setCurrentView(activePane.activeTabId);
         } else {
-          // If the active pane is empty or not found, check if there are 
-          // ANY other available tabs in the layout?
-          // For now, let's drift to 'dashboard' only if we really have to.
-          // If we are in "pane" mode but no tabs, dashboard is the fallback.
           setCurrentView('dashboard');
         }
       }
 
-      setDocuments((prev: Document[]) => prev.filter(d => d.id !== id));
+      setDocuments((prev: Document[]) => {
+        // Also remove any children of the deleted document to avoid raising them to root
+        const removeRecursive = (docs: Document[], targetId: string): Document[] => {
+          const toRemove = new Set<string>([targetId]);
+          let added = true;
+          while (added) {
+            added = false;
+            for (const doc of docs) {
+              if (doc.parentId && toRemove.has(doc.parentId) && !toRemove.has(doc.id)) {
+                toRemove.add(doc.id);
+                added = true;
+              }
+            }
+          }
+          return docs.filter(d => !toRemove.has(d.id));
+        };
+        return removeRecursive(prev, id);
+      });
     } catch (e) {
       console.error("Failed to delete doc", e);
     }

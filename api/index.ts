@@ -44,8 +44,9 @@ export default async function handler(req: any, res: any) {
         const request = new Request(fullUrl, {
             method,
             headers: headers as any,
-            body
-        });
+            body,
+            duplex: 'half'
+        } as RequestInit);
 
         console.log(`[Vercel Bridge] Calling app.fetch for ${fullUrl}`);
 

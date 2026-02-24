@@ -94,7 +94,7 @@ export function Sidebar({
       let documentUrl = '';
 
       // 1. Upload file
-      if (file.size > 20 * 1024 * 1024) {
+      if (file.size > 4 * 1024 * 1024) {
         // Large file: Client-Side Upload to Vercel Blob
         const blob = await upload(file.name, file, {
           access: 'public',

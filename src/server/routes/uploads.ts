@@ -20,7 +20,7 @@ const ALLOWED_TYPES = [
 ];
 
 const ALLOWED_EXTENSIONS = ['.pdf', '.epub', '.mobi', '.azw', '.azw3'];
-const MAX_CLOUDINARY_SIZE = 20 * 1024 * 1024; // 20 MB
+const MAX_CLOUDINARY_SIZE = 4 * 1024 * 1024; // 4 MB
 
 // Vercel Blob Client Upload Endpoint
 uploadsRouter.post('/blob-token', async (c) => {
@@ -69,9 +69,9 @@ uploadsRouter.post('/', async (c) => {
         const timestamp = Date.now();
         const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
 
-        // Fallback to Vercel Blob for large files (>20MB) to avoid Cloudinary free tier limitations
+        // Fallback to Vercel Blob for large files (>4MB) to avoid Cloudinary free tier limitations
         if (file.size > MAX_CLOUDINARY_SIZE) {
-            console.log(`[Uploads] File size (${file.size} bytes) is over 20MB. Using Vercel Blob...`);
+            console.log(`[Uploads] File size (${file.size} bytes) is over 4MB. Using Vercel Blob...`);
 
             if (!process.env.BLOB_READ_WRITE_TOKEN) {
                 return c.json({ error: 'BLOB_READ_WRITE_TOKEN is not configured for large file uploads.' }, 500);
@@ -92,7 +92,7 @@ uploadsRouter.post('/', async (c) => {
         }
 
         // Convert File to Buffer for Cloudinary
-        console.log(`[Uploads] File size (${file.size} bytes) is under 20MB. Using Cloudinary...`);
+        console.log(`[Uploads] File size (${file.size} bytes) is under 4MB. Using Cloudinary...`);
         const arrayBuffer = await file.arrayBuffer();
         const buffer = Buffer.from(arrayBuffer);
 
