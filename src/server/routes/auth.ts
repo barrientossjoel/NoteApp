@@ -131,19 +131,18 @@ authRouter.get('/me', async (c) => {
 const googleClientId = process.env.GOOGLE_CLIENT_ID || '';
 const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET || '';
 
-// Automatically use the host from the request if in production, or localhost if dev
-const getBaseUrl = () => {
-    if (process.env.NODE_ENV === 'production' && process.env.VERCEL_URL) {
-        return `https://${process.env.VERCEL_URL}`;
-    }
-    return 'http://localhost:3000';
+// Dynamically construct the Google auth instance based on the request's origin
+// This ensures that whichever domain the user visits (localhost, Vercel, custom domain)
+// will be used correctly as the redirect URI.
+const getGoogleAuth = (reqUrl: string) => {
+    const url = new URL(reqUrl);
+    // Vercel handles HTTPS automatically, but we ensure the origin is used.
+    const redirectUri = `${url.origin}/api/auth/google/callback`;
+    return new Google(googleClientId, googleClientSecret, redirectUri);
 };
 
-const redirectUri = `${getBaseUrl()}/api/auth/google/callback`;
-
-export const googleAuth = new Google(googleClientId, googleClientSecret, redirectUri);
-
 authRouter.get('/google', async (c) => {
+    const googleAuth = getGoogleAuth(c.req.url);
     const state = generateState();
     const codeVerifier = generateCodeVerifier();
 
@@ -171,6 +170,7 @@ authRouter.get('/google', async (c) => {
 });
 
 authRouter.get('/google/callback', async (c) => {
+    const googleAuth = getGoogleAuth(c.req.url);
     const code = c.req.query('code');
     const state = c.req.query('state');
     const storedState = getCookie(c, 'google_oauth_state');
