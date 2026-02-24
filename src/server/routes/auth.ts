@@ -177,7 +177,16 @@ authRouter.get('/google/callback', async (c) => {
     const storedCodeVerifier = getCookie(c, 'google_code_verifier');
 
     if (!code || !state || !storedState || !storedCodeVerifier || state !== storedState) {
-        return c.json({ error: 'Invalid state or code' }, 400);
+        return c.json({
+            error: 'Invalid state or code',
+            details: {
+                hasCode: !!code,
+                hasState: !!state,
+                hasStoredState: !!storedState,
+                stateMatch: state === storedState,
+                hasStoredVerifier: !!storedCodeVerifier
+            }
+        }, 400);
     }
 
     try {
