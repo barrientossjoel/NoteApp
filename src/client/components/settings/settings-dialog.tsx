@@ -15,6 +15,8 @@ import { Search, Sun, Moon, Monitor } from "lucide-react"
 import { cn } from "../../lib/utils/utils"
 import { useTheme } from "../theme-provider"
 import { useMediaQuery } from "../../hooks/useMediaQuery"
+import { useAuth } from "../../context/AuthContext"
+import { Avatar, AvatarFallback, AvatarImage } from "../../components/ui/avatar"
 
 interface ShortcutItem {
     label: string
@@ -68,6 +70,7 @@ export function SettingsDialog({
 }: SettingsDialogProps) {
     const [searchQuery, setSearchQuery] = React.useState("")
     const { theme, setTheme } = useTheme()
+    const { user, logout } = useAuth()
     const isMobile = useMediaQuery('(max-width: 768px)')
 
     const filteredShortcuts = SHORTCUTS.map(category => ({
@@ -80,9 +83,14 @@ export function SettingsDialog({
     })).filter(category => category.items.length > 0)
 
     const showPreferences = "preferences".includes(searchQuery.toLowerCase()) ||
-        "show resize handles".includes(searchQuery.toLowerCase())
+        "show resize handles".includes(searchQuery.toLowerCase()) ||
+        "appearance".includes(searchQuery.toLowerCase())
 
-    const totalResults = filteredShortcuts.length + (showPreferences ? 1 : 0)
+    const showAccount = "account".includes(searchQuery.toLowerCase()) ||
+        "profile".includes(searchQuery.toLowerCase()) ||
+        "logout".includes(searchQuery.toLowerCase())
+
+    const totalResults = filteredShortcuts.length + (showPreferences ? 1 : 0) + (showAccount ? 1 : 0)
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
@@ -109,6 +117,32 @@ export function SettingsDialog({
 
                 <div className="flex-1 overflow-auto py-4 -mx-1 px-1">
                     <div className="grid gap-6">
+                        {showAccount && user && (
+                            <div className="space-y-4">
+                                <h4 className="text-sm font-medium leading-none font-semibold">Account</h4>
+                                <div className="flex flex-col gap-4 border border-foreground/20 p-4">
+                                    <div className="flex items-center gap-4">
+                                        <Avatar className="h-10 w-10 shrink-0 rounded-none border border-foreground/20">
+                                            {user.avatarUrl && <AvatarImage src={user.avatarUrl} alt={user.name} />}
+                                            <AvatarFallback className="rounded-none bg-muted">{user.name?.substring(0, 2).toUpperCase()}</AvatarFallback>
+                                        </Avatar>
+                                        <div className="flex flex-col truncate">
+                                            <span className="font-semibold text-sm truncate">{user.name}</span>
+                                            <span className="text-xs text-muted-foreground truncate">{user.email}</span>
+                                        </div>
+                                    </div>
+                                    <Button
+                                        variant="destructive"
+                                        size="sm"
+                                        className="w-full sm:w-auto self-start rounded-none"
+                                        onClick={logout}
+                                    >
+                                        Log Out
+                                    </Button>
+                                </div>
+                            </div>
+                        )}
+
                         {showPreferences && (
                             <div className="space-y-4">
                                 <h4 className="text-sm font-medium leading-none">Preferences</h4>
