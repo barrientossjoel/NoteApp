@@ -65,6 +65,181 @@ interface CanvasViewProps {
     onOpenDocument?: (docId: string) => void
 }
 
+interface CanvasTableNodeProps {
+    node: CanvasNode
+    isEditing: boolean
+    draggedNodeId: string | null
+    updateNodeContent: (id: string, content: string) => void
+    setEditingId: (id: string | null) => void
+    handleNodeMouseDown: (e: React.MouseEvent, node: CanvasNode) => void
+}
+
+function CanvasTableNode({ node, isEditing, draggedNodeId, updateNodeContent, setEditingId, handleNodeMouseDown }: CanvasTableNodeProps) {
+    const parseMarkdown = (content: string) => {
+        const lines = content.trim().split('\n').filter(line => line.trim().startsWith('|') && line.trim().endsWith('|'));
+        if (lines.length > 0) {
+            return lines.filter((_, i) => i !== 1).map(line => line.split('|').slice(1, -1).map(c => c.trim()));
+        }
+        return [
+            ['Column 1', 'Column 2', 'Column 3'],
+            ['Cell 1', 'Cell 2', 'Cell 3'],
+            ['Cell 4', 'Cell 5', 'Cell 6']
+        ];
+    }
+
+    // Local state for the editor
+    const [localRows, setLocalRows] = useState<string[][]>(() => parseMarkdown(node.content))
+
+    // Sync from prop when opening edit mode (or if node changes from outside)
+    useEffect(() => {
+        if (!isEditing) {
+            setLocalRows(parseMarkdown(node.content))
+        }
+    }, [isEditing, node.content])
+
+    const generateMarkdown = (newRows: string[][]) => {
+        if (newRows.length === 0) return '';
+        const header = '| ' + newRows[0].join(' | ') + ' |';
+        const separator = '|' + newRows[0].map(() => '---').join('|') + '|';
+        const body = newRows.slice(1).map(row => '| ' + row.join(' | ') + ' |').join('\n');
+        return [header, separator, body].join('\n');
+    };
+
+    const updateCell = (r: number, c: number, val: string) => {
+        const newRows = localRows.map((row, i) => i === r ? row.map((cell, j) => j === c ? val : cell) : row);
+        setLocalRows(newRows);
+        updateNodeContent(node.id, generateMarkdown(newRows));
+    };
+
+    const addRow = () => {
+        const cols = localRows[0].length;
+        const newRows = [...localRows, Array(cols).fill('')];
+        setLocalRows(newRows);
+        updateNodeContent(node.id, generateMarkdown(newRows));
+    };
+
+    const addCol = () => {
+        const newRows = localRows.map(row => [...row, '']);
+        setLocalRows(newRows);
+        updateNodeContent(node.id, generateMarkdown(newRows));
+    };
+
+    if (isEditing) {
+        return (
+            <div
+                className={cn(
+                    "flex-1 overflow-visible bg-transparent p-1 pointer-events-auto",
+                    draggedNodeId === node.id ? "cursor-grabbing" : "cursor-grab"
+                )}
+                onMouseDown={(e) => {
+                    e.stopPropagation()
+                }}
+            >
+                <div className="relative w-full flex flex-col">
+                    <table className="w-full border-collapse text-sm table-fixed">
+                        <thead>
+                            <tr>
+                                {localRows[0].map((col, j) => (
+                                    <th key={j} className="border border-border/50 bg-muted/30 p-0 text-left font-medium text-foreground relative">
+                                        <input
+                                            className="w-full bg-transparent px-3 py-1.5 outline-none focus:bg-background/50 placeholder:text-muted-foreground/30 font-medium min-w-0"
+                                            value={col}
+                                            onChange={(e) => updateCell(0, j, e.target.value)}
+                                            onKeyDown={(e) => e.stopPropagation()}
+                                            placeholder="Header"
+                                        />
+                                    </th>
+                                ))}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {localRows.slice(1).map((row, i) => (
+                                <tr key={i + 1} className="transition-colors focus-within:bg-muted/10">
+                                    {row.map((cell, j) => (
+                                        <td key={j} className="border border-border/50 p-0 text-muted-foreground relative">
+                                            <input
+                                                className="w-full bg-transparent px-3 py-1.5 outline-none focus:bg-background/50 placeholder:text-muted-foreground/30 min-w-0"
+                                                value={cell}
+                                                onChange={(e) => updateCell(i + 1, j, e.target.value)}
+                                                onKeyDown={(e) => e.stopPropagation()}
+                                                placeholder="Cell"
+                                            />
+                                        </td>
+                                    ))}
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+
+                    {/* Add Column Button (Absolute Right) */}
+                    <div className="absolute -right-11 top-0 bottom-0 w-8 flex items-center justify-center pointer-events-none">
+                        <Button
+                            variant="ghost"
+                            className="w-full h-full p-0 opacity-20 hover:opacity-100 shrink-0 border border-dashed border-border/50 rounded-sm hover:border-primary/50 text-muted-foreground hover:text-primary transition-opacity pointer-events-auto"
+                            onClick={addCol}
+                            title="Add Column"
+                        >
+                            <Plus className="w-4 h-4" />
+                        </Button>
+                    </div>
+                </div>
+
+                {/* Add Row Button (Absolute Bottom) */}
+                <div className="absolute -bottom-11 left-0 right-0 h-8 flex items-center justify-center pointer-events-none">
+                    <Button
+                        variant="ghost"
+                        className="w-full h-full p-0 opacity-20 hover:opacity-100 shrink-0 border border-dashed border-border/50 rounded-sm hover:border-primary/50 text-muted-foreground hover:text-primary transition-opacity pointer-events-auto"
+                        onClick={addRow}
+                        title="Add Row"
+                    >
+                        <Plus className="w-4 h-4" />
+                    </Button>
+                </div>
+            </div>
+        )
+    }
+
+    return (
+        <div
+            className={cn(
+                "flex-1 overflow-auto bg-transparent p-1 pointer-events-auto",
+                draggedNodeId === node.id ? "cursor-grabbing" : "cursor-grab"
+            )}
+            onMouseDown={(e) => {
+                e.stopPropagation()
+                handleNodeMouseDown(e, node)
+            }}
+            onDoubleClick={(e) => {
+                e.stopPropagation();
+                setEditingId(node.id);
+            }}
+        >
+            <table className="w-full border-collapse text-sm table-fixed">
+                <thead>
+                    <tr>
+                        {localRows[0].map((col, i) => (
+                            <th key={i} className="border border-border/50 bg-muted/30 px-3 py-1.5 text-left font-medium text-foreground relative">
+                                {col}
+                            </th>
+                        ))}
+                    </tr>
+                </thead>
+                <tbody>
+                    {localRows.slice(1).map((row, i) => (
+                        <tr key={i} className="hover:bg-muted/10 transition-colors">
+                            {row.map((cell, j) => (
+                                <td key={j} className="border border-border/50 px-3 py-1.5 text-muted-foreground relative">
+                                    {cell || '\u00A0'}
+                                </td>
+                            ))}
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    )
+}
+
 export function CanvasView({
     document: doc,
     documents = [],
@@ -1356,7 +1531,8 @@ export function CanvasView({
                                 // Styling
                                 (node.type === 'arrow' || node.type === 'shape' || node.type === 'note')
                                     ? "overflow-visible bg-transparent border-none shadow-none"
-                                    : "rounded-lg shadow-sm overflow-hidden bg-muted/50 backdrop-blur-sm border border-foreground/20"
+                                    : "rounded-lg shadow-sm overflow-hidden bg-muted/50 backdrop-blur-sm border border-foreground/20",
+                                node.type === 'table' && "overflow-visible" // Allow '+' buttons to show
                             )}
                             style={{
                                 left: node.x,
@@ -1435,154 +1611,14 @@ export function CanvasView({
                                     placeholder="Type something..."
                                 />
                             ) : node.type === 'table' ? (
-                                (() => {
-                                    const isEditing = editingId === node.id;
-
-                                    // Parse Markdown Table (both for editing and viewing)
-                                    const lines = node.content.trim().split('\n').filter(line => line.trim().startsWith('|') && line.trim().endsWith('|'));
-
-                                    let parsedRows: string[][] = [];
-                                    if (lines.length > 0) {
-                                        parsedRows = lines.filter((_, i) => i !== 1).map(line => line.split('|').slice(1, -1).map(c => c.trim()));
-                                    } else {
-                                        parsedRows = [
-                                            ['Column 1', 'Column 2', 'Column 3'],
-                                            ['Cell 1', 'Cell 2', 'Cell 3'],
-                                            ['Cell 4', 'Cell 5', 'Cell 6']
-                                        ];
-                                    }
-
-                                    const generateMarkdown = (newRows: string[][]) => {
-                                        if (newRows.length === 0) return '';
-                                        const header = '| ' + newRows[0].join(' | ') + ' |';
-                                        const separator = '|' + newRows[0].map(() => '---').join('|') + '|';
-                                        const body = newRows.slice(1).map(row => '| ' + row.join(' | ') + ' |').join('\n');
-                                        return [header, separator, body].join('\n');
-                                    };
-
-                                    const updateCell = (r: number, c: number, val: string) => {
-                                        const newRows = parsedRows.map((row, i) => i === r ? row.map((cell, j) => j === c ? val : cell) : row);
-                                        updateNodeContent(node.id, generateMarkdown(newRows));
-                                    };
-
-                                    const addRow = () => {
-                                        const cols = parsedRows[0].length;
-                                        const newRows = [...parsedRows, Array(cols).fill('')];
-                                        updateNodeContent(node.id, generateMarkdown(newRows));
-                                    };
-
-                                    const addCol = () => {
-                                        const newRows = parsedRows.map(row => [...row, '']);
-                                        updateNodeContent(node.id, generateMarkdown(newRows));
-                                    };
-
-                                    if (isEditing) {
-                                        return (
-                                            <div
-                                                className={cn(
-                                                    "flex-1 overflow-auto bg-transparent p-1 pointer-events-auto",
-                                                    draggedNodeId === node.id ? "cursor-grabbing" : "cursor-grab"
-                                                )}
-                                                onMouseDown={(e) => {
-                                                    e.stopPropagation()
-                                                }}
-                                            >
-                                                <div className="flex flex-col gap-1 min-w-max">
-                                                    <div className="flex relative">
-                                                        <table className="w-full border-collapse text-sm">
-                                                            <thead>
-                                                                <tr>
-                                                                    {parsedRows[0].map((col, j) => (
-                                                                        <th key={j} className="border border-border/50 bg-muted/30 p-0 text-left font-medium text-foreground relative min-w-[80px]">
-                                                                            <input
-                                                                                className="w-full bg-transparent px-3 py-1.5 outline-none focus:bg-background/50 placeholder:text-muted-foreground/30 font-medium"
-                                                                                value={col}
-                                                                                onChange={(e) => updateCell(0, j, e.target.value)}
-                                                                                placeholder="Header"
-                                                                            />
-                                                                        </th>
-                                                                    ))}
-                                                                </tr>
-                                                            </thead>
-                                                            <tbody>
-                                                                {parsedRows.slice(1).map((row, i) => (
-                                                                    <tr key={i + 1} className="transition-colors focus-within:bg-muted/10">
-                                                                        {row.map((cell, j) => (
-                                                                            <td key={j} className="border border-border/50 p-0 text-muted-foreground relative min-w-[80px]">
-                                                                                <input
-                                                                                    className="w-full bg-transparent px-3 py-1.5 outline-none focus:bg-background/50 placeholder:text-muted-foreground/30"
-                                                                                    value={cell}
-                                                                                    onChange={(e) => updateCell(i + 1, j, e.target.value)}
-                                                                                    placeholder="Cell"
-                                                                                />
-                                                                            </td>
-                                                                        ))}
-                                                                    </tr>
-                                                                ))}
-                                                            </tbody>
-                                                        </table>
-                                                        <Button
-                                                            variant="ghost"
-                                                            className="h-auto w-8 px-0 ml-1 opacity-50 hover:opacity-100 shrink-0 border border-dashed border-border/50 rounded-sm hover:border-primary/50 text-muted-foreground hover:text-primary"
-                                                            onClick={addCol}
-                                                            title="Add Column"
-                                                        >
-                                                            <Plus className="w-3 h-3" />
-                                                        </Button>
-                                                    </div>
-                                                    <Button
-                                                        variant="ghost"
-                                                        className="w-full h-8 px-0 mt-1 opacity-50 hover:opacity-100 shrink-0 border border-dashed border-border/50 rounded-sm hover:border-primary/50 text-muted-foreground hover:text-primary"
-                                                        onClick={addRow}
-                                                        title="Add Row"
-                                                    >
-                                                        <Plus className="w-3 h-3" />
-                                                    </Button>
-                                                </div>
-                                            </div>
-                                        )
-                                    }
-
-                                    return (
-                                        <div
-                                            className={cn(
-                                                "flex-1 overflow-auto bg-transparent p-1 pointer-events-auto",
-                                                draggedNodeId === node.id ? "cursor-grabbing" : "cursor-grab"
-                                            )}
-                                            onMouseDown={(e) => {
-                                                e.stopPropagation()
-                                                handleNodeMouseDown(e, node)
-                                            }}
-                                            onDoubleClick={(e) => {
-                                                e.stopPropagation();
-                                                setEditingId(node.id);
-                                            }}
-                                        >
-                                            <table className="w-full border-collapse text-sm">
-                                                <thead>
-                                                    <tr>
-                                                        {parsedRows[0].map((col, i) => (
-                                                            <th key={i} className="border border-border/50 bg-muted/30 px-3 py-1.5 text-left font-medium text-foreground">
-                                                                {col}
-                                                            </th>
-                                                        ))}
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {parsedRows.slice(1).map((row, i) => (
-                                                        <tr key={i} className="hover:bg-muted/10 transition-colors">
-                                                            {row.map((cell, j) => (
-                                                                <td key={j} className="border border-border/50 px-3 py-1.5 text-muted-foreground">
-                                                                    {cell}
-                                                                </td>
-                                                            ))}
-                                                        </tr>
-                                                    ))}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    )
-                                })()
+                                <CanvasTableNode
+                                    node={node}
+                                    isEditing={editingId === node.id}
+                                    draggedNodeId={draggedNodeId}
+                                    updateNodeContent={updateNodeContent}
+                                    setEditingId={setEditingId}
+                                    handleNodeMouseDown={handleNodeMouseDown}
+                                />
                             ) : node.type === 'document' ? (
                                 (() => {
                                     // Portal Implementation
