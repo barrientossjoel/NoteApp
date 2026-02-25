@@ -11,13 +11,15 @@ interface TrashViewProps {
   onToggleSidebar?: () => void
   showTabs?: boolean
   onToggleTabs?: () => void
+  refreshDocuments?: () => void
 }
 
 export function TrashView({
   showSidebar,
   onToggleSidebar,
   showTabs,
-  onToggleTabs
+  onToggleTabs,
+  refreshDocuments
 }: TrashViewProps) {
   const [items, setItems] = useState<Document[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -42,8 +44,9 @@ export function TrashView({
     try {
       await restoreDocument(id)
       setItems(prev => prev.filter(i => i.id !== id))
-      // In a real app, we might want to trigger a global refetch or use a shared state
-      // For now, removing from local view is enough.
+      if (refreshDocuments) {
+        refreshDocuments()
+      }
     } catch (e) {
       console.error("Failed to restore", e)
     }

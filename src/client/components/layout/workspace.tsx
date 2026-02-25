@@ -34,6 +34,7 @@ interface WorkspaceProps {
     showResizeHandles?: boolean
     showSidebar?: boolean
     onToggleSidebar?: () => void
+    refreshDocuments?: () => void
 }
 
 export function Workspace({
@@ -47,7 +48,8 @@ export function Workspace({
     currentView,
     showResizeHandles = true,
     showSidebar,
-    onToggleSidebar
+    onToggleSidebar,
+    refreshDocuments
 }: WorkspaceProps) {
     const isMobile = useMediaQuery('(max-width: 768px)')
     const firstPaneId = React.useMemo(() => findFirstPaneId(layout), [layout])
@@ -76,6 +78,8 @@ export function Workspace({
     const moveState = React.useRef<{
         active: boolean
         sourcePaneId: string
+        width?: number
+        height?: number
     } | null>(null)
     const didMoveRef = React.useRef(false)
 
@@ -311,7 +315,13 @@ export function Workspace({
                             // Alt + left drag → move pane (Wayland style)
                             e.preventDefault()
                             e.stopPropagation()
-                            moveState.current = { active: true, sourcePaneId: node.id }
+                            const rect = domRefs.current[node.id]?.getBoundingClientRect()
+                            moveState.current = {
+                                active: true,
+                                sourcePaneId: node.id,
+                                width: rect?.width || 200,
+                                height: rect?.height || 150
+                            }
                             setMovingSourceId(node.id)
                             document.body.style.cursor = 'grabbing'
                         }
@@ -539,8 +549,11 @@ export function Workspace({
                         top: moveMousePos.y - 16,
                     }}
                 >
-                    <div className="bg-background/90 backdrop-blur-md border border-primary/50 shadow-2xl rounded-lg overflow-hidden"
-                        style={{ minWidth: 140, maxWidth: 260 }}>
+                    <div className="bg-background/90 backdrop-blur-md border border-primary/50 shadow-2xl rounded-lg overflow-hidden flex flex-col"
+                        style={{
+                            width: moveState.current?.width || 200,
+                            height: moveState.current?.height || 150
+                        }}>
                         {/* Ghost title bar */}
                         <div className="flex items-center gap-2 px-3 py-2 bg-primary/10 border-b border-primary/20">
                             <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />

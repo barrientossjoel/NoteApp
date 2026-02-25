@@ -255,6 +255,9 @@ export function DocumentView({
             } else {
                 editor.chain().focus().deleteRange(range).run()
             }
+        } else if (value === 'table') {
+            // @ts-ignore
+            editor.chain().focus().deleteRange(range).insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
         } else {
             // Mentions or links
             editor.chain().focus().deleteRange(range).insertContent(value).run()

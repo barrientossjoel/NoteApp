@@ -27,7 +27,7 @@ import { MobileNav } from '../../../components/layout/mobile-nav'
 
 export default function NotesApp() {
   const isMobile = useMediaQuery('(max-width: 768px)')
-  const { documents, setDocuments, isLoading, error } = useNotesData()
+  const { documents, setDocuments, isLoading, error, refresh } = useNotesData();
   const {
     workspaces,
     activeWorkspaceId,
@@ -352,6 +352,7 @@ export default function NotesApp() {
                   showResizeHandles={showResizeHandles}
                   showSidebar={showSidebar}
                   onToggleSidebar={() => setShowSidebar(prev => !prev)}
+                  refreshDocuments={refresh}
                 />
               )
             })()}

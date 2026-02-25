@@ -10,6 +10,11 @@ import { AudioExtension } from './extensions/audio'
 import { Markdown } from 'tiptap-markdown'
 import { useEffect, forwardRef, useImperativeHandle } from 'react'
 
+import { Table } from '@tiptap/extension-table'
+import { TableRow } from '@tiptap/extension-table-row'
+import { TableCell } from '@tiptap/extension-table-cell'
+import { TableHeader } from '@tiptap/extension-table-header'
+
 export interface EditorRef {
     editor: TipTapEditorInstance | null
 }
@@ -60,6 +65,12 @@ export const Editor = forwardRef<EditorRef, EditorProps>(({
             }),
             Image,
             AudioExtension,
+            Table.configure({
+                resizable: true,
+            }),
+            TableRow,
+            TableHeader,
+            TableCell,
         ],
         content: content,
         editable: editable,
@@ -194,6 +205,27 @@ export const Editor = forwardRef<EditorRef, EditorProps>(({
                     width: 1rem;
                     height: 1rem;
                     accent-color: var(--primary);
+                }
+                .tiptap table {
+                    border-collapse: collapse;
+                    table-layout: fixed;
+                    width: 100%;
+                    margin: 0;
+                    overflow: hidden;
+                }
+                .tiptap table td,
+                .tiptap table th {
+                    min-width: 1em;
+                    border: 1px solid var(--border);
+                    padding: 3px 5px;
+                    vertical-align: top;
+                    box-sizing: border-box;
+                    position: relative;
+                }
+                .tiptap table th {
+                    font-weight: bold;
+                    text-align: left;
+                    background-color: var(--muted);
                 }
             `}} />
         </div>

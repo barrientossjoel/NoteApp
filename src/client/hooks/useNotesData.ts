@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { getDocuments, getTrashItems } from '../actions/actions';
 import { type Document } from '../../core/types/notes';
 
@@ -8,25 +8,25 @@ export function useNotesData() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
-  useEffect(() => {
-    async function fetchData() {
-      try {
-        const [fetchedDocuments /*, fetchedTrash*/] = await Promise.all([
-          getDocuments(),
-          // getTrashItems() // implementing trash later for docs
-        ]);
+  const fetchData = useCallback(async () => {
+    try {
+      const [fetchedDocuments /*, fetchedTrash*/] = await Promise.all([
+        getDocuments(),
+        // getTrashItems() // implementing trash later for docs
+      ]);
 
-        setDocuments(fetchedDocuments);
-        // setTrashItems(fetchedTrash);
-      } catch (err) {
-        setError(err instanceof Error ? err : new Error('Failed to fetch data'));
-      } finally {
-        setIsLoading(false);
-      }
+      setDocuments(fetchedDocuments);
+      // setTrashItems(fetchedTrash);
+    } catch (err) {
+      setError(err instanceof Error ? err : new Error('Failed to fetch data'));
+    } finally {
+      setIsLoading(false);
     }
-
-    fetchData();
   }, []);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   return {
     documents,
@@ -34,6 +34,7 @@ export function useNotesData() {
     trashItems,
     setTrashItems,
     isLoading,
-    error
+    error,
+    refresh: fetchData
   };
 }

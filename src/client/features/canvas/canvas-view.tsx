@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { useMediaQuery } from '../../hooks/useMediaQuery'
-import { GripVertical, Plus, Trash2, Type, Move, MousePointer2, Image, Maximize, Minimize, X, Check, Link, PanelLeft, PanelTop, FileText, MessageSquare, Frame, ArrowRight, Square, Circle, FolderDown, Upload, ExternalLink, ZoomIn, ZoomOut } from 'lucide-react'
+import { GripVertical, Plus, Trash2, Type, Move, MousePointer2, Image, Maximize, Minimize, X, Check, Link, PanelLeft, PanelTop, FileText, MessageSquare, Frame, ArrowRight, Square, Circle, FolderDown, Upload, ExternalLink, ZoomIn, ZoomOut, Table } from 'lucide-react'
 import { cn } from '../../lib/utils/utils'
 import { Button } from '../../components/ui/button'
 import { Input } from '../../components/ui/input'
@@ -33,7 +33,7 @@ interface CanvasNode {
     y: number
     width: number
     height: number
-    type: 'note' | 'image' | 'document' | 'arrow' | 'shape'
+    type: 'note' | 'image' | 'document' | 'arrow' | 'shape' | 'table'
     content: string
     shapeType?: 'rectangle' | 'circle'
     startNodeId?: string
@@ -1192,6 +1192,21 @@ export function CanvasView({
         setNodes(prev => prev.map(n => n.id === id ? { ...n, content } : n))
     }
 
+    const addTable = () => {
+        const newNode: CanvasNode = {
+            id: Math.random().toString(36).substring(7),
+            type: 'table',
+            x: ((containerRef.current?.clientWidth || window.innerWidth) / 2 - camera.x) / camera.zoom - 150,
+            y: ((containerRef.current?.clientHeight || window.innerHeight) / 2 - camera.y) / camera.zoom - 100,
+            width: 300,
+            height: 200,
+            // A simple 3x3 markdown table as default content
+            content: '| Column 1 | Column 2 | Column 3 |\n|---|---|---|\n| Cell 1 | Cell 2 | Cell 3 |\n| Cell 4 | Cell 5 | Cell 6 |\n| Cell 7 | Cell 8 | Cell 9 |'
+        }
+        setNodes(prev => [...prev, newNode])
+        setSelection(new Set([newNode.id]))
+    }
+
     const addShape = (shapeType: 'rectangle' | 'circle') => {
         const newNode: CanvasNode = {
             id: Math.random().toString(36).substring(7),
@@ -1419,6 +1434,96 @@ export function CanvasView({
                                     }}
                                     placeholder="Type something..."
                                 />
+                            ) : node.type === 'table' ? (
+                                (() => {
+                                    const isEditing = editingId === node.id;
+
+                                    if (isEditing) {
+                                        return (
+                                            <textarea
+                                                id={`textarea-${node.id}`}
+                                                className={cn(
+                                                    "flex-1 bg-transparent p-3 text-sm outline-none resize-none text-foreground placeholder:text-muted-foreground font-mono",
+                                                    draggedNodeId === node.id ? "cursor-grabbing" : "cursor-grab",
+                                                    "focus:cursor-text"
+                                                )}
+                                                value={node.content}
+                                                onChange={(e) => updateNodeContent(node.id, e.target.value)}
+                                                onMouseDown={(e) => {
+                                                    e.stopPropagation()
+                                                    if (e.button !== 0) return
+
+                                                    // If already focused, allow normal text selection
+                                                    if (document.activeElement === e.currentTarget) return
+
+                                                    // Otherwise, prevent focus and start dragging
+                                                    e.preventDefault()
+                                                    handleNodeMouseDown(e, node)
+                                                }}
+                                                onMouseUp={(e) => {
+                                                    if (!hasMoved && document.activeElement !== e.currentTarget) {
+                                                        (e.currentTarget as HTMLTextAreaElement).focus()
+                                                    }
+                                                }}
+                                                placeholder="Enter markdown table here..."
+                                            />
+                                        )
+                                    }
+
+                                    // Parse Markdown Table
+                                    const lines = node.content.trim().split('\n').filter(line => line.trim().startsWith('|') && line.trim().endsWith('|'));
+                                    if (lines.length < 1) {
+                                        return (
+                                            <div className="flex-1 flex items-center justify-center p-4 bg-muted/10 text-muted-foreground text-sm cursor-grab">
+                                                Invalid or empty table. Double click to edit.
+                                            </div>
+                                        )
+                                    }
+
+                                    const parseRow = (line: string) => line.split('|').slice(1, -1).map(cell => cell.trim());
+                                    const header = parseRow(lines[0]);
+                                    const rows = lines.slice(2).map(parseRow); // Skip alignment row
+
+                                    return (
+                                        <div
+                                            className={cn(
+                                                "flex-1 overflow-auto bg-transparent p-1 pointer-events-auto",
+                                                draggedNodeId === node.id ? "cursor-grabbing" : "cursor-grab"
+                                            )}
+                                            onMouseDown={(e) => {
+                                                e.stopPropagation()
+                                                handleNodeMouseDown(e, node)
+                                            }}
+                                            onDoubleClick={(e) => {
+                                                e.stopPropagation();
+                                                setEditingId(node.id);
+                                            }}
+                                        >
+                                            <table className="w-full border-collapse text-sm">
+                                                <thead>
+                                                    <tr>
+                                                        {header.map((col, i) => (
+                                                            <th key={i} className="border border-border/50 bg-muted/30 px-3 py-1.5 text-left font-medium text-foreground">
+                                                                {col}
+                                                            </th>
+                                                        ))}
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {rows.map((row, i) => (
+                                                        <tr key={i} className="hover:bg-muted/10 transition-colors">
+                                                            {row.map((cell, j) => (
+                                                                <td key={j} className="border border-border/50 px-3 py-1.5 text-muted-foreground">
+                                                                    {cell}
+                                                                </td>
+                                                            ))}
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    )
+                                })()
                             ) : node.type === 'document' ? (
                                 (() => {
                                     // Portal Implementation
@@ -1439,6 +1544,57 @@ export function CanvasView({
                                                 <div className="text-center text-muted-foreground text-sm">
                                                     Document not found
                                                 </div>
+                                            </div>
+                                        )
+                                    }
+
+                                    if (portalDoc.type === 'canvas') {
+                                        // Try to parse nodes to count them
+                                        let nodeCount = 0;
+                                        try {
+                                            const parsed = portalDoc.content ? JSON.parse(portalDoc.content) : [];
+                                            const nodes = Array.isArray(parsed) ? parsed : (parsed.nodes || []);
+                                            nodeCount = nodes.length;
+                                        } catch (e) { }
+
+                                        return (
+                                            <div
+                                                className={cn(
+                                                    "flex-1 flex flex-col items-center justify-center p-6 bg-gradient-to-br from-background to-muted/50 group/doc h-full overflow-hidden border border-border/50 rounded-lg hover:border-primary/50 transition-colors cursor-pointer",
+                                                    draggedNodeId === node.id ? "cursor-grabbing" : "cursor-grab"
+                                                )}
+                                                onMouseDown={(e) => {
+                                                    e.stopPropagation()
+                                                    handleNodeMouseDown(e, node)
+                                                }}
+                                                onDoubleClick={(e) => {
+                                                    e.stopPropagation();
+                                                    if (onOpenDocument) onOpenDocument(portalDoc.id);
+                                                }}
+                                            >
+                                                <div className="p-3 bg-primary/10 rounded-xl mb-4 text-primary group-hover/doc:scale-110 transition-transform">
+                                                    <Frame className="w-8 h-8" />
+                                                </div>
+                                                <div className="text-lg font-semibold text-foreground text-center mb-1">
+                                                    {portalDoc.title || "Untitled Canvas"}
+                                                </div>
+                                                <div className="text-xs text-muted-foreground text-center">
+                                                    {nodeCount} item{nodeCount !== 1 ? 's' : ''}
+                                                </div>
+                                                {onOpenDocument && (
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="absolute top-2 right-2 h-8 w-8 opacity-0 group-hover/doc:opacity-100 transition-opacity hover:bg-primary/20 hover:text-primary"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation()
+                                                            onOpenDocument(portalDoc.id)
+                                                        }}
+                                                        title="Open in new tab"
+                                                    >
+                                                        <ExternalLink className="h-4 w-4" />
+                                                    </Button>
+                                                )}
                                             </div>
                                         )
                                     }
@@ -1893,6 +2049,15 @@ export function CanvasView({
                     title="Add Text Note"
                 >
                     <Type className="h-4 w-4" />
+                </Button>
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-9 w-9 rounded-full hover:bg-background/50"
+                    onClick={() => addTable()}
+                    title="Add Table"
+                >
+                    <Table className="h-4 w-4" />
                 </Button>
                 <Button
                     variant="ghost"

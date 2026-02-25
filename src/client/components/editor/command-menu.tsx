@@ -58,6 +58,7 @@ export function CommandMenu({ isOpen, position, query, type, documents, onSelect
         { label: 'Code Block', value: '```\n\n```', icon: Code },
         { label: 'Image', value: 'image', icon: ImageIcon },
         { label: 'Audio', value: 'audio', icon: Music },
+        { label: 'Table', value: 'table', icon: FileText },
     ]
 
     const items = type === 'slash'
@@ -80,7 +81,7 @@ export function CommandMenu({ isOpen, position, query, type, documents, onSelect
             } else if (e.key === 'ArrowUp') {
                 e.preventDefault()
                 setSelectedIndex(prev => (prev - 1 + items.length) % items.length)
-            } else if (e.key === 'Enter') {
+            } else if (e.key === 'Enter' || e.key === 'Tab') {
                 e.preventDefault()
                 if (items[selectedIndex]) {
                     onSelect(items[selectedIndex].value, type)
