@@ -167,8 +167,21 @@ export function Workspace({
                 while (target) {
                     const pid = target.getAttribute('data-pane-id')
                     if (pid && pid !== sourcePaneId) {
-                        // Swap pane contents using the CURRENT layout (not stale closure)
-                        onUpdateLayoutRef.current(swapPaneTabs(layoutRef.current, sourcePaneId, pid))
+                        const sourceRef = panelRefs.current[sourcePaneId]
+                        const targetRef = panelRefs.current[pid]
+
+                        const sRaw = sourceRef?.getSize()
+                        const tRaw = targetRef?.getSize()
+                        const sourceSize = typeof sRaw === 'number' ? sRaw : (sRaw?.asPercentage ?? 50)
+                        const targetSize = typeof tRaw === 'number' ? tRaw : (tRaw?.asPercentage ?? 50)
+
+                        if (sourceRef && targetRef) {
+                            sourceRef.resize(targetSize)
+                            targetRef.resize(sourceSize)
+                        }
+
+                        // Swap pane contents using the CURRENT layout and their actual sizes
+                        onUpdateLayoutRef.current(swapPaneTabs(layoutRef.current, sourcePaneId, pid, sourceSize, targetSize))
                         break
                     }
                     target = target.parentElement
@@ -252,8 +265,8 @@ export function Workspace({
         setActivePaneId(toPaneId)
     }
 
-    const handleMoveTabToSplit = (tabId: string, fromPaneId: string, toPaneId: string, direction: 'right') => {
-        onUpdateLayout(moveTabToNewSplit(layout, fromPaneId, toPaneId, tabId, direction))
+    const handleMoveTabToSplit = (tabId: string, fromPaneId: string, toPaneId: string, direction: 'right', sourceSize?: number) => {
+        onUpdateLayout(moveTabToNewSplit(layout, fromPaneId, toPaneId, tabId, direction, sourceSize))
         // New pane ID will be generated, but for now we focus the target group or wait for re-render
     }
 
@@ -277,7 +290,9 @@ export function Workspace({
         const fromPaneId = e.dataTransfer.getData('sourcePaneId')
 
         if (dragPreview && tabId && fromPaneId) {
-            handleMoveTabToSplit(tabId, fromPaneId, paneId, 'right')
+            const rawSize = panelRefs.current[fromPaneId]?.getSize()
+            const sourceSize = typeof rawSize === 'number' ? rawSize : (rawSize?.asPercentage ?? 50)
+            handleMoveTabToSplit(tabId, fromPaneId, paneId, 'right', sourceSize)
         }
         setDragPreview(null)
     }
@@ -632,7 +647,7 @@ function moveTabBetweenPanes(node: LayoutNode, fromId: string, toId: string, tab
     return add(remove(node))
 }
 
-function moveTabToNewSplit(node: LayoutNode, fromId: string, toId: string, tabId: string, direction: 'right'): LayoutNode {
+function moveTabToNewSplit(node: LayoutNode, fromId: string, toId: string, tabId: string, direction: 'right', sourceSize: number = 50): LayoutNode {
     const newNodeId = Math.random().toString(36).substring(7)
 
     // 1. Remove from source
@@ -659,13 +674,13 @@ function moveTabToNewSplit(node: LayoutNode, fromId: string, toId: string, tabId
                 type: 'group',
                 direction: 'horizontal',
                 children: [
-                    { ...n, size: 50 },
+                    { ...n, size: 100 - sourceSize },
                     {
                         id: newNodeId,
                         type: 'pane',
                         tabs: [tabId],
                         activeTabId: tabId,
-                        size: 50
+                        size: sourceSize
                     }
                 ]
             }

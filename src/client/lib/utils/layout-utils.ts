@@ -61,20 +61,23 @@ export function updateTab(node: LayoutNode, paneId: string, tabId: string): Layo
     return node
 }
 
-/** Swaps tabs and activeTabId between two pane nodes (Wayland-style move). */
-export function swapPaneTabs(root: LayoutNode, paneAId: string, paneBId: string): LayoutNode {
+/** Swaps tabs, activeTabId, and sizes between two pane nodes. */
+export function swapPaneTabs(root: LayoutNode, paneAId: string, paneBId: string, sizeA?: number, sizeB?: number): LayoutNode {
     const paneA = findLayoutNode(root, paneAId)
     const paneB = findLayoutNode(root, paneBId)
     if (!paneA || !paneB) return root
 
     const aTabs = paneA.tabs ?? []
     const aActive = paneA.activeTabId
+    const aSize = sizeA ?? paneA.size ?? 50
+
     const bTabs = paneB.tabs ?? []
     const bActive = paneB.activeTabId
+    const bSize = sizeB ?? paneB.size ?? 50
 
     function swapInNode(node: LayoutNode): LayoutNode {
-        if (node.id === paneAId) return { ...node, tabs: bTabs, activeTabId: bActive }
-        if (node.id === paneBId) return { ...node, tabs: aTabs, activeTabId: aActive }
+        if (node.id === paneAId) return { ...node, tabs: bTabs, activeTabId: bActive, size: bSize }
+        if (node.id === paneBId) return { ...node, tabs: aTabs, activeTabId: aActive, size: aSize }
         if (node.children) return { ...node, children: node.children.map(swapInNode) }
         return node
     }

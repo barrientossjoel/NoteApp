@@ -8,6 +8,7 @@ import { Button } from '../../components/ui/button'
 import { Input } from '../../components/ui/input'
 import type { Document } from '../../../core/types/notes'
 import { ImportDocsDialog } from './import-docs-dialog'
+import { FormulaEngine, getColumnLetter } from './utils/formula-engine'
 
 import {
     DropdownMenu,
@@ -89,6 +90,10 @@ function CanvasTableNode({ node, isEditing, draggedNodeId, updateNodeContent, se
 
     // Local state for the editor
     const [localRows, setLocalRows] = useState<string[][]>(() => parseMarkdown(node.content))
+    const [focusedCell, setFocusedCell] = useState<{ r: number, c: number } | null>(null);
+
+    const engine = useMemo(() => new FormulaEngine(), []);
+    const evaluatedRows = useMemo(() => engine.evaluateGrid(localRows), [localRows, engine]);
 
     // Sync from prop when opening edit mode (or if node changes from outside)
     useEffect(() => {
@@ -134,17 +139,32 @@ function CanvasTableNode({ node, isEditing, draggedNodeId, updateNodeContent, se
                 onMouseDown={(e) => {
                     e.stopPropagation()
                 }}
+                style={{ marginLeft: '-32px', marginTop: '-28px', width: 'calc(100% + 32px)' }}
             >
                 <div className="relative w-full flex flex-col">
                     <table className="w-full border-collapse text-sm table-fixed">
                         <thead>
+                            {/* Excel-like Column Headers */}
                             <tr>
+                                <th className="border border-border/50 bg-muted/50 p-1 w-8" />
+                                {localRows[0].map((_, j) => (
+                                    <th key={j} className="border border-border/50 bg-muted/50 p-1 text-center font-medium text-xs text-muted-foreground w-full">
+                                        {getColumnLetter(j)}
+                                    </th>
+                                ))}
+                            </tr>
+                            <tr>
+                                <th className="border border-border/50 bg-muted/50 p-1 text-center text-xs text-muted-foreground font-medium w-8">
+                                    1
+                                </th>
                                 {localRows[0].map((col, j) => (
-                                    <th key={j} className="border border-border/50 bg-muted/30 p-0 text-left font-medium text-foreground relative">
+                                    <th key={j} className="border border-border/50 bg-background p-0 text-left font-medium text-foreground relative">
                                         <input
-                                            className="w-full bg-transparent px-3 py-1.5 outline-none focus:bg-background/50 placeholder:text-muted-foreground/30 font-medium min-w-0"
-                                            value={col}
+                                            className="w-full bg-transparent px-3 py-1.5 outline-none focus:bg-background/50 placeholder:text-muted-foreground/30 font-medium min-w-0 focus:ring-1 focus:ring-primary focus:z-10 relative"
+                                            value={focusedCell?.r === 0 && focusedCell?.c === j ? localRows[0][j] : evaluatedRows[0][j]}
                                             onChange={(e) => updateCell(0, j, e.target.value)}
+                                            onFocus={() => setFocusedCell({ r: 0, c: j })}
+                                            onBlur={() => setFocusedCell(null)}
                                             onKeyDown={(e) => e.stopPropagation()}
                                             placeholder="Header"
                                         />
@@ -155,12 +175,17 @@ function CanvasTableNode({ node, isEditing, draggedNodeId, updateNodeContent, se
                         <tbody>
                             {localRows.slice(1).map((row, i) => (
                                 <tr key={i + 1} className="transition-colors focus-within:bg-muted/10">
+                                    <td className="border border-border/50 bg-muted/50 p-1 text-center text-xs text-muted-foreground font-medium w-8">
+                                        {i + 2}
+                                    </td>
                                     {row.map((cell, j) => (
                                         <td key={j} className="border border-border/50 p-0 text-muted-foreground relative">
                                             <input
-                                                className="w-full bg-transparent px-3 py-1.5 outline-none focus:bg-background/50 placeholder:text-muted-foreground/30 min-w-0"
-                                                value={cell}
+                                                className="w-full bg-transparent px-3 py-1.5 outline-none focus:bg-background/50 placeholder:text-muted-foreground/30 min-w-0 focus:ring-1 focus:ring-primary focus:z-10 relative"
+                                                value={focusedCell?.r === i + 1 && focusedCell?.c === j ? localRows[i + 1][j] : evaluatedRows[i + 1][j]}
                                                 onChange={(e) => updateCell(i + 1, j, e.target.value)}
+                                                onFocus={() => setFocusedCell({ r: i + 1, c: j })}
+                                                onBlur={() => setFocusedCell(null)}
                                                 onKeyDown={(e) => e.stopPropagation()}
                                                 placeholder="Cell"
                                             />
@@ -217,7 +242,7 @@ function CanvasTableNode({ node, isEditing, draggedNodeId, updateNodeContent, se
             <table className="w-full border-collapse text-sm table-fixed">
                 <thead>
                     <tr>
-                        {localRows[0].map((col, i) => (
+                        {evaluatedRows[0].map((col, i) => (
                             <th key={i} className="border border-border/50 bg-muted/30 px-3 py-1.5 text-left font-medium text-foreground relative">
                                 {col}
                             </th>
@@ -225,10 +250,10 @@ function CanvasTableNode({ node, isEditing, draggedNodeId, updateNodeContent, se
                     </tr>
                 </thead>
                 <tbody>
-                    {localRows.slice(1).map((row, i) => (
+                    {evaluatedRows.slice(1).map((row, i) => (
                         <tr key={i} className="hover:bg-muted/10 transition-colors">
                             {row.map((cell, j) => (
-                                <td key={j} className="border border-border/50 px-3 py-1.5 text-muted-foreground relative">
+                                <td key={j} className="border border-border/50 px-3 py-1.5 text-muted-foreground relative whitespace-pre-wrap word-break">
                                     {cell || '\u00A0'}
                                 </td>
                             ))}
