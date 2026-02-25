@@ -5,7 +5,6 @@
  * permanent Gateway Timeouts (504) during Hono initialization.
  */
 import app from '../src/server/app.js';
-import { Readable } from 'stream';
 
 // Disable default body parser so multipart/form-data isn't destroyed
 export const config = {
@@ -37,15 +36,20 @@ export default async function handler(req: any, res: any) {
         // Prepare the body for the Web Request
         let body: any = undefined;
         if (method !== 'GET' && method !== 'HEAD') {
-            // Convert unparsed Node.js stream to Web ReadableStream
-            body = Readable.toWeb ? Readable.toWeb(req) : req;
+            const chunks = [];
+            for await (const chunk of req) {
+                chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
+            }
+            const buf = Buffer.concat(chunks);
+            if (buf.length > 0) {
+                body = buf;
+            }
         }
 
         const request = new Request(fullUrl, {
             method,
             headers: headers as any,
             body,
-            duplex: 'half'
         } as RequestInit);
 
         console.log(`[Vercel Bridge] Calling app.fetch for ${fullUrl}`);
