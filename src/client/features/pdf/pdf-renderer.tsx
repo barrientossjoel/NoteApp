@@ -319,7 +319,7 @@ interface PageCanvasProps {
 function PageCanvas({ pdf, pageNumber, invert, scale }: PageCanvasProps) {
     const canvasRef = useRef<HTMLCanvasElement>(null)
 
-    const cacheKey = `${pageNumber}:${scale.toFixed(2)}:${invert ? 1 : 0}`
+    const cacheKey = `${pageNumber}:${scale.toFixed(2)}`
     const pageCache = getPageCache(pdf)
 
     // Start "ready" immediately if the bitmap is already cached → no spinner on remount
@@ -339,8 +339,8 @@ function PageCanvas({ pdf, pageNumber, invert, scale }: PageCanvasProps) {
             canvas.height = height
             canvas.style.width = `${cssWidth}px`
             canvas.style.height = `${cssHeight}px`
-            canvas.getContext('2d', { alpha: false })?.drawImage(bitmap, 0, 0)
-            // Keep the height cache up-to-date (e.g. after invert change cache hit)
+            canvas.getContext('2d', { alpha: true })?.drawImage(bitmap, 0, 0)
+            // Keep the height cache up-to-date
             getHeightCache(pdf).set(`${scale.toFixed(2)}:${pageNumber}`, cssHeight)
             if (!ready) setReady(true)
             return
@@ -399,7 +399,7 @@ function PageCanvas({ pdf, pageNumber, invert, scale }: PageCanvasProps) {
             cancelled = true
             renderTask?.cancel()
         }
-    }, [pdf, pageNumber, scale, invert])
+    }, [pdf, pageNumber, scale])
 
     // Known height used for the loading placeholder so measureElement always gets
     // the correct size, avoiding layout shifts when the canvas finishes rendering.

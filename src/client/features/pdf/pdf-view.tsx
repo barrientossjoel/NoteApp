@@ -1,15 +1,16 @@
 'use client'
 
-import React, { useEffect, useState, Suspense, lazy, useRef } from 'react'
+import React, { useEffect, useState, Suspense, lazy, useRef, useCallback } from 'react'
 import { Button } from '../../components/ui/button'
 import { cn } from '../../lib/utils/utils'
 import { useTheme } from '../../components/theme-provider'
-import { PanelLeft, Maximize2, Minimize2, Download, FileText, BookOpen, Loader2 } from 'lucide-react'
+import { PanelLeft, Maximize2, Minimize2, Download, FileText, BookOpen, Loader2, Droplets } from 'lucide-react'
 import type { Document } from '../../../core/types/notes'
 
 // Lazy load the heavy renderers
 const PdfRenderer = lazy(() => import('./pdf-renderer').then(m => ({ default: m.PdfRenderer })))
 const EpubRenderer = lazy(() => import('./epub-renderer').then(m => ({ default: m.EpubRenderer })))
+const LiquidPdfRenderer = lazy(() => import('./liquid-pdf-renderer').then(m => ({ default: m.LiquidPdfRenderer })))
 
 interface PdfViewProps {
     document: Document
@@ -43,6 +44,7 @@ export function PdfView({
     // Panel-overlay expand (multiple panels) — tracks the pane's bounding rect
     const [isExpanded, setIsExpanded] = useState(false)
     const [panelRect, setPanelRect] = useState<DOMRect | null>(null)
+    const [isLiquidMode, setIsLiquidMode] = useState(false)
 
     useEffect(() => {
         if (!isExpanded || !containerRef.current) { setPanelRect(null); return }
@@ -101,16 +103,73 @@ export function PdfView({
         localStorage.setItem(SCALE_KEY(url), String(scale))
     }, [url, scale])
 
-    const zoomIn = () => {
+    const zoomIn = useCallback(() => {
         const event = new CustomEvent(`zoom-change:${url}`, { detail: { factor: +1 } })
         window.dispatchEvent(event)
         setScale(s => Math.min(s + 0.1, 3.0))
-    }
-    const zoomOut = () => {
+    }, [url])
+
+    const zoomOut = useCallback(() => {
         const event = new CustomEvent(`zoom-change:${url}`, { detail: { factor: -1 } })
         window.dispatchEvent(event)
         setScale(s => Math.max(s - 0.1, 0.5))
-    }
+    }, [url])
+
+    const contentRef = useRef<HTMLDivElement>(null)
+
+    // Pinch-to-zoom gesture handling
+    const initialPinchDistance = useRef<number | null>(null)
+
+    useEffect(() => {
+        const el = contentRef.current
+        if (!el) return
+
+        const handleTouchStart = (e: TouchEvent) => {
+            if (e.touches.length === 2) {
+                const touch1 = e.touches[0]
+                const touch2 = e.touches[1]
+                initialPinchDistance.current = Math.hypot(
+                    touch2.clientX - touch1.clientX,
+                    touch2.clientY - touch1.clientY
+                )
+            }
+        }
+
+        const handleTouchMove = (e: TouchEvent) => {
+            if (e.touches.length === 2 && initialPinchDistance.current !== null) {
+                e.preventDefault() // Required non-passive listener to prevent browser zoom
+                const touch1 = e.touches[0]
+                const touch2 = e.touches[1]
+                const currentDistance = Math.hypot(
+                    touch2.clientX - touch1.clientX,
+                    touch2.clientY - touch1.clientY
+                )
+
+                const delta = currentDistance - initialPinchDistance.current
+                if (Math.abs(delta) > 40) {
+                    if (delta > 0) zoomIn()
+                    else zoomOut()
+                    initialPinchDistance.current = currentDistance
+                }
+            }
+        }
+
+        const handleTouchEnd = (e: TouchEvent) => {
+            if (e.touches.length < 2) {
+                initialPinchDistance.current = null
+            }
+        }
+
+        el.addEventListener('touchstart', handleTouchStart, { passive: true })
+        el.addEventListener('touchmove', handleTouchMove, { passive: false })
+        el.addEventListener('touchend', handleTouchEnd, { passive: true })
+
+        return () => {
+            el.removeEventListener('touchstart', handleTouchStart)
+            el.removeEventListener('touchmove', handleTouchMove)
+            el.removeEventListener('touchend', handleTouchEnd)
+        }
+    }, [url, zoomIn, zoomOut]) // Needs to rebind if zoom dependencies change, though zoom changes scale state, not deps.
 
     const expandedStyle = isExpanded && panelRect ? {
         position: 'fixed' as const,
@@ -189,6 +248,19 @@ export function PdfView({
                         </Button>
                     </a>
 
+                    {!isEbookFile && (
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setIsLiquidMode(!isLiquidMode)}
+                            className={cn('h-8 w-8', isLiquidMode && 'text-blue-500 bg-blue-500/10')}
+                            title={isLiquidMode ? 'Exit Liquid Mode' : 'Liquid Mode'}
+                            aria-label="Liquid Mode"
+                        >
+                            <Droplets className="h-4 w-4" />
+                        </Button>
+                    )}
+
                     <Button
                         variant="ghost"
                         size="icon"
@@ -203,7 +275,11 @@ export function PdfView({
             </div>
 
             {/* Content — relative so the zoom overlay can be positioned inside */}
-            <div className="flex-1 min-h-0 relative group">
+            <div
+                ref={contentRef}
+                className="flex-1 min-h-0 relative group"
+                style={{ touchAction: 'pan-x pan-y pinch-zoom' }}
+            >
                 {!url ? (
                     <div className="flex items-center justify-center h-full text-muted-foreground">
                         <p className="text-sm">No file attached</p>
@@ -217,6 +293,8 @@ export function PdfView({
                     }>
                         {isEbookFile ? (
                             <EpubRenderer url={url} invertColors={isDark} scale={scale} />
+                        ) : isLiquidMode ? (
+                            <LiquidPdfRenderer url={url} invertColors={isDark} scale={scale} />
                         ) : (
                             <PdfRenderer url={url} invertColors={isDark} scale={scale} />
                         )}
@@ -225,7 +303,7 @@ export function PdfView({
 
                 {/* Zoom controls — floating footer, visible on hover */}
                 {url && (
-                    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                    <div className="hidden md:block absolute bottom-4 left-1/2 -translate-x-1/2 z-20 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200">
                         <div className="pointer-events-auto flex items-center gap-0.5 bg-background/90 backdrop-blur border border-border/40 rounded-full px-1 py-1 shadow-lg">
                             <Button
                                 variant="ghost"
