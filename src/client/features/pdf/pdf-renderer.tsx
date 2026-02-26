@@ -34,6 +34,8 @@ interface CachedPage {
     bitmap: ImageBitmap
     width: number
     height: number
+    cssWidth: number
+    cssHeight: number
 }
 
 /**
@@ -219,6 +221,32 @@ export function PdfRenderer({ url, invertColors, scale }: PdfRendererProps) {
         saveScrollPos()
     }, [saveScrollPos])
 
+    // ── Zoom Scroll Re-centering ─────────────────────────────────────────────
+    useEffect(() => {
+        const handleZoomChange = (e: CustomEvent<{ factor: number }>) => {
+            const container = containerRef.current
+            if (!container) return
+
+            // Record current center point percentages before the scale changes
+            const centerLeftPct = (container.scrollLeft + container.clientWidth / 2) / container.scrollWidth
+            const centerTopPct = (container.scrollTop + container.clientHeight / 2) / container.scrollHeight
+
+            // Post-render effect: once the scale changes and DOM updates, re-apply the position
+            // The requestAnimationFrame chain guarantees we wait for the browser layout
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    if (!containerRef.current) return
+                    const c = containerRef.current
+                    c.scrollLeft = (centerLeftPct * c.scrollWidth) - (c.clientWidth / 2)
+                    c.scrollTop = (centerTopPct * c.scrollHeight) - (c.clientHeight / 2)
+                })
+            })
+        }
+
+        window.addEventListener(`zoom-change:${url}`, handleZoomChange as EventListener)
+        return () => window.removeEventListener(`zoom-change:${url}`, handleZoomChange as EventListener)
+    }, [url])
+
     // ── Render ───────────────────────────────────────────────────────────────
 
     if (loading) {
@@ -260,10 +288,11 @@ export function PdfRenderer({ url, invertColors, scale }: PdfRendererProps) {
                             position: 'absolute',
                             top: 0,
                             left: 0,
-                            width: '100%',
+                            minWidth: '100%',
+                            width: 'max-content',
                             transform: `translateY(${virtualItem.start}px)`,
                         }}
-                        className="flex justify-center"
+                        className="flex flex-col items-center px-4"
                     >
                         <PageCanvas
                             pdf={pdf!}
@@ -305,12 +334,14 @@ function PageCanvas({ pdf, pageNumber, invert, scale }: PageCanvasProps) {
 
         // ── Cache HIT ────────────────────────────────────────────────────────
         if (pageCache.has(cacheKey)) {
-            const { bitmap, width, height } = pageCache.get(cacheKey)!
+            const { bitmap, width, height, cssWidth, cssHeight } = pageCache.get(cacheKey)!
             canvas.width = width
             canvas.height = height
+            canvas.style.width = `${cssWidth}px`
+            canvas.style.height = `${cssHeight}px`
             canvas.getContext('2d', { alpha: false })?.drawImage(bitmap, 0, 0)
             // Keep the height cache up-to-date (e.g. after invert change cache hit)
-            getHeightCache(pdf).set(`${scale.toFixed(2)}:${pageNumber}`, height)
+            getHeightCache(pdf).set(`${scale.toFixed(2)}:${pageNumber}`, cssHeight)
             if (!ready) setReady(true)
             return
         }
@@ -324,17 +355,21 @@ function PageCanvas({ pdf, pageNumber, invert, scale }: PageCanvasProps) {
                 const page = await pdf.getPage(pageNumber)
                 if (cancelled) return
 
-                const viewport = page.getViewport({ scale: scale * 1.5 })
+                const cssViewport = page.getViewport({ scale })
+                const pixelRatio = window.devicePixelRatio || 1
+                const renderViewport = page.getViewport({ scale: scale * pixelRatio })
                 const ctx = canvas.getContext('2d', { alpha: true })
                 if (!ctx) return
 
-                canvas.height = viewport.height
-                canvas.width = viewport.width
+                canvas.height = renderViewport.height
+                canvas.width = renderViewport.width
+                canvas.style.width = `${cssViewport.width}px`
+                canvas.style.height = `${cssViewport.height}px`
 
                 renderTask = page.render({
                     canvasContext: ctx,
                     canvas,
-                    viewport,
+                    viewport: renderViewport,
                 })
 
                 await renderTask.promise
@@ -342,9 +377,14 @@ function PageCanvas({ pdf, pageNumber, invert, scale }: PageCanvasProps) {
 
                 const bitmap = await createImageBitmap(canvas)
                 if (!cancelled) {
-                    const h = canvas.height
-                    setCachedPage(pageCache, cacheKey, { bitmap, width: canvas.width, height: h })
-                    getHeightCache(pdf).set(`${scale.toFixed(2)}:${pageNumber}`, h)
+                    setCachedPage(pageCache, cacheKey, {
+                        bitmap,
+                        width: canvas.width,
+                        height: canvas.height,
+                        cssWidth: cssViewport.width,
+                        cssHeight: cssViewport.height
+                    })
+                    getHeightCache(pdf).set(`${scale.toFixed(2)}:${pageNumber}`, cssViewport.height)
                     setReady(true)
                 }
             } catch (err: any) {
@@ -366,18 +406,18 @@ function PageCanvas({ pdf, pageNumber, invert, scale }: PageCanvasProps) {
     const knownHeight = getHeightCache(pdf).get(`${scale.toFixed(2)}:${pageNumber}`)
 
     return (
-        <div className="relative">
+        <div className="relative mx-auto w-max mb-4 shadow-sm bg-white shrink-0">
             {!ready && (
                 <div
                     className="absolute inset-0 flex items-center justify-center bg-muted/10 animate-pulse"
-                    style={{ minHeight: knownHeight ? `${knownHeight}px` : '1200px' }}
+                    style={{ minHeight: knownHeight ? `${knownHeight}px` : `${1200 * scale}px` }}
                 >
                     <Loader2 className="h-6 w-6 animate-spin text-muted-foreground/30" />
                 </div>
             )}
             <canvas
                 ref={canvasRef}
-                className={cn('max-w-full block', invert ? 'invert hue-rotate-180 contrast-[0.92] brightness-[1.3]' : '')}
+                className={cn('block', invert ? 'invert hue-rotate-180 contrast-[0.92] brightness-[1.3]' : '')}
             />
             <div className={cn(
                 'absolute top-2 right-2 px-2 py-0.5 rounded text-[10px] font-mono',

@@ -101,8 +101,16 @@ export function PdfView({
         localStorage.setItem(SCALE_KEY(url), String(scale))
     }, [url, scale])
 
-    const zoomIn = () => setScale(s => Math.min(s + 0.1, 3.0))
-    const zoomOut = () => setScale(s => Math.max(s - 0.1, 0.5))
+    const zoomIn = () => {
+        const event = new CustomEvent(`zoom-change:${url}`, { detail: { factor: +1 } })
+        window.dispatchEvent(event)
+        setScale(s => Math.min(s + 0.1, 3.0))
+    }
+    const zoomOut = () => {
+        const event = new CustomEvent(`zoom-change:${url}`, { detail: { factor: -1 } })
+        window.dispatchEvent(event)
+        setScale(s => Math.max(s - 0.1, 0.5))
+    }
 
     const expandedStyle = isExpanded && panelRect ? {
         position: 'fixed' as const,

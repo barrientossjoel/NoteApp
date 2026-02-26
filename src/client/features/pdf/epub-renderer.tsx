@@ -139,6 +139,31 @@ export function EpubRenderer({ url, invertColors, scale }: EpubRendererProps) {
         return content.files[content.spine[currentIndex]] || ''
     }, [content, currentIndex])
 
+    // ── Zoom Scroll Re-centering ─────────────────────────────────────────────
+    useEffect(() => {
+        const handleZoomChange = (e: CustomEvent<{ factor: number }>) => {
+            const container = containerRef.current?.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement
+            if (!container) return
+
+            // Record current center point percentages before the scale changes
+            const centerLeftPct = (container.scrollLeft + container.clientWidth / 2) / container.scrollWidth
+            const centerTopPct = (container.scrollTop + container.clientHeight / 2) / container.scrollHeight
+
+            // Post-render effect: once the scale changes and DOM updates, re-apply the position
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    const c = containerRef.current?.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement
+                    if (!c) return
+                    c.scrollLeft = (centerLeftPct * c.scrollWidth) - (c.clientWidth / 2)
+                    c.scrollTop = (centerTopPct * c.scrollHeight) - (c.clientHeight / 2)
+                })
+            })
+        }
+
+        window.addEventListener(`zoom-change:${url}`, handleZoomChange as EventListener)
+        return () => window.removeEventListener(`zoom-change:${url}`, handleZoomChange as EventListener)
+    }, [url])
+
     if (loading) {
         return (
             <div className="flex flex-col items-center justify-center h-full gap-2 text-muted-foreground animate-in fade-in">
@@ -169,12 +194,12 @@ export function EpubRenderer({ url, invertColors, scale }: EpubRendererProps) {
             onKeyDown={handleKeyDown}
             className="flex flex-col h-full animate-in fade-in outline-none focus:outline-none"
         >
-            <ScrollArea className="flex-1">
-                <div className="p-8 lg:p-12">
+            <ScrollArea className="flex-1 w-full">
+                <div className="p-4 lg:p-8 min-w-min flex flex-col items-center">
                     <div
                         className={cn(
-                            "prose prose-sm md:prose-base dark:prose-invert max-w-2xl mx-auto transition-all duration-500",
-                            isInvertedPage ? "filter invert hue-rotate-180 contrast(0.9) brightness(1.3)" : ""
+                            "prose prose-sm md:prose-base max-w-2xl mx-auto min-h-screen w-max transition-all duration-500 bg-white px-12 py-8 rounded-sm shadow-sm",
+                            isInvertedPage ? "invert hue-rotate-180 contrast-[0.92] brightness-[1.3]" : ""
                         )}
                         style={{
                             fontSize: `${scale * 100}%`
