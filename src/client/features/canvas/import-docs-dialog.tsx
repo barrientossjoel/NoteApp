@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../componen
 import { Input } from '../../components/ui/input'
 import { getDocuments } from '../../actions/actions' // Checking this path...
 import type { Document } from '../../../core/types/notes'
+import { useMediaQuery } from '../../hooks/useMediaQuery'
 
 interface ImportDocsDialogProps {
     open: boolean
@@ -17,6 +18,7 @@ export function ImportDocsDialog({ open, onOpenChange, onSelect }: ImportDocsDia
     const [search, setSearch] = useState('')
     const [documents, setDocuments] = useState<Document[]>([])
     const [filteredDocs, setFilteredDocs] = useState<Document[]>([])
+    const isMobile = useMediaQuery('(max-width: 768px)')
 
     useEffect(() => {
         if (open) {
@@ -66,7 +68,7 @@ export function ImportDocsDialog({ open, onOpenChange, onSelect }: ImportDocsDia
                             onChange={(e) => setSearch(e.target.value)}
                             placeholder="Search documents..."
                             className="border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 px-0 h-8"
-                            autoFocus
+                            autoFocus={!isMobile}
                         />
                     </div>
                 </div>

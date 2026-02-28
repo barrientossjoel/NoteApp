@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import {
     Group as PanelGroup,
     Panel,
@@ -301,6 +301,20 @@ export function Workspace({
         onUpdateLayout(toggleNodeTabs(layout, paneId))
     }
 
+    const isOnlyPane = useMemo(() => {
+        // A single pane means the layout root is a pane, or a group with only 1 child which is a pane (unlikely but possible).
+        const checkSinglePane = (n: LayoutNode): boolean => {
+            if (n.type === 'pane' || n.type === 'dashboard') return true;
+            if (n.type === 'group' && n.children) {
+                const activeChildren = n.children.filter(c => c.type !== 'group' || (c.children && c.children.length > 0));
+                if (activeChildren.length === 1) return checkSinglePane(activeChildren[0]);
+                return false;
+            }
+            return false;
+        };
+        return checkSinglePane(layout);
+    }, [layout]);
+
     const renderNode = (node: LayoutNode) => {
         if (node.type === 'pane') {
             const activeTabId = node.activeTabId
@@ -345,7 +359,7 @@ export function Workspace({
                     onDragLeave={() => setDragPreview(null)}
                     onDrop={(e) => handlePaneDrop(e, node.id)}
                 >
-                    {isActive && (
+                    {isActive && !isOnlyPane && (
                         <div className="absolute inset-0 border border-primary pointer-events-none z-[100]" />
                     )}
                     {/* Move-drag: source pane feedback — dimmed "lifted" look */}
@@ -461,6 +475,7 @@ export function Workspace({
                                 onToggleSidebar={toggleSidebar}
                                 showTabs={node.showTabs !== false} // default true
                                 onToggleTabs={() => handleToggleTabs(node.id)}
+                                hideBorder={isOnlyPane}
                             />
                         )}
                     </div>

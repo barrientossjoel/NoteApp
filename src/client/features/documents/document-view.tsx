@@ -43,6 +43,7 @@ interface DocumentViewProps {
     onReplaceDocument?: (docId: string) => void
     forwardPath?: string[]
     onNavigate?: (id: string) => void
+    hideBorder?: boolean
 }
 
 export function DocumentView({
@@ -58,17 +59,12 @@ export function DocumentView({
     onToggleTabs,
     onReplaceDocument,
     forwardPath,
-    onNavigate
+    onNavigate,
+    hideBorder,
 }: DocumentViewProps) {
-    // State for local changes (now just content, as title is derived)
-    const [content, setContent] = useState(() => {
-        const docTitle = document.title || 'Untitled'
-        const docContent = document.content || ''
-        if (!docContent.startsWith('# ')) {
-            return `# ${docTitle}\n\n${docContent}`
-        }
-        return docContent
-    })
+    // State for local changes
+    const [title, setTitle] = useState(document.title || '')
+    const [content, setContent] = useState(document.content || '')
     const [isEditing, setIsEditing] = useState(true)
     const [localShowNotes, setLocalShowNotes] = useState(false)
     const [tags, setTags] = useState<string[]>(tryParseTags(document.tags))
@@ -103,24 +99,14 @@ export function DocumentView({
         }
     }
 
-    // Auto-save hook
-    // We'll extract the title from content for saving
-    const currentTitle = useMemo(() => {
-        const firstLine = content.split('\n')[0]
-        if (firstLine.startsWith('# ')) {
-            return firstLine.replace('# ', '').trim() || 'Untitled'
-        }
-        return 'Untitled'
-    }, [content])
-
-    const { isSaving, lastSaved } = useAutoSave(document.id, content, currentTitle);
+    const { isSaving, lastSaved } = useAutoSave(document.id, content, title);
 
     // Sync changes to parent state when auto-save completes
     useEffect(() => {
         if (lastSaved) {
             onUpdateDocument({
                 ...document,
-                title: currentTitle,
+                title: title,
                 content: content,
                 updatedAt: new Date() // Optimistic update
             })
@@ -130,13 +116,8 @@ export function DocumentView({
 
     // Sync state when document prop changes
     useEffect(() => {
-        const docTitle = document.title || 'Untitled'
-        const docContent = document.content || ''
-        let newContent = docContent
-        if (!docContent.startsWith('# ')) {
-            newContent = `# ${docTitle}\n\n${docContent}`
-        }
-        setContent(newContent)
+        setTitle(document.title || '')
+        setContent(document.content || '')
         setTags(tryParseTags(document.tags))
     }, [document.id])
 
@@ -269,7 +250,7 @@ export function DocumentView({
 
 
     return (
-        <div className="flex flex-col h-full bg-muted/50 animate-in fade-in duration-300">
+        <div className={cn("flex flex-col h-full animate-in fade-in duration-300", hideBorder ? "bg-background" : "bg-muted/50")}>
             {/* Header / Toolbar */}
             <div className="h-16 flex items-center justify-between px-4 bg-transparent sticky top-0 z-10">
                 <div className="flex items-center gap-2">
@@ -544,7 +525,20 @@ export function DocumentView({
                 <div className="flex-1 overflow-auto relative">
                     <div className="max-w-3xl mx-auto py-8 px-4 lg:px-8 min-h-full pb-[50vh]">
                         <div className="space-y-6">
-                            {/* Title input removed */}
+                            {isEditing ? (
+                                <Input
+                                    value={title}
+                                    onChange={(e) => {
+                                        setTitle(e.target.value);
+                                        // Auto-save handles the backend save, but we optimistically update parent immediately so breadcrumbs update
+                                        onUpdateDocument({ ...document, title: e.target.value });
+                                    }}
+                                    className="text-4xl font-bold border-none bg-transparent px-0 h-auto focus-visible:ring-0 focus-visible:ring-offset-0 ring-0 focus:ring-0 outline-none shadow-none placeholder:text-muted-foreground/30 w-full"
+                                    placeholder="Untitled Document"
+                                />
+                            ) : (
+                                <h1 className="text-4xl font-bold min-h-[1.2em]">{title || "Untitled Document"}</h1>
+                            )}
                             <Editor
                                 ref={editorRef}
                                 content={content}

@@ -91,6 +91,21 @@ export function Sidebar({
 
     setIsUploading(true)
     try {
+      if (file.name.endsWith('.txt')) {
+        const text = await file.text()
+        const title = file.name.replace(/\.[^/.]+$/, '')
+        const docRes = await fetch('/api/documents', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title, type: 'text', content: text }),
+        })
+        if (!docRes.ok) throw new Error('Document creation failed')
+        const newDoc = await docRes.json()
+        onUploadedPdf(newDoc.id)
+        setIsUploading(false)
+        return
+      }
+
       let documentUrl = '';
 
       // 1. Upload file
@@ -215,7 +230,7 @@ export function Sidebar({
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".pdf,.epub,.mobi,.azw,.azw3"
+                accept=".txt,.pdf,.epub,.mobi,.azw,.azw3"
                 className="hidden"
                 onChange={handleFileChange}
               />
