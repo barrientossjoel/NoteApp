@@ -400,6 +400,7 @@ export function Workspace({
                                 onToggleSidebar={toggleSidebar}
                                 showTabs={node.showTabs !== false}
                                 onToggleTabs={() => handleToggleTabs(node.id)}
+                                refreshDocuments={refreshDocuments}
                             />
                         ) : activeTabId === 'notes' ? (
                             <div className="h-full w-full bg-background">
@@ -432,6 +433,7 @@ export function Workspace({
                                 onToggleSidebar={toggleSidebar}
                                 showTabs={node.showTabs !== false}
                                 onToggleTabs={() => handleToggleTabs(node.id)}
+                                isActivePane={isActive}
                             />
                         ) : (
                             <DocumentView

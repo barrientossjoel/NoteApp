@@ -9,6 +9,8 @@ import { Input } from '../../components/ui/input'
 import type { Document } from '../../../core/types/notes'
 import { ImportDocsDialog } from './import-docs-dialog'
 import { FormulaEngine, getColumnLetter } from './utils/formula-engine'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 
 import {
     DropdownMenu,
@@ -27,6 +29,7 @@ import {
     BreadcrumbPage,
     BreadcrumbSeparator,
 } from "../../components/ui/breadcrumb"
+import { Editor } from '../../components/editor/editor'
 
 interface CanvasNode {
     id: string
@@ -646,19 +649,39 @@ export function CanvasView({
 
             lastTouchDistance.current = dist
             lastTouchCenter.current = center
-        } else if (e.touches.length === 1 && isPanning) {
-            const dx = e.touches[0].clientX - lastMousePos.x
-            const dy = e.touches[0].clientY - lastMousePos.y
-            setCamera(prev => ({
-                ...prev,
-                x: prev.x + dx,
-                y: prev.y + dy
-            }))
-            setLastMousePos({ x: e.touches[0].clientX, y: e.touches[0].clientY })
+        } else if (e.touches.length === 1) {
+            if (isPanning) {
+                const dx = e.touches[0].clientX - lastMousePos.x
+                const dy = e.touches[0].clientY - lastMousePos.y
+                setCamera(prev => ({
+                    ...prev,
+                    x: prev.x + dx,
+                    y: prev.y + dy
+                }))
+                setLastMousePos({ x: e.touches[0].clientX, y: e.touches[0].clientY })
+            } else if (draggedNodeId || draggedHandle || selectionBox || isCreatingArrow) {
+                const pseudoEvent = {
+                    clientX: e.touches[0].clientX,
+                    clientY: e.touches[0].clientY,
+                    preventDefault: () => e.preventDefault(),
+                    stopPropagation: () => e.stopPropagation()
+                } as any
+                handleMouseMove(pseudoEvent)
+            }
         }
     }
 
-    const handleTouchEnd = () => {
+    const handleTouchEnd = (e: React.TouchEvent) => {
+        if (draggedNodeId || draggedHandle || selectionBox || isCreatingArrow) {
+            const touch = e.changedTouches ? e.changedTouches[0] : null
+            const pseudoEvent = {
+                clientX: touch ? touch.clientX : lastMousePos.x,
+                clientY: touch ? touch.clientY : lastMousePos.y,
+                preventDefault: () => { },
+                stopPropagation: () => { }
+            } as any
+            handleMouseUp(pseudoEvent)
+        }
         lastTouchDistance.current = null
         lastTouchCenter.current = null
         setIsPanning(false)
@@ -702,6 +725,35 @@ export function CanvasView({
             }
         })
         return { x: minX, y: minY, width: maxX - minX, height: maxY - minY }
+    }
+    const touchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+    const handleNodeTouchStart = (e: React.TouchEvent, node: CanvasNode) => {
+        if (e.touches.length !== 1 || node.type === 'arrow') return
+        const touch = e.touches[0]
+        const clientX = touch.clientX
+        const clientY = touch.clientY
+
+        if (touchTimer.current) clearTimeout(touchTimer.current)
+
+        touchTimer.current = setTimeout(() => {
+            const pseudoEvent = {
+                clientX,
+                clientY,
+                button: 0,
+                shiftKey: false,
+                stopPropagation: () => { },
+                preventDefault: () => { }
+            } as any
+            handleNodeMouseDown(pseudoEvent, node)
+        }, 300)
+    }
+
+    const clearTouchTimer = () => {
+        if (touchTimer.current) {
+            clearTimeout(touchTimer.current)
+            touchTimer.current = null
+        }
     }
 
     const handleNodeMouseDown = (e: React.MouseEvent, node: CanvasNode) => {
@@ -1549,7 +1601,7 @@ export function CanvasView({
                                 // Z-Index Logic
                                 node.type === 'arrow' ? "z-20" : "z-10",
                                 selection.has(node.id) && selection.size === 1 && "z-[150]",
-                                selection.has(node.id) && node.type !== 'arrow' && "ring-2 ring-primary",
+                                selection.has(node.id) && node.type !== 'arrow' && node.type !== 'note' && "ring-2 ring-primary",
                                 selectionCandidates.has(node.id) && !selection.has(node.id) && node.type !== 'arrow' && "z-[140] ring-2 ring-primary/40 shadow-lg",
                                 snapTargetId === node.id && "z-[100] ring-4 ring-primary/60 scale-[1.02] shadow-2xl",
 
@@ -1557,7 +1609,11 @@ export function CanvasView({
                                 (node.type === 'arrow' || node.type === 'shape' || node.type === 'note')
                                     ? "overflow-visible bg-transparent border-none shadow-none"
                                     : "rounded-lg shadow-sm overflow-hidden bg-muted/50 backdrop-blur-sm border border-foreground/20",
-                                node.type === 'table' && "overflow-visible" // Allow '+' buttons to show
+                                node.type === 'table' && "overflow-visible", // Allow '+' buttons to show
+
+                                // Drag animation
+                                "transition-transform transition-shadow duration-200 ease-out",
+                                draggedNodeId === node.id && node.type !== 'arrow' ? "scale-[1.02] -rotate-2 shadow-[0_20px_50px_rgba(0,0,0,0.5)] z-[999]" : "scale-100 rotate-0"
                             )}
                             style={{
                                 left: node.x,
@@ -1573,6 +1629,13 @@ export function CanvasView({
                                     handleNodeMouseDown(e, node)
                                 }
                             }}
+                            onTouchStart={(e) => {
+                                if (node.type !== 'arrow') {
+                                    handleNodeTouchStart(e, node)
+                                }
+                            }}
+                            onTouchMove={clearTouchTimer}
+                            onTouchEnd={clearTouchTimer}
                             onClick={(e) => {
                                 e.stopPropagation()
                                 if (selection.has(node.id) && selection.size === 1 && !hasMoved && editingId !== node.id && node.type === 'document') {
@@ -1744,17 +1807,29 @@ export function CanvasView({
                                                         placeholder="Untitled"
                                                         onMouseDown={(e) => e.stopPropagation()}
                                                     />
-                                                    <textarea
-                                                        id={`edit-content-${node.id}`}
-                                                        className={cn(
-                                                            "flex-1 w-full bg-transparent resize-none outline-none text-sm leading-relaxed text-muted-foreground focus:text-foreground transition-colors placeholder:text-muted-foreground/30 font-sans p-0",
-                                                            "focus:cursor-text"
-                                                        )}
-                                                        value={portalDoc.content || ''}
-                                                        onChange={(e) => onUpdateDocument({ ...portalDoc, content: e.target.value })}
-                                                        placeholder="Type something..."
-                                                        onMouseDown={(e) => e.stopPropagation()}
-                                                    />
+                                                    <div className="flex-1 w-full bg-transparent overflow-y-auto" onMouseDown={(e) => e.stopPropagation()}>
+                                                        {(() => {
+                                                            let cleanContent = portalDoc.content || '';
+                                                            const title = portalDoc.title?.trim();
+                                                            if (title && cleanContent) {
+                                                                const lines = cleanContent.split('\n');
+                                                                const firstLine = lines[0].trim();
+                                                                const headerMatch = firstLine.match(/^#+\s*(.*)$/);
+                                                                const firstLineText = headerMatch ? headerMatch[1].trim() : firstLine;
+                                                                if (firstLineText.toLowerCase() === title.toLowerCase()) {
+                                                                    cleanContent = lines.slice(1).join('\n').trim();
+                                                                }
+                                                            }
+                                                            return (
+                                                                <Editor
+                                                                    content={cleanContent}
+                                                                    onChange={(newContent) => onUpdateDocument({ ...portalDoc, content: newContent })}
+                                                                    placeholder="Type something..."
+                                                                    className="min-h-[auto] prose-p:my-1 prose-ul:my-1 prose-h1:text-lg prose-h2:text-base font-sans"
+                                                                />
+                                                            );
+                                                        })()}
+                                                    </div>
                                                     {onOpenDocument && (
                                                         <Button
                                                             variant="ghost"
@@ -1780,22 +1855,34 @@ export function CanvasView({
                                                     </div>
                                                     <div
                                                         data-field="content"
-                                                        className="flex-1 text-sm leading-relaxed text-muted-foreground font-sans line-clamp-[12] whitespace-pre-wrap"
+                                                        className={cn(
+                                                            "flex-1 text-sm leading-relaxed text-muted-foreground font-sans line-clamp-[12]",
+                                                            "prose prose-sm dark:prose-invert max-w-none prose-p:my-1 prose-ul:my-1 prose-h1:text-lg prose-h2:text-base pointer-events-none",
+                                                            // Task list specific styling
+                                                            "[&>ul.contains-task-list]:list-none [&>ul.contains-task-list]:pl-0",
+                                                            "[&>ul.contains-task-list>li]:flex [&>ul.contains-task-list>li]:items-start [&>ul.contains-task-list>li]:gap-3 [&>ul.contains-task-list>li]:mb-2",
+                                                            "[&>ul.contains-task-list>li]:before:hidden [&>ul.contains-task-list>li]:after:hidden",
+                                                            "[&>ul.contains-task-list>li>input[type=checkbox]]:mt-1 [&>ul.contains-task-list>li>input[type=checkbox]]:w-[1.1rem] [&>ul.contains-task-list>li>input[type=checkbox]]:h-[1.1rem] [&>ul.contains-task-list>li>input[type=checkbox]]:m-0 [&>ul.contains-task-list>li>input[type=checkbox]]:appearance-auto [&>ul.contains-task-list>li>input[type=checkbox]]:border [&>ul.contains-task-list>li>input[type=checkbox]]:rounded"
+                                                        )}
                                                     >
                                                         {(() => {
                                                             if (!portalDoc.content) return "Empty document";
+                                                            let cleanContent = portalDoc.content;
                                                             const title = portalDoc.title?.trim();
-                                                            if (!title) return portalDoc.content;
-
-                                                            const lines = portalDoc.content.split('\n');
-                                                            const firstLine = lines[0].trim();
-                                                            const headerMatch = firstLine.match(/^#+\s*(.*)$/);
-                                                            const firstLineText = headerMatch ? headerMatch[1].trim() : firstLine;
-
-                                                            if (firstLineText.toLowerCase() === title.toLowerCase()) {
-                                                                return lines.slice(1).join('\n').trim() || "Empty document";
+                                                            if (title) {
+                                                                const lines = cleanContent.split('\n');
+                                                                const firstLine = lines[0].trim();
+                                                                const headerMatch = firstLine.match(/^#+\s*(.*)$/);
+                                                                const firstLineText = headerMatch ? headerMatch[1].trim() : firstLine;
+                                                                if (firstLineText.toLowerCase() === title.toLowerCase()) {
+                                                                    cleanContent = lines.slice(1).join('\n').trim() || "Empty document";
+                                                                }
                                                             }
-                                                            return portalDoc.content;
+                                                            return (
+                                                                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                                                    {cleanContent}
+                                                                </ReactMarkdown>
+                                                            );
                                                         })()}
                                                     </div>
                                                 </>

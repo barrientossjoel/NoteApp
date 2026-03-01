@@ -125,9 +125,13 @@ export function PdfRenderer({ url, invertColors, scale }: PdfRendererProps) {
     // Read saved scroll offset ONCE at component init.
     // Used by the virtualizer's initialOffset so the correct pages are pre-rendered
     // on the very first render cycle.
-    const savedScrollOffset = useRef(
-        parseFloat(localStorage.getItem(SCROLL_KEY(url)) ?? '0')
-    )
+    const savedScrollOffset = useRef<{ top: number, left: number }>((function () {
+        const saved = localStorage.getItem(SCROLL_KEY(url))
+        if (saved && saved.startsWith('{')) {
+            try { return JSON.parse(saved) } catch (e) { }
+        }
+        return { top: parseFloat(saved ?? '0'), left: 0 }
+    })())
 
     // Initialize pdf synchronously from cache to avoid an extra render cycle on remount.
     const [pdf, setPdf] = useState<pdfjs.PDFDocumentProxy | null>(
@@ -135,6 +139,8 @@ export function PdfRenderer({ url, invertColors, scale }: PdfRendererProps) {
     )
     const [error, setError] = useState<string | null>(null)
     const [loading, setLoading] = useState(() => !pdfDocCache.has(url))
+    // Ensures we only restore scroll once per mount even if pdf/loading flips multiple times.
+    const scrollRestored = useRef(false)
 
     useEffect(() => {
         if (pdf) return // Already cached
@@ -179,7 +185,7 @@ export function PdfRenderer({ url, invertColors, scale }: PdfRendererProps) {
         },
         overscan: 2,
         // Pre-positions the virtualizer so the correct pages are rendered on mount.
-        initialOffset: savedScrollOffset.current,
+        initialOffset: savedScrollOffset.current.top,
     })
 
         // Disable TanStack Virtual's default ResizeObserver scroll compensation.
@@ -200,13 +206,46 @@ export function PdfRenderer({ url, invertColors, scale }: PdfRendererProps) {
         if (!loading && !error) containerRef.current?.focus()
     }, [loading, error])
 
+    // Restore scroll position once the PDF is fully loaded and the container is
+    // scrollable. We use setTimeout over rAF because React StrictMode's effect
+    // double-invoke cancels rAFs via cleanup before they run. The cleanup resets
+    // scrollRestored so the second StrictMode invocation still applies the scroll.
+    useEffect(() => {
+        if (loading || !pdf || scrollRestored.current) return
+
+        const { top, left } = savedScrollOffset.current
+        if (!top && !left) { scrollRestored.current = true; return }
+
+        scrollRestored.current = true
+
+        // 50ms is enough for the virtualizer to commit its total-size element.
+        // We capture containerRef (not .current) so the timeout reads the
+        // latest DOM node even if it swaps between now and when it fires.
+        const timer = setTimeout(() => {
+            const el = containerRef.current
+            if (!el) return
+            if (top) el.scrollTop = top
+            if (left) el.scrollLeft = left
+        }, 50)
+
+        return () => {
+            clearTimeout(timer)
+            // Reset so StrictMode's second invocation (or genuine re-mount) can retry
+            scrollRestored.current = false
+        }
+    }, [loading, pdf]) // eslint-disable-line react-hooks/exhaustive-deps
+
     // ── Scroll persistence ───────────────────────────────────────────────────
     // Debounced during active scrolling; synchronous on unmount (panel move).
     const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
     const saveScrollPos = useCallback(() => {
-        if (containerRef.current)
-            localStorage.setItem(SCROLL_KEY(url), String(containerRef.current.scrollTop))
+        if (containerRef.current) {
+            localStorage.setItem(SCROLL_KEY(url), JSON.stringify({
+                top: containerRef.current.scrollTop,
+                left: containerRef.current.scrollLeft
+            }))
+        }
     }, [url])
 
     const handleScroll = useCallback(() => {
@@ -219,6 +258,14 @@ export function PdfRenderer({ url, invertColors, scale }: PdfRendererProps) {
     useEffect(() => () => {
         if (saveTimer.current) clearTimeout(saveTimer.current)
         saveScrollPos()
+    }, [saveScrollPos])
+
+    // React cleanup effects don't run reliably during F5 / tab close because
+    // the browser starts unloading before React finishes teardown. A synchronous
+    // beforeunload handler is the only reliable way to capture the position.
+    useEffect(() => {
+        window.addEventListener('beforeunload', saveScrollPos)
+        return () => window.removeEventListener('beforeunload', saveScrollPos)
     }, [saveScrollPos])
 
     // ── Zoom Scroll Re-centering ─────────────────────────────────────────────

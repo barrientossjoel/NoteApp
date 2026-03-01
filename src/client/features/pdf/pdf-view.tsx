@@ -18,6 +18,7 @@ interface PdfViewProps {
     onToggleSidebar?: () => void
     showTabs?: boolean
     onToggleTabs?: () => void
+    isActivePane?: boolean
 }
 
 const EPUB_EXTENSIONS = ['.epub', '.mobi', '.azw', '.azw3']
@@ -33,6 +34,7 @@ export function PdfView({
     onToggleSidebar,
     showTabs,
     onToggleTabs,
+    isActivePane = false,
 }: PdfViewProps) {
     const containerRef = useRef<HTMLDivElement>(null)
     const { theme } = useTheme()
@@ -292,7 +294,7 @@ export function PdfView({
                         </div>
                     }>
                         {isEbookFile ? (
-                            <EpubRenderer url={url} invertColors={isDark} scale={scale} />
+                            <EpubRenderer url={url} invertColors={isDark} scale={scale} isActivePane={isActivePane} />
                         ) : isLiquidMode ? (
                             <LiquidPdfRenderer url={url} invertColors={isDark} scale={scale} />
                         ) : (

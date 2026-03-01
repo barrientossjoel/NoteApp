@@ -4,13 +4,14 @@ import React, { useEffect, useState, useMemo, useRef } from 'react'
 import JSZip from 'jszip'
 import { Loader2, AlertCircle, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '../../components/ui/button'
-import { ScrollArea } from '../../components/ui/scroll-area'
 import { cn } from '../../lib/utils/utils'
 
 interface EpubRendererProps {
     url: string
     invertColors: boolean
     scale: number
+    /** True when this pane is the currently focused pane in the workspace */
+    isActivePane?: boolean
 }
 
 interface EpubContent {
@@ -24,7 +25,7 @@ const CHAPTER_KEY = (url: string) => `epub-chapter:${url}`
 // the EPUB ZIP on every panel move or remount.
 const epubContentCache = new Map<string, EpubContent>()
 
-export function EpubRenderer({ url, invertColors, scale }: EpubRendererProps) {
+export function EpubRenderer({ url, invertColors, scale, isActivePane = false }: EpubRendererProps) {
     const containerRef = useRef<HTMLDivElement>(null)
 
     // Initialize content synchronously from cache to avoid an extra render cycle
@@ -125,44 +126,56 @@ export function EpubRenderer({ url, invertColors, scale }: EpubRendererProps) {
         if (!loading && !error) containerRef.current?.focus()
     }, [loading, error])
 
-    // Keyboard navigation
-    const handleKeyDown = (e: React.KeyboardEvent) => {
-        if (e.key === 'ArrowLeft' && currentIndex > 0) {
-            setCurrentIndex(prev => prev - 1)
-        } else if (e.key === 'ArrowRight' && content && currentIndex < content.spine.length - 1) {
-            setCurrentIndex(prev => prev + 1)
-        }
-    }
-
-    const currentHtml = useMemo(() => {
-        if (!content) return ''
-        return content.files[content.spine[currentIndex]] || ''
-    }, [content, currentIndex])
-
-    // ── Zoom Scroll Re-centering ─────────────────────────────────────────────
+    // Keyboard navigation: attach a window-level capture listener so we intercept
+    // ArrowLeft/Right before react-resizable-panels (or any other sibling element)
+    // can consume the event. We only register when this IS the active pane; when
+    // another pane is active (e.g. a document editor) this listener is absent so
+    // that pane's normal arrow-key behaviour (cursor movement etc.) is untouched.
     useEffect(() => {
-        const handleZoomChange = (e: CustomEvent<{ factor: number }>) => {
-            const container = containerRef.current?.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement
-            if (!container) return
+        if (!isActivePane) return
 
-            // Record current center point percentages before the scale changes
-            const centerLeftPct = (container.scrollLeft + container.clientWidth / 2) / container.scrollWidth
-            const centerTopPct = (container.scrollTop + container.clientHeight / 2) / container.scrollHeight
-
-            // Post-render effect: once the scale changes and DOM updates, re-apply the position
-            requestAnimationFrame(() => {
-                requestAnimationFrame(() => {
-                    const c = containerRef.current?.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement
-                    if (!c) return
-                    c.scrollLeft = (centerLeftPct * c.scrollWidth) - (c.clientWidth / 2)
-                    c.scrollTop = (centerTopPct * c.scrollHeight) - (c.clientHeight / 2)
+        const onKeyDown = (e: KeyboardEvent) => {
+            if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
+            e.stopPropagation()
+            e.preventDefault()
+            if (e.key === 'ArrowLeft') {
+                setCurrentIndex(prev => Math.max(0, prev - 1))
+            } else {
+                setCurrentIndex(prev => {
+                    const epubContent = epubContentCache.get(url)
+                    if (!epubContent) return prev
+                    return Math.min(epubContent.spine.length - 1, prev + 1)
                 })
-            })
+            }
         }
 
-        window.addEventListener(`zoom-change:${url}`, handleZoomChange as EventListener)
-        return () => window.removeEventListener(`zoom-change:${url}`, handleZoomChange as EventListener)
-    }, [url])
+        window.addEventListener('keydown', onKeyDown, true)
+        return () => window.removeEventListener('keydown', onKeyDown, true)
+    }, [isActivePane, url])
+
+    // Build a complete, self-contained HTML document from the chapter content.
+    // Injecting scale and dark-mode overrides directly into the <head> keeps all
+    // epub styles scoped to the iframe — they cannot bleed into the host app.
+    const framedContent = useMemo(() => {
+        if (!content) return ''
+        const raw = content.files[content.spine[currentIndex]] || ''
+
+        const overrideStyles = [
+            `html, body { font-size: ${scale * 100}%; }`,
+            invertColors ? 'html { filter: invert(1) hue-rotate(180deg) contrast(0.92) brightness(1.3); }' : '',
+        ].join('\n')
+
+        const inject = `<style id="__epub-override">${overrideStyles}</style>`
+
+        if (raw.includes('</head>')) {
+            return raw.replace('</head>', `${inject}</head>`)
+        }
+        if (raw.includes('<head>')) {
+            return raw.replace('<head>', `<head>${inject}`)
+        }
+        // No head element — wrap as a minimal document
+        return `<!DOCTYPE html><html><head>${inject}</head><body>${raw}</body></html>`
+    }, [content, currentIndex, scale, invertColors])
 
     if (loading) {
         return (
@@ -191,23 +204,17 @@ export function EpubRenderer({ url, invertColors, scale }: EpubRendererProps) {
         <div
             ref={containerRef}
             tabIndex={0}
-            onKeyDown={handleKeyDown}
             className="flex flex-col h-full animate-in fade-in outline-none focus:outline-none"
         >
-            <ScrollArea className="flex-1 w-full">
-                <div className="p-4 lg:p-8 min-w-min flex flex-col items-center">
-                    <div
-                        className={cn(
-                            "prose prose-sm md:prose-base max-w-2xl mx-auto min-h-screen w-max transition-all duration-500 bg-white px-12 py-8 rounded-sm shadow-sm",
-                            isInvertedPage ? "invert hue-rotate-180 contrast-[0.92] brightness-[1.3]" : ""
-                        )}
-                        style={{
-                            fontSize: `${scale * 100}%`
-                        }}
-                        dangerouslySetInnerHTML={{ __html: currentHtml }}
-                    />
-                </div>
-            </ScrollArea>
+            {/* Iframe provides full CSS isolation — epub chapter styles cannot bleed */}
+            {/* into the host document's global styles via dangerouslySetInnerHTML.  */}
+            <iframe
+                key={currentIndex}
+                srcDoc={framedContent}
+                title={`Chapter ${currentIndex + 1} of ${content?.spine.length ?? '?'}`}
+                className="flex-1 w-full border-0"
+                sandbox="allow-same-origin"
+            />
 
             {/* Navigation */}
             <div className="h-14 border-t border-border/40 flex items-center justify-between px-6 bg-muted/20 shrink-0">
