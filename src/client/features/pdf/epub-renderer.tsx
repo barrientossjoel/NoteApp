@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useState, useMemo, useRef } from 'react'
+import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react'
 import JSZip from 'jszip'
 import { Loader2, AlertCircle, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '../../components/ui/button'
@@ -20,6 +20,7 @@ interface EpubContent {
 }
 
 const CHAPTER_KEY = (url: string) => `epub-chapter:${url}`
+const SCROLL_POS_KEY = (url: string, index: number) => `epub-scroll:${url}:${index}`
 
 // Module-level cache — same pattern as pdfDocCache — avoids re-fetching/re-parsing
 // the EPUB ZIP on every panel move or remount.
@@ -27,6 +28,11 @@ const epubContentCache = new Map<string, EpubContent>()
 
 export function EpubRenderer({ url, invertColors, scale, isActivePane = false }: EpubRendererProps) {
     const containerRef = useRef<HTMLDivElement>(null)
+    const iframeRef = useRef<HTMLIFrameElement>(null)
+
+    // Tracks when the iframe has fully loaded its srcDoc
+    const [iframeReady, setIframeReady] = useState(false)
+    const scrollRestored = useRef(false)
 
     // Initialize content synchronously from cache to avoid an extra render cycle
     const [content, setContent] = useState<EpubContent | null>(
@@ -116,10 +122,54 @@ export function EpubRenderer({ url, invertColors, scale, isActivePane = false }:
         }
     }, [content])
 
-    // Persist chapter index whenever it changes
+    // Persist chapter index whenever it changes.
     useEffect(() => {
         localStorage.setItem(CHAPTER_KEY(url), String(currentIndex))
     }, [url, currentIndex])
+
+    // Reset ready state when chapter changes so we know to restore scroll again
+    useEffect(() => {
+        setIframeReady(false)
+        scrollRestored.current = false
+    }, [currentIndex])
+
+    // ── Scroll persistence ───────────────────────────────────────────────────
+    // We cannot reliably read iframeRef.current.contentWindow.scrollY during
+    // unmount or beforeunload due to cross-origin sandboxing in some browsers.
+    // Instead, a script injected inside the iframe constantly emits 'message'
+    // events as the user scrolls, which we intercept here and save instantly.
+    useEffect(() => {
+        const handleMessage = (e: MessageEvent) => {
+            if (e.data?.type === 'epub-scroll' && e.data.url === url) {
+                localStorage.setItem(SCROLL_POS_KEY(url, currentIndex), String(e.data.scrollY))
+            }
+        }
+        window.addEventListener('message', handleMessage)
+        return () => window.removeEventListener('message', handleMessage)
+    }, [url, currentIndex])
+
+    // ── Scroll Restoration ───────────────────────────────────────────────────
+    // Identical setTimeout/StrictMode logic from pdf-renderer
+    useEffect(() => {
+        if (!iframeReady || scrollRestored.current) return
+
+        const saved = localStorage.getItem(SCROLL_POS_KEY(url, currentIndex))
+        const top = saved ? parseFloat(saved) : 0
+        if (!top) { scrollRestored.current = true; return }
+
+        scrollRestored.current = true
+
+        const timer = setTimeout(() => {
+            if (iframeRef.current?.contentWindow) {
+                iframeRef.current.contentWindow.scrollTo({ top, behavior: 'instant' as ScrollBehavior })
+            }
+        }, 50)
+
+        return () => {
+            clearTimeout(timer)
+            scrollRestored.current = false
+        }
+    }, [iframeReady, url, currentIndex])
 
     // Focus on mount
     useEffect(() => {
@@ -165,7 +215,26 @@ export function EpubRenderer({ url, invertColors, scale, isActivePane = false }:
             invertColors ? 'html { filter: invert(1) hue-rotate(180deg) contrast(0.92) brightness(1.3); }' : '',
         ].join('\n')
 
-        const inject = `<style id="__epub-override">${overrideStyles}</style>`
+        // We inject a script that listens for scroll events and posts them to the
+        // parent window. This is the only reliable way to track an iframe's scroll
+        // position, as reading it directly from React often fails due to sandboxing.
+        const scrollScript = `
+            <script>
+                let timeout;
+                window.addEventListener('scroll', () => {
+                    if (timeout) clearTimeout(timeout);
+                    timeout = setTimeout(() => {
+                        window.parent.postMessage({
+                            type: 'epub-scroll',
+                            url: '${url}',
+                            scrollY: window.scrollY
+                        }, '*');
+                    }, 100);
+                });
+            </script>
+        `
+
+        const inject = `<style id="__epub-override">${overrideStyles}</style>${scrollScript}`
 
         if (raw.includes('</head>')) {
             return raw.replace('</head>', `${inject}</head>`)
@@ -175,7 +244,7 @@ export function EpubRenderer({ url, invertColors, scale, isActivePane = false }:
         }
         // No head element — wrap as a minimal document
         return `<!DOCTYPE html><html><head>${inject}</head><body>${raw}</body></html>`
-    }, [content, currentIndex, scale, invertColors])
+    }, [content, currentIndex, scale, invertColors, url])
 
     if (loading) {
         return (
@@ -210,10 +279,12 @@ export function EpubRenderer({ url, invertColors, scale, isActivePane = false }:
             {/* into the host document's global styles via dangerouslySetInnerHTML.  */}
             <iframe
                 key={currentIndex}
+                ref={iframeRef}
                 srcDoc={framedContent}
                 title={`Chapter ${currentIndex + 1} of ${content?.spine.length ?? '?'}`}
                 className="flex-1 w-full border-0"
-                sandbox="allow-same-origin"
+                sandbox="allow-same-origin allow-scripts"
+                onLoad={() => setIframeReady(true)}
             />
 
             {/* Navigation */}
