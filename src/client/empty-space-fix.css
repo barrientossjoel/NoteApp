@@ -1,0 +1,14 @@
+.textLayer {
+  user-select: text !important;
+  -webkit-user-select: text !important;
+}
+
+.textLayer span {
+  user-select: text !important;
+  -webkit-user-select: text !important;
+}
+
+/* Ensure the text layer or container isn't swallowing events */
+.textLayer, .textLayer * {
+  pointer-events: auto !important;
+}

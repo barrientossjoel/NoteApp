@@ -89,10 +89,16 @@ export function Workspace({
     const [forwardPaths, setForwardPaths] = React.useState<Record<string, string[]>>({}) // paneId:tabId -> docIds
 
 
+    const [isDragging, setIsDragging] = React.useState(false)
+    const [dragOverPanel, setDragOverPanel] = React.useState<string | null>(null)
+
+    const [isAltPressed, setIsAltPressed] = React.useState(false)
+
     React.useEffect(() => {
         const handleMouseMove = (e: MouseEvent) => {
             // Resize handler
             if (resizeState.current?.active) {
+                if (!isDragging) setIsDragging(true)
                 e.preventDefault()
                 const state = resizeState.current
                 const deltaX = e.clientX - state.startX
@@ -121,6 +127,7 @@ export function Workspace({
 
             // Move handler: find which pane the cursor is over
             if (moveState.current?.active) {
+                if (!isDragging) setIsDragging(true)
                 setMoveMousePos({ x: e.clientX, y: e.clientY })
                 const el = document.elementFromPoint(e.clientX, e.clientY)
                 // Walk up to find a pane div (they have data-pane-id)
@@ -142,6 +149,7 @@ export function Workspace({
             if (resizeState.current?.active) {
                 resizeState.current = null
                 document.body.style.cursor = ''
+                setIsDragging(false)
 
                 // Persist final panel sizes so they survive page refresh.
                 // Collect asPercentage from every imperative panel ref, then
@@ -160,6 +168,7 @@ export function Workspace({
                 const sourcePaneId = moveState.current.sourcePaneId
                 moveState.current = null
                 document.body.style.cursor = ''
+                setIsDragging(false)
 
                 // Determine target pane under cursor
                 const el = document.elementFromPoint(e.clientX, e.clientY)
@@ -201,13 +210,35 @@ export function Workspace({
             }
         }
 
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Alt') setIsAltPressed(true)
+        }
+        const handleKeyUp = (e: KeyboardEvent) => {
+            if (e.key === 'Alt') setIsAltPressed(false)
+        }
+        const handleBlur = () => setIsAltPressed(false)
+
+        const handleContextMenu = (e: MouseEvent) => {
+            if (isAltPressed) {
+                e.preventDefault()
+            }
+        }
+
         window.addEventListener('mousemove', handleMouseMove)
         window.addEventListener('mouseup', handleMouseUp)
+        window.addEventListener('keydown', handleKeyDown)
+        window.addEventListener('keyup', handleKeyUp)
+        window.addEventListener('blur', handleBlur)
+        window.addEventListener('contextmenu', handleContextMenu)
         return () => {
             window.removeEventListener('mousemove', handleMouseMove)
             window.removeEventListener('mouseup', handleMouseUp)
+            window.removeEventListener('keydown', handleKeyDown)
+            window.removeEventListener('keyup', handleKeyUp)
+            window.removeEventListener('blur', handleBlur)
+            window.removeEventListener('contextmenu', handleContextMenu)
         }
-    }, [])
+    }, [isDragging, isAltPressed])
 
     const startResize = (paneId: string, x: number, y: number) => {
         const targets = findResizeTargets(layout, paneId)
@@ -232,6 +263,7 @@ export function Workspace({
             startY: y,
             targets: { h: hTarget, v: vTarget }
         }
+        setIsDragging(true)
         document.body.style.cursor = 'move'
     }
 
@@ -352,6 +384,7 @@ export function Workspace({
                                 height: rect?.height || 150
                             }
                             setMovingSourceId(node.id)
+                            setIsDragging(true)
                             document.body.style.cursor = 'grabbing'
                         }
                     }}
@@ -429,11 +462,15 @@ export function Workspace({
                         ) : doc?.type === 'pdf' ? (
                             <PdfView
                                 document={doc}
+                                documents={documents}
                                 showSidebar={showSidebar}
                                 onToggleSidebar={toggleSidebar}
                                 showTabs={node.showTabs !== false}
                                 onToggleTabs={() => handleToggleTabs(node.id)}
                                 isActivePane={isActive}
+                                onOpenDocument={(docId) => {
+                                    onUpdateLayout(addTabToPane(layoutRef.current, node.id, docId, true))
+                                }}
                             />
                         ) : (
                             <DocumentView
@@ -505,13 +542,17 @@ export function Workspace({
                                 panelRef={(el) => { panelRefs.current[child.id] = el }}
                                 defaultSize={child.size || 100 / node.children!.length}
                             >
-                                <div ref={(el) => { domRefs.current[child.id] = el }} className="h-full w-full">
+                                <div
+                                    ref={(el) => { domRefs.current[child.id] = el }}
+                                    className={cn("h-full w-full", isDragging && "pointer-events-none select-none")}
+                                >
                                     {renderNode(child)}
                                 </div>
                             </Panel>
                             {index < node.children!.length - 1 && (
                                 <PanelResizeHandle
                                     disabled={!showResizeHandles}
+                                    onPointerDown={() => setIsDragging(true)}
                                     className={cn(
                                         "bg-border hover:bg-primary/50 transition-colors z-50",
                                         isVertical
@@ -568,6 +609,11 @@ export function Workspace({
 
     return (
         <div className="flex-1 h-full overflow-hidden flex flex-row relative">
+            {isAltPressed && (
+                <style>{`
+                    iframe, canvas, [data-page-number] { pointer-events: none !important; }
+                `}</style>
+            )}
             <div className={cn("flex-1 h-full overflow-hidden flex flex-col", isMobile && "pb-16")}>
                 {renderNode(layout)}
             </div>

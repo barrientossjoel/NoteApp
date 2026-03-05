@@ -1,9 +1,11 @@
 'use client'
 
-import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState, forwardRef, useImperativeHandle } from 'react'
 import * as pdfjs from 'pdfjs-dist'
+import 'pdfjs-dist/web/pdf_viewer.css'
+import { Button } from '../../components/ui/button'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { Loader2, AlertCircle } from 'lucide-react'
+import { Loader2, AlertCircle, Highlighter } from 'lucide-react'
 import { cn } from '../../lib/utils/utils'
 
 // PDF.js worker setup
@@ -115,12 +117,14 @@ interface PdfRendererProps {
     url: string
     invertColors: boolean
     scale: number
+    onAddHighlight?: (text: string, page: number) => void
 }
 
 const SCROLL_KEY = (url: string) => `pdf-scroll:${url}`
 
-export function PdfRenderer({ url, invertColors, scale }: PdfRendererProps) {
+export const PdfRenderer = forwardRef<any, PdfRendererProps>(({ url, invertColors, scale, onAddHighlight }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null)
+    const [selection, setSelection] = useState<{ text: string, page: number, rect: DOMRect } | null>(null)
 
     // Read saved scroll offset ONCE at component init.
     // Used by the virtualizer's initialOffset so the correct pages are pre-rendered
@@ -188,6 +192,13 @@ export function PdfRenderer({ url, invertColors, scale }: PdfRendererProps) {
         initialOffset: savedScrollOffset.current.top,
     })
 
+    useImperativeHandle(ref, () => ({
+        scrollToPage: (pageNumber: number) => {
+            if (!containerRef.current || !rowVirtualizer) return
+            rowVirtualizer.scrollToIndex(pageNumber - 1, { align: 'start' })
+        }
+    }))
+
         // Disable TanStack Virtual's default ResizeObserver scroll compensation.
         // See `noScrollAdjust` comment above for full explanation.
         ; (rowVirtualizer as any).shouldAdjustScrollPositionOnItemSizeChange = noScrollAdjust
@@ -234,6 +245,47 @@ export function PdfRenderer({ url, invertColors, scale }: PdfRendererProps) {
             scrollRestored.current = false
         }
     }, [loading, pdf]) // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Detect text selection
+    const handleMouseUp = useCallback(() => {
+        const sel = window.getSelection()
+        if (!sel || sel.isCollapsed || !containerRef.current) {
+            setSelection(null)
+            return
+        }
+
+        const text = sel.toString().trim()
+        if (!text) {
+            setSelection(null)
+            return
+        }
+
+        // Find which page the selection is in
+        let node: Node | null = sel.anchorNode
+        let pageNumber = 0
+        while (node && node !== containerRef.current) {
+            if (node instanceof HTMLElement && node.dataset.pageNumber) {
+                pageNumber = parseInt(node.dataset.pageNumber)
+                break
+            }
+            node = node.parentNode
+        }
+
+        if (pageNumber) {
+            const range = sel.getRangeAt(0)
+            const rects = range.getClientRects()
+            if (rects.length > 0) {
+                // Use the first rect to position the button
+                const rect = rects[0]
+                setSelection({ text, page: pageNumber, rect: rect })
+            }
+        }
+    }, [])
+
+    useEffect(() => {
+        document.addEventListener('mouseup', handleMouseUp)
+        return () => document.removeEventListener('mouseup', handleMouseUp)
+    }, [handleMouseUp])
 
     // ── Scroll persistence ───────────────────────────────────────────────────
     // Debounced during active scrolling; synchronous on unmount (panel move).
@@ -350,9 +402,37 @@ export function PdfRenderer({ url, invertColors, scale }: PdfRendererProps) {
                     </div>
                 ))}
             </div>
+
+            {/* Floating Highlight Button */}
+            {selection && (
+                <div
+                    className="fixed z-[100] animate-in fade-in zoom-in-95 duration-200"
+                    style={{
+                        top: selection.rect.top - 40,
+                        left: selection.rect.left + selection.rect.width / 2,
+                        transform: 'translateX(-50%)'
+                    }}
+                >
+                    <Button
+                        size="sm"
+                        className="h-8 gap-2 shadow-xl bg-primary text-primary-foreground hover:bg-primary/90"
+                        onClick={(e: React.MouseEvent) => {
+                            e.stopPropagation()
+                            onAddHighlight?.(selection.text, selection.page)
+                            setSelection(null)
+                            window.getSelection()?.removeAllRanges()
+                        }}
+                    >
+                        <Highlighter className="h-4 w-4" />
+                        <span>Highlight</span>
+                    </Button>
+                </div>
+            )}
         </div>
     )
-}
+})
+
+PdfRenderer.displayName = 'PdfRenderer'
 
 // ─── PageCanvas ──────────────────────────────────────────────────────────────
 
@@ -365,6 +445,7 @@ interface PageCanvasProps {
 
 function PageCanvas({ pdf, pageNumber, invert, scale }: PageCanvasProps) {
     const canvasRef = useRef<HTMLCanvasElement>(null)
+    const textLayerRef = useRef<HTMLDivElement>(null)
 
     const cacheKey = `${pageNumber}:${scale.toFixed(2)}`
     const pageCache = getPageCache(pdf)
@@ -379,74 +460,97 @@ function PageCanvas({ pdf, pageNumber, invert, scale }: PageCanvasProps) {
         const canvas = canvasRef.current
         if (!canvas) return
 
-        // ── Cache HIT ────────────────────────────────────────────────────────
-        if (pageCache.has(cacheKey)) {
-            const { bitmap, width, height, cssWidth, cssHeight } = pageCache.get(cacheKey)!
-            canvas.width = width
-            canvas.height = height
-            canvas.style.width = `${cssWidth}px`
-            canvas.style.height = `${cssHeight}px`
-            canvas.getContext('2d', { alpha: true })?.drawImage(bitmap, 0, 0)
-            // Keep the height cache up-to-date
-            getHeightCache(pdf).set(`${scale.toFixed(2)}:${pageNumber}`, cssHeight)
-            if (!ready) setReady(true)
-            return
-        }
-
-        // ── Cache MISS ───────────────────────────────────────────────────────
-        let renderTask: pdfjs.RenderTask | null = null
         let cancelled = false
+        let renderTask: pdfjs.RenderTask | null = null
 
-        const render = async () => {
-            try {
-                const page = await pdf.getPage(pageNumber)
-                if (cancelled) return
+        const renderCanvasAndText = async () => {
+            // ── Canvas Rendering ────────────────────────────────────────────────
+            if (pageCache.has(cacheKey)) {
+                const { bitmap, width, height, cssWidth, cssHeight } = pageCache.get(cacheKey)!
+                canvas.width = width
+                canvas.height = height
+                canvas.style.width = `${cssWidth}px`
+                canvas.style.height = `${cssHeight}px`
+                canvas.getContext('2d', { alpha: true })?.drawImage(bitmap, 0, 0)
+                getHeightCache(pdf).set(`${scale.toFixed(2)}:${pageNumber}`, cssHeight)
+                if (!ready) setReady(true)
+            } else {
+                try {
+                    const page = await pdf.getPage(pageNumber)
+                    if (cancelled) return
 
-                const cssViewport = page.getViewport({ scale })
-                const pixelRatio = window.devicePixelRatio || 1
-                const renderViewport = page.getViewport({ scale: scale * pixelRatio })
-                const ctx = canvas.getContext('2d', { alpha: true })
-                if (!ctx) return
+                    const cssViewport = page.getViewport({ scale })
+                    const pixelRatio = window.devicePixelRatio || 1
+                    const renderViewport = page.getViewport({ scale: scale * pixelRatio })
+                    const ctx = canvas.getContext('2d', { alpha: true })
+                    if (!ctx) return
 
-                canvas.height = renderViewport.height
-                canvas.width = renderViewport.width
-                canvas.style.width = `${cssViewport.width}px`
-                canvas.style.height = `${cssViewport.height}px`
+                    canvas.height = renderViewport.height
+                    canvas.width = renderViewport.width
+                    canvas.style.width = `${cssViewport.width}px`
+                    canvas.style.height = `${cssViewport.height}px`
 
-                renderTask = page.render({
-                    canvasContext: ctx,
-                    canvas,
-                    viewport: renderViewport,
-                })
-
-                await renderTask.promise
-                if (cancelled) return
-
-                const bitmap = await createImageBitmap(canvas)
-                if (!cancelled) {
-                    setCachedPage(pageCache, cacheKey, {
-                        bitmap,
-                        width: canvas.width,
-                        height: canvas.height,
-                        cssWidth: cssViewport.width,
-                        cssHeight: cssViewport.height
+                    renderTask = page.render({
+                        canvasContext: ctx,
+                        canvas,
+                        viewport: renderViewport,
                     })
-                    getHeightCache(pdf).set(`${scale.toFixed(2)}:${pageNumber}`, cssViewport.height)
-                    setReady(true)
+
+                    await renderTask.promise
+                    if (cancelled) return
+
+                    const bitmap = await createImageBitmap(canvas)
+                    if (!cancelled) {
+                        setCachedPage(pageCache, cacheKey, {
+                            bitmap,
+                            width: canvas.width,
+                            height: canvas.height,
+                            cssWidth: cssViewport.width,
+                            cssHeight: cssViewport.height
+                        })
+                        getHeightCache(pdf).set(`${scale.toFixed(2)}:${pageNumber}`, cssViewport.height)
+                        setReady(true)
+                    }
+                } catch (err: any) {
+                    if (err.name === 'RenderingCancelledException') return
+                    console.error(`Error rendering page ${pageNumber}:`, err)
                 }
-            } catch (err: any) {
-                if (err.name === 'RenderingCancelledException') return
-                console.error(`Error rendering page ${pageNumber}:`, err)
+            }
+
+            // ── Text Layer Rendering (Always render if not cancelled) ──────────
+            if (textLayerRef.current && !cancelled) {
+                try {
+                    const page = await pdf.getPage(pageNumber)
+                    if (cancelled) return
+                    const cssViewport = page.getViewport({ scale })
+                    const textContent = await page.getTextContent()
+                    if (cancelled) return
+
+                    textLayerRef.current.innerHTML = ''
+                    textLayerRef.current.style.width = `${cssViewport.width}px`
+                    textLayerRef.current.style.height = `${cssViewport.height}px`
+                    textLayerRef.current.style.setProperty('--scale-factor', cssViewport.scale.toString())
+                    textLayerRef.current.style.setProperty('--total-scale-factor', cssViewport.scale.toString())
+
+                    const textLayer = new pdfjs.TextLayer({
+                        textContentSource: textContent,
+                        container: textLayerRef.current,
+                        viewport: cssViewport,
+                    })
+                    await textLayer.render()
+                } catch (err) {
+                    console.error('Text layer error:', err)
+                }
             }
         }
 
-        render()
+        renderCanvasAndText()
 
         return () => {
             cancelled = true
             renderTask?.cancel()
         }
-    }, [pdf, pageNumber, scale])
+    }, [pdf, pageNumber, scale, cacheKey, pageCache])
 
     // Known height used for the loading placeholder so measureElement always gets
     // the correct size, avoiding layout shifts when the canvas finishes rendering.
@@ -465,6 +569,21 @@ function PageCanvas({ pdf, pageNumber, invert, scale }: PageCanvasProps) {
             <canvas
                 ref={canvasRef}
                 className={cn('block', invert ? 'invert hue-rotate-180 contrast-[0.92] brightness-[1.3]' : '')}
+            />
+            <div
+                ref={textLayerRef}
+                className="textLayer"
+                data-page-number={pageNumber}
+                style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    opacity: 1, // Usually pdf_viewer.css hides it by default unless configured
+                    lineHeight: 1,
+                    zIndex: 1
+                }}
             />
             <div className={cn(
                 'absolute top-2 right-2 px-2 py-0.5 rounded text-[10px] font-mono',

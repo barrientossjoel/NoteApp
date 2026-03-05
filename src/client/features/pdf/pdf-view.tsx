@@ -4,16 +4,24 @@ import React, { useEffect, useState, Suspense, lazy, useRef, useCallback } from 
 import { Button } from '../../components/ui/button'
 import { cn } from '../../lib/utils/utils'
 import { useTheme } from '../../components/theme-provider'
-import { PanelLeft, Maximize2, Minimize2, Download, FileText, BookOpen, Loader2, Droplets } from 'lucide-react'
+import { PanelLeft, Maximize2, Minimize2, Download, FileText, BookOpen, Loader2, Droplets, MessageSquare } from 'lucide-react'
 import type { Document } from '../../../core/types/notes'
+import { NotesPanel } from '../notes/components/notes-panel'
 
 // Lazy load the heavy renderers
 const PdfRenderer = lazy(() => import('./pdf-renderer').then(m => ({ default: m.PdfRenderer })))
 const EpubRenderer = lazy(() => import('./epub-renderer').then(m => ({ default: m.EpubRenderer })))
 const LiquidPdfRenderer = lazy(() => import('./liquid-pdf-renderer').then(m => ({ default: m.LiquidPdfRenderer })))
 
+export interface PdfRendererHandle {
+    scrollToPage: (pageNumber: number) => void
+    scrollToChapter?: (chapterIndex: number, scrollPos?: number) => void
+}
+
 interface PdfViewProps {
     document: Document
+    documents?: Document[]
+    onOpenDocument?: (id: string) => void
     showSidebar?: boolean
     onToggleSidebar?: () => void
     showTabs?: boolean
@@ -30,6 +38,8 @@ function isEbook(url: string): boolean {
 
 export function PdfView({
     document: doc,
+    documents = [],
+    onOpenDocument,
     showSidebar,
     onToggleSidebar,
     showTabs,
@@ -38,6 +48,55 @@ export function PdfView({
 }: PdfViewProps) {
     const containerRef = useRef<HTMLDivElement>(null)
     const { theme } = useTheme()
+    const [localShowNotes, setLocalShowNotes] = useState(false)
+    const pdfRendererRef = useRef<PdfRendererHandle>(null)
+
+    const dispatchHighlight = useCallback((content: string) => {
+        const sendEvent = () => {
+            const event = new CustomEvent('add-note-content', {
+                detail: {
+                    documentId: doc.id,
+                    content,
+                    autoSend: true
+                }
+            })
+            window.dispatchEvent(event)
+        }
+
+        if (!localShowNotes) {
+            setLocalShowNotes(true)
+            // Wait for NotesPanel to mount. 100ms might be too short for some devices.
+            setTimeout(sendEvent, 400)
+        } else {
+            sendEvent()
+        }
+    }, [doc.id, localShowNotes])
+
+    const handleAddHighlight = (text: string, page: number) => {
+        const highlightMsg = `[Highlight: "${text}"](@page:${page})`
+        dispatchHighlight(highlightMsg)
+    }
+
+    const handleEpubHighlight = (text: string, chapter: number, scrollY: number) => {
+        const highlightMsg = `[Highlight: "${text}"](@chapter:${chapter}:${scrollY})`
+        dispatchHighlight(highlightMsg)
+    }
+
+    const handleHighlightClick = (ref: string) => {
+        if (ref.startsWith('page:')) {
+            const pageNum = parseInt(ref.split(':')[1])
+            if (pdfRendererRef.current) {
+                pdfRendererRef.current.scrollToPage(pageNum)
+            }
+        } else if (ref.startsWith('chapter:')) {
+            const parts = ref.split(':')
+            const chapterIdx = parseInt(parts[1])
+            const scrollY = parts[2] ? parseFloat(parts[2]) : undefined
+            if (pdfRendererRef.current?.scrollToChapter) {
+                pdfRendererRef.current.scrollToChapter(chapterIdx, scrollY)
+            }
+        }
+    }
     const url = doc.content || ''
     const isEbookFile = isEbook(url)
 
@@ -266,6 +325,17 @@ export function PdfView({
                     <Button
                         variant="ghost"
                         size="icon"
+                        onClick={() => setLocalShowNotes(!localShowNotes)}
+                        className={cn('h-8 w-8', localShowNotes && 'text-blue-500 bg-blue-500/10')}
+                        title={localShowNotes ? 'Hide Notes' : 'Show Notes'}
+                        aria-label="Toggle Notes"
+                    >
+                        <MessageSquare className="h-4 w-4" />
+                    </Button>
+
+                    <Button
+                        variant="ghost"
+                        size="icon"
                         onClick={toggleExpand}
                         className="h-8 w-8"
                         title={anyExpanded ? 'Restore' : 'Expand'}
@@ -276,61 +346,91 @@ export function PdfView({
                 </div>
             </div>
 
-            {/* Content — relative so the zoom overlay can be positioned inside */}
-            <div
-                ref={contentRef}
-                className="flex-1 min-h-0 relative group"
-                style={{ touchAction: 'pan-x pan-y pinch-zoom' }}
-            >
-                {!url ? (
-                    <div className="flex items-center justify-center h-full text-muted-foreground">
-                        <p className="text-sm">No file attached</p>
-                    </div>
-                ) : (
-                    <Suspense fallback={
-                        <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground animate-pulse">
-                            <Loader2 className="h-8 w-8 animate-spin opacity-20" />
-                            <p className="text-xs font-medium opacity-50">Initializing custom renderer...</p>
+            {/* Content & Notes Container */}
+            <div className="flex flex-row flex-1 min-h-0 relative">
+                <div
+                    ref={contentRef}
+                    className="flex-1 min-h-0 relative group"
+                    style={{ touchAction: 'pan-x pan-y pinch-zoom' }}
+                >
+                    {!url ? (
+                        <div className="flex items-center justify-center h-full text-muted-foreground">
+                            <p className="text-sm">No file attached</p>
                         </div>
-                    }>
-                        {isEbookFile ? (
-                            <EpubRenderer url={url} invertColors={isDark} scale={scale} isActivePane={isActivePane} />
-                        ) : isLiquidMode ? (
-                            <LiquidPdfRenderer url={url} invertColors={isDark} scale={scale} />
-                        ) : (
-                            <PdfRenderer url={url} invertColors={isDark} scale={scale} />
-                        )}
-                    </Suspense>
-                )}
+                    ) : (
+                        <Suspense fallback={
+                            <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground animate-pulse">
+                                <Loader2 className="h-8 w-8 animate-spin opacity-20" />
+                                <p className="text-xs font-medium opacity-50">Initializing custom renderer...</p>
+                            </div>
+                        }>
+                            {isEbookFile ? (
+                                <EpubRenderer
+                                    ref={pdfRendererRef}
+                                    url={url}
+                                    invertColors={isDark}
+                                    scale={scale}
+                                    isActivePane={isActivePane}
+                                    onAddHighlight={handleEpubHighlight}
+                                />
+                            ) : isLiquidMode ? (
+                                <LiquidPdfRenderer url={url} invertColors={isDark} scale={scale} />
+                            ) : (
+                                <PdfRenderer
+                                    ref={pdfRendererRef}
+                                    url={url}
+                                    invertColors={isDark}
+                                    scale={scale}
+                                    onAddHighlight={handleAddHighlight}
+                                />
+                            )}
+                        </Suspense>
+                    )}
 
-                {/* Zoom controls — floating footer, visible on hover */}
-                {url && (
-                    <div className="hidden md:block absolute bottom-4 left-1/2 -translate-x-1/2 z-20 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                        <div className="pointer-events-auto flex items-center gap-0.5 bg-background/90 backdrop-blur border border-border/40 rounded-full px-1 py-1 shadow-lg">
-                            <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={zoomOut}
-                                className="h-7 w-7 rounded-full"
-                                title="Zoom Out"
-                                aria-label="Zoom Out"
-                            >
-                                <span className="text-base font-light leading-none">−</span>
-                            </Button>
-                            <span className="text-[11px] font-mono w-12 text-center text-muted-foreground select-none">
-                                {Math.round(scale * 100)}%
-                            </span>
-                            <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={zoomIn}
-                                className="h-7 w-7 rounded-full"
-                                title="Zoom In"
-                                aria-label="Zoom In"
-                            >
-                                <span className="text-base font-light leading-none">+</span>
-                            </Button>
+                    {/* Zoom controls — floating footer, visible on hover */}
+                    {url && (
+                        <div className="hidden md:block absolute bottom-4 left-1/2 -translate-x-1/2 z-20 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                            <div className="pointer-events-auto flex items-center gap-0.5 bg-background/90 backdrop-blur border border-border/40 rounded-full px-1 py-1 shadow-lg">
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={zoomOut}
+                                    className="h-7 w-7 rounded-full"
+                                    title="Zoom Out"
+                                    aria-label="Zoom Out"
+                                >
+                                    <span className="text-base font-light leading-none">−</span>
+                                </Button>
+                                <span className="text-[11px] font-mono w-12 text-center text-muted-foreground select-none">
+                                    {Math.round(scale * 100)}%
+                                </span>
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={zoomIn}
+                                    className="h-7 w-7 rounded-full"
+                                    title="Zoom In"
+                                    aria-label="Zoom In"
+                                >
+                                    <span className="text-base font-light leading-none">+</span>
+                                </Button>
+                            </div>
                         </div>
+                    )}
+                </div>
+
+                {/* Local Notes Panel */}
+                {localShowNotes && (
+                    <div className="w-[300px] border-l border-border/50 bg-background shrink-0 flex flex-col animate-in slide-in-from-right duration-300">
+                        <NotesPanel
+                            documentId={doc.id}
+                            title={doc.title}
+                            documents={documents}
+                            onNavigate={(id) => onOpenDocument?.(id)}
+                            onHighlightClick={handleHighlightClick}
+                            className="h-full border-l-0"
+                            onClose={() => setLocalShowNotes(false)}
+                        />
                     </div>
                 )}
             </div>

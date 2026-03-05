@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Maximize2, MoreHorizontal, Copy, Trash2, Pencil, Check, X, Mic, Square, ChevronRight } from 'lucide-react';
+import { Send, Maximize2, MoreHorizontal, Copy, Trash2, Pencil, Check, X, Mic, Square, ChevronRight, Highlighter } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
 import { cn } from '../../../lib/utils/utils';
@@ -23,9 +23,10 @@ interface NotesPanelProps {
     onClose?: () => void;
     documents?: Document[];
     onNavigate?: (id: string) => void;
+    onHighlightClick?: (ref: string) => void;
 }
 
-export function NotesPanel({ documentId, title, className, onOpenAsTab, onClose, documents = [], onNavigate }: NotesPanelProps) {
+export function NotesPanel({ documentId, title, className, onOpenAsTab, onClose, documents = [], onNavigate, onHighlightClick }: NotesPanelProps) {
     const [messages, setMessages] = useState<Message[]>([]);
     const [newMessage, setNewMessage] = useState('');
     const [editingId, setEditingId] = useState<string | null>(null);
@@ -49,7 +50,10 @@ export function NotesPanel({ documentId, title, className, onOpenAsTab, onClose,
             const res = await fetch(`/api/messages${query}`);
             if (res.ok) {
                 const data = await res.json();
-                setMessages(data);
+                setMessages(prev => {
+                    const tempMessages = prev.filter(m => m.id.startsWith('temp-'));
+                    return [...data, ...tempMessages];
+                });
                 scrollToBottom();
             }
         } catch (error) {
@@ -61,6 +65,23 @@ export function NotesPanel({ documentId, title, className, onOpenAsTab, onClose,
 
     useEffect(() => {
         fetchMessages();
+    }, [documentId]);
+
+    useEffect(() => {
+        const handleAddContent = (e: any) => {
+            const { documentId: msgDocId, content, autoSend } = e.detail;
+
+            // Only process if the event is for THIS document
+            if (msgDocId && msgDocId !== documentId) return;
+
+            if (autoSend) {
+                handleSendMessage(undefined, content);
+            } else {
+                setNewMessage(content);
+            }
+        };
+        window.addEventListener('add-note-content', handleAddContent);
+        return () => window.removeEventListener('add-note-content', handleAddContent);
     }, [documentId]);
 
     const scrollToBottom = () => {
@@ -259,7 +280,47 @@ export function NotesPanel({ documentId, title, className, onOpenAsTab, onClose,
             parts.push(content.substring(lastIndex));
         }
 
-        return parts.length > 0 ? parts : content;
+        // Handle [Highlight: "text"](@ref)
+        const highlightRegex = /\[Highlight: "([^"]+)"\]\(([^)]+)\)/g;
+        const renderedParts: React.ReactNode[] = [];
+        lastIndex = 0;
+
+        // We need to process parts again or differently. 
+        // Simplest: if it's a string part, check for highlights.
+        return parts.map((part, i) => {
+            if (typeof part !== 'string') return part;
+
+            const subParts: React.ReactNode[] = [];
+            let subLastIndex = 0;
+            let subMatch;
+
+            while ((subMatch = highlightRegex.exec(part)) !== null) {
+                if (subMatch.index > subLastIndex) {
+                    subParts.push(part.substring(subLastIndex, subMatch.index));
+                }
+                const text = subMatch[1];
+                const ref = subMatch[2].startsWith('@') ? subMatch[2].substring(1) : subMatch[2];
+                subParts.push(
+                    <div
+                        key={subMatch.index}
+                        className="my-1 p-2 bg-primary/5 border-l-2 border-primary cursor-pointer hover:bg-primary/10 transition-colors"
+                        onClick={() => onHighlightClick?.(ref)}
+                    >
+                        <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1 flex items-center gap-1">
+                            <Highlighter className="h-3 w-3" />
+                            {ref.startsWith('page:') ? `Page ${ref.split(':')[1]}` :
+                                ref.startsWith('chapter:') ? `Chapter ${parseInt(ref.split(':')[1]) + 1}` : 'Ref'}
+                        </div>
+                        <div className="italic text-foreground/90 font-medium">"{text}"</div>
+                    </div>
+                );
+                subLastIndex = highlightRegex.lastIndex;
+            }
+            if (subLastIndex < part.length) {
+                subParts.push(part.substring(subLastIndex));
+            }
+            return subParts.length > 0 ? <React.Fragment key={i}>{subParts}</React.Fragment> : part;
+        });
     };
 
     return (

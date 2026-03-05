@@ -84,7 +84,14 @@ function TreeNode({ node, level, index, activeDocumentId, onSelectDocument, onCr
                             <FileText className="h-4 w-4 text-muted-foreground mr-1" />
                         )}
 
-                        <span className="truncate flex-1 text-sm min-w-0">{node.title || "Untitled"}</span>
+                        <span className="truncate flex-1 text-sm min-w-0">
+                            {node.title || "Untitled"}
+                            {hasChildren && node.children && (
+                                <span className="text-[11px] text-muted-foreground/60 font-mono ml-1.5 tabular-nums">
+                                    ({node.children.length})
+                                </span>
+                            )}
+                        </span>
 
                         <div className="absolute right-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 flex items-center shrink-0 pr-1">
                             <DropdownMenu>

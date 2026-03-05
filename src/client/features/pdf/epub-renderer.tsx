@@ -2,9 +2,10 @@
 
 import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react'
 import JSZip from 'jszip'
-import { Loader2, AlertCircle, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Loader2, AlertCircle, ChevronLeft, ChevronRight, Highlighter } from 'lucide-react'
 import { Button } from '../../components/ui/button'
 import { cn } from '../../lib/utils/utils'
+import { forwardRef, useImperativeHandle } from 'react'
 
 interface EpubRendererProps {
     url: string
@@ -12,6 +13,7 @@ interface EpubRendererProps {
     scale: number
     /** True when this pane is the currently focused pane in the workspace */
     isActivePane?: boolean
+    onAddHighlight?: (text: string, chapter: number, scrollPos: number) => void
 }
 
 interface EpubContent {
@@ -26,9 +28,20 @@ const SCROLL_POS_KEY = (url: string, index: number) => `epub-scroll:${url}:${ind
 // the EPUB ZIP on every panel move or remount.
 const epubContentCache = new Map<string, EpubContent>()
 
-export function EpubRenderer({ url, invertColors, scale, isActivePane = false }: EpubRendererProps) {
+export const EpubRenderer = forwardRef<any, EpubRendererProps>(({ url, invertColors, scale, isActivePane = false, onAddHighlight }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null)
     const iframeRef = useRef<HTMLIFrameElement>(null)
+    const [selection, setSelection] = useState<{ text: string, chapter: number, scrollY: number, rect: { top: number, left: number, width: number, height: number } } | null>(null)
+
+    useImperativeHandle(ref, () => ({
+        scrollToChapter: (chapterIndex: number, scrollY?: number) => {
+            setCurrentIndex(chapterIndex)
+            if (scrollY !== undefined) {
+                // If chapter changes, scroll restoration useEffect handles it if we set localStorage first
+                localStorage.setItem(SCROLL_POS_KEY(url, chapterIndex), String(scrollY))
+            }
+        }
+    }))
 
     // Tracks when the iframe has fully loaded its srcDoc
     const [iframeReady, setIframeReady] = useState(false)
@@ -143,6 +156,18 @@ export function EpubRenderer({ url, invertColors, scale, isActivePane = false }:
             if (e.data?.type === 'epub-scroll' && e.data.url === url) {
                 localStorage.setItem(SCROLL_POS_KEY(url, currentIndex), String(e.data.scrollY))
             }
+            if (e.data?.type === 'epub-selection' && e.data.url === url) {
+                if (e.data.text) {
+                    setSelection({
+                        text: e.data.text,
+                        chapter: currentIndex,
+                        scrollY: e.data.scrollY,
+                        rect: e.data.rect
+                    })
+                } else {
+                    setSelection(null)
+                }
+            }
         }
         window.addEventListener('message', handleMessage)
         return () => window.removeEventListener('message', handleMessage)
@@ -231,6 +256,36 @@ export function EpubRenderer({ url, invertColors, scale, isActivePane = false }:
                         }, '*');
                     }, 100);
                 });
+
+                window.addEventListener('mouseup', () => {
+                    const sel = window.getSelection();
+                    if (!sel || sel.isCollapsed) {
+                        window.parent.postMessage({ type: 'epub-selection', url: '${url}', text: null }, '*');
+                        return;
+                    }
+                    const text = sel.toString().trim();
+                    if (!text) {
+                        window.parent.postMessage({ type: 'epub-selection', url: '${url}', text: null }, '*');
+                        return;
+                    }
+                    const range = sel.getRangeAt(0);
+                    const rects = range.getClientRects();
+                    if (rects.length > 0) {
+                        const rect = rects[0];
+                        window.parent.postMessage({
+                            type: 'epub-selection',
+                            url: '${url}',
+                            text,
+                            scrollY: window.scrollY,
+                            rect: {
+                                top: rect.top,
+                                left: rect.left,
+                                width: rect.width,
+                                height: rect.height
+                            }
+                        }, '*');
+                    }
+                });
             </script>
         `
 
@@ -287,6 +342,32 @@ export function EpubRenderer({ url, invertColors, scale, isActivePane = false }:
                 onLoad={() => setIframeReady(true)}
             />
 
+            {/* Floating Highlight Button */}
+            {selection && iframeRef.current && (
+                <div
+                    className="fixed z-[100] animate-in fade-in zoom-in-95 duration-200"
+                    style={{
+                        top: (iframeRef.current.getBoundingClientRect().top + selection.rect.top) - 40,
+                        left: (iframeRef.current.getBoundingClientRect().left + selection.rect.left) + selection.rect.width / 2,
+                        transform: 'translateX(-50%)'
+                    }}
+                >
+                    <Button
+                        size="sm"
+                        className="h-8 gap-2 shadow-xl bg-primary text-primary-foreground hover:bg-primary/90"
+                        onClick={(e) => {
+                            e.stopPropagation()
+                            onAddHighlight?.(selection.text, selection.chapter, selection.scrollY)
+                            setSelection(null)
+                            // We can't easily clear iframe selection from here, but hiding the button is enough
+                        }}
+                    >
+                        <Highlighter className="h-4 w-4" />
+                        <span>Highlight</span>
+                    </Button>
+                </div>
+            )}
+
             {/* Navigation */}
             <div className="h-14 border-t border-border/40 flex items-center justify-between px-6 bg-muted/20 shrink-0">
                 <Button
@@ -317,4 +398,6 @@ export function EpubRenderer({ url, invertColors, scale, isActivePane = false }:
             </div>
         </div>
     )
-}
+})
+
+EpubRenderer.displayName = 'EpubRenderer'

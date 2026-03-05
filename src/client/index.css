@@ -149,3 +149,30 @@
 * {
   transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease;
 }
+
+/* Fix PDF text selection dropping between words by expanding the internal endOfContent node */
+.textLayer .endOfContent {
+  top: 0 !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  z-index: -1 !important;
+  cursor: text !important;
+}
+
+.textLayer ::selection {
+  background: rgba(0, 0, 255, 0.2);
+}
+
+.dark .textLayer ::selection {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* Continuous Drag Selection Fixes */
+.textLayer {
+  pointer-events: auto !important;
+}
+
+.group\/pdf canvas {
+  pointer-events: none !important;
+}
