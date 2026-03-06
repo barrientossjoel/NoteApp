@@ -47,7 +47,8 @@ interface CanvasNode {
     points?: {
         start: { x: number, y: number }
         end: { x: number, y: number }
-        control?: { x: number, y: number }
+        control?: { x: number, y: number } // treated as cp1
+        control2?: { x: number, y: number } // new cp2
     }
     groupId?: string
 }
@@ -328,11 +329,23 @@ export function CanvasView({
     const [selectionCandidates, setSelectionCandidates] = useState<Set<string>>(new Set())
     const [preDragOrder, setPreDragOrder] = useState<string[] | null>(null)
 
-    // Arrow Creation State
     const [isCreatingArrow, setIsCreatingArrow] = useState(false)
     const [arrowStart, setArrowStart] = useState<{ x: number, y: number } | null>(null)
+    const [arrowStartNodeId, setArrowStartNodeId] = useState<string | null>(null)
+    const [arrowStartSide, setArrowStartSide] = useState<string | null>(null)
     const [arrowEndPreview, setArrowEndPreview] = useState<{ x: number, y: number } | null>(null)
-    const [draggedHandle, setDraggedHandle] = useState<{ nodeId: string, type: 'start' | 'control' | 'end', offsetX: number, offsetY: number, initialPoints?: { start: { x: number, y: number }, end: { x: number, y: number }, control: { x: number, y: number } } } | null>(null)
+    const [draggedHandle, setDraggedHandle] = useState<{
+        nodeId: string,
+        type: 'start' | 'control' | 'control2' | 'end',
+        offsetX: number,
+        offsetY: number,
+        initialPoints?: {
+            start: { x: number, y: number },
+            end: { x: number, y: number },
+            control?: { x: number, y: number },
+            control2?: { x: number, y: number }
+        }
+    } | null>(null)
     const [snapTargetId, setSnapTargetId] = useState<string | null>(null)
     const [hasMoved, setHasMoved] = useState(false)
     const [editingId, setEditingId] = useState<string | null>(null)
@@ -340,6 +353,7 @@ export function CanvasView({
     const [editingCaretOffset, setEditingCaretOffset] = useState<number>(0)
     const [focusTarget, setFocusTarget] = useState<'title' | 'content' | null>(null)
     const [localShowNotes, setLocalShowNotes] = useState(false)
+    const dragStartPosition = useRef<{ x: number, y: number } | null>(null)
 
 
 
@@ -693,15 +707,69 @@ export function CanvasView({
         return currentNodes.filter(n => n.groupId === node.groupId).map(n => n.id)
     }
 
+    const calculateBezierControls = (start: { x: number, y: number }, end: { x: number, y: number }, startSide?: string | null, endSide?: string | null) => {
+        const dx = end.x - start.x
+        const dy = end.y - start.y
+        const dist = Math.sqrt(dx * dx + dy * dy)
+        const offset = Math.min(dist * 0.5, 100)
+
+        let cp1 = { x: start.x + dx * 0.25, y: start.y + dy * 0.25 }
+        let cp2 = { x: start.x + dx * 0.75, y: start.y + dy * 0.75 }
+
+        // Default heuristic if sides are unknown
+        if (!startSide && !endSide) {
+            if (Math.abs(dx) > Math.abs(dy)) {
+                cp1 = { x: start.x + dx * 0.5, y: start.y }
+                cp2 = { x: end.x - dx * 0.5, y: end.y }
+            } else {
+                cp1 = { x: start.x, y: start.y + dy * 0.5 }
+                cp2 = { x: end.x, y: end.y - dy * 0.5 }
+            }
+        }
+
+        if (startSide === 'right') cp1 = { x: start.x + offset, y: start.y }
+        if (startSide === 'left') cp1 = { x: start.x - offset, y: start.y }
+        if (startSide === 'top') cp1 = { x: start.x, y: start.y - offset }
+        if (startSide === 'bottom') cp1 = { x: start.x, y: start.y + offset }
+
+        if (endSide === 'right') cp2 = { x: end.x + offset, y: end.y }
+        if (endSide === 'left') cp2 = { x: end.x - offset, y: end.y }
+        if (endSide === 'top') cp2 = { x: end.x, y: end.y - offset }
+        if (endSide === 'bottom') cp2 = { x: end.x, y: end.y + offset }
+
+        // If only one side is known, make the other follow a logical flow
+        if (startSide && !endSide) {
+            if (startSide === 'left' || startSide === 'right') {
+                cp2 = { x: end.x - (startSide === 'right' ? offset : -offset), y: end.y }
+            } else {
+                cp2 = { x: end.x, y: end.y - (startSide === 'bottom' ? offset : -offset) }
+            }
+        }
+
+        return { cp1, cp2 }
+    }
+
     const getArrowMidpoint = (node: CanvasNode) => {
         if (!node.points) return { x: 0, y: 0 }
-        const { start, end, control } = node.points
+        const { start, end, control, control2 } = node.points
         const sx = start.x - node.x
         const sy = start.y - node.y
         const ex = end.x - node.x
         const ey = end.y - node.y
 
-        if (control) {
+        // If we have Cubic Bezier (both control points)
+        if (control && control2) {
+            const c1x = control.x - node.x
+            const c1y = control.y - node.y
+            const c2x = control2.x - node.x
+            const c2y = control2.y - node.y
+            const t = 0.5
+            // B(t) = (1-t)³P0 + 3(1-t)²tP1 + 3(1-t)t²P2 + t³P3
+            const x = Math.pow(1 - t, 3) * sx + 3 * Math.pow(1 - t, 2) * t * c1x + 3 * (1 - t) * Math.pow(t, 2) * c2x + Math.pow(t, 3) * ex
+            const y = Math.pow(1 - t, 3) * sy + 3 * Math.pow(1 - t, 2) * t * c1y + 3 * (1 - t) * Math.pow(t, 2) * c2y + Math.pow(t, 3) * ey
+            return { x, y }
+        } else if (control) {
+            // Fallback for Quadratic
             const cx = control.x - node.x
             const cy = control.y - node.y
             const t = 0.5
@@ -808,6 +876,7 @@ export function CanvasView({
             x: mouseCanvasX - node.x,
             y: mouseCanvasY - node.y
         })
+        dragStartPosition.current = { x: e.clientX, y: e.clientY }
     }
 
     const handleZoom = (delta: number) => {
@@ -843,6 +912,7 @@ export function CanvasView({
                 setArrowStart({ x: mouseX, y: mouseY })
             } else {
                 // Finish arrow
+                const controls = calculateBezierControls(arrowStart, { x: mouseX, y: mouseY }, arrowStartSide)
                 const newNode: CanvasNode = {
                     id: Math.random().toString(36).substring(7),
                     type: 'arrow',
@@ -854,14 +924,14 @@ export function CanvasView({
                     points: {
                         start: arrowStart,
                         end: { x: mouseX, y: mouseY },
-                        control: {
-                            x: arrowStart.x + (mouseX - arrowStart.x) / 2,
-                            y: arrowStart.y + (mouseY - arrowStart.y) / 2
-                        }
+                        control: controls.cp1,
+                        control2: controls.cp2
                     }
                 }
-                setNodes(prev => [...prev, newNode])
+                setNodes((prev: CanvasNode[]) => [...prev, newNode])
                 setArrowStart(null)
+                setArrowStartNodeId(null)
+                setArrowStartSide(null)
                 setArrowEndPreview(null)
                 setIsCreatingArrow(false)
                 setSelection(new Set([newNode.id]))
@@ -1074,8 +1144,8 @@ export function CanvasView({
                     }
 
                     const vc = {
-                        x: initial.control.x - oldCenter.x,
-                        y: initial.control.y - oldCenter.y
+                        x: initial.control!.x - oldCenter.x,
+                        y: initial.control!.y - oldCenter.y
                     }
 
                     const vOld = {
@@ -1100,6 +1170,21 @@ export function CanvasView({
                     newPoints.control = {
                         x: newCenter.x + vcRotated.x,
                         y: newCenter.y + vcRotated.y
+                    }
+
+                    if (newPoints.control2) {
+                        const vc2 = {
+                            x: initial.control2!.x - oldCenter.x,
+                            y: initial.control2!.y - oldCenter.y
+                        }
+                        const vc2Rotated = {
+                            x: vc2.x * cos - vc2.y * sin,
+                            y: vc2.x * sin + vc2.y * cos
+                        }
+                        newPoints.control2 = {
+                            x: newCenter.x + vc2Rotated.x,
+                            y: newCenter.y + vc2Rotated.y
+                        }
                     }
 
                     return {
@@ -1130,8 +1215,8 @@ export function CanvasView({
                     }
 
                     const vc = {
-                        x: initial.control.x - oldCenter.x,
-                        y: initial.control.y - oldCenter.y
+                        x: initial.control!.x - oldCenter.x,
+                        y: initial.control!.y - oldCenter.y
                     }
 
                     const vOld = {
@@ -1158,6 +1243,21 @@ export function CanvasView({
                         y: newCenter.y + vcRotated.y
                     }
 
+                    if (newPoints.control2) {
+                        const vc2 = {
+                            x: initial.control2!.x - oldCenter.x,
+                            y: initial.control2!.y - oldCenter.y
+                        }
+                        const vc2Rotated = {
+                            x: vc2.x * cos - vc2.y * sin,
+                            y: vc2.x * sin + vc2.y * cos
+                        }
+                        newPoints.control2 = {
+                            x: newCenter.x + vc2Rotated.x,
+                            y: newCenter.y + vc2Rotated.y
+                        }
+                    }
+
                     return {
                         ...n,
                         endNodeId: currentSnapNodeId || undefined,
@@ -1166,12 +1266,14 @@ export function CanvasView({
                     }
                 } else if (draggedHandle.type === 'control') {
                     newPoints.control = { x: targetX, y: targetY }
+                } else if (draggedHandle.type === 'control2') {
+                    newPoints.control2 = { x: targetX, y: targetY }
                 }
 
-                const minX = Math.min(newPoints.start.x, newPoints.end.x, newPoints.control.x)
-                const minY = Math.min(newPoints.start.y, newPoints.end.y, newPoints.control.y)
-                const maxX = Math.max(newPoints.start.x, newPoints.end.x, newPoints.control.x)
-                const maxY = Math.max(newPoints.start.y, newPoints.end.y, newPoints.control.y)
+                const minX = Math.min(newPoints.start.x, newPoints.end.x, newPoints.control?.x ?? newPoints.start.x, newPoints.control2?.x ?? newPoints.start.x)
+                const minY = Math.min(newPoints.start.y, newPoints.end.y, newPoints.control?.y ?? newPoints.start.y, newPoints.control2?.y ?? newPoints.start.y)
+                const maxX = Math.max(newPoints.start.x, newPoints.end.x, newPoints.control?.x ?? newPoints.end.x, newPoints.control2?.x ?? newPoints.end.x)
+                const maxY = Math.max(newPoints.start.y, newPoints.end.y, newPoints.control?.y ?? newPoints.end.y, newPoints.control2?.y ?? newPoints.end.y)
 
                 return {
                     ...n,
@@ -1218,7 +1320,8 @@ export function CanvasView({
                             const newPoints = {
                                 start: { x: n.points.start.x + dx, y: n.points.start.y + dy },
                                 end: { x: n.points.end.x + dx, y: n.points.end.y + dy },
-                                control: n.points.control ? { x: n.points.control.x + dx, y: n.points.control.y + dy } : undefined
+                                control: n.points.control ? { x: n.points.control.x + dx, y: n.points.control.y + dy } : undefined,
+                                control2: n.points.control2 ? { x: n.points.control2.x + dx, y: n.points.control2.y + dy } : undefined
                             }
                             return { ...n, x: newX, y: newY, points: newPoints as any }
                         }
@@ -1254,14 +1357,17 @@ export function CanvasView({
                                 // Actually, existing logic moved it.
                                 if (selection.has(n.startNodeId!) && selection.has(n.endNodeId!)) {
                                     newPoints.control = { x: newPoints.control.x + dx, y: newPoints.control.y + dy }
+                                    if (newPoints.control2) {
+                                        newPoints.control2 = { x: newPoints.control2.x + dx, y: newPoints.control2.y + dy }
+                                    }
                                 }
                             }
 
                             // Recalc bounding box
-                            const minX = Math.min(newPoints.start.x, newPoints.end.x, newPoints.control?.x ?? newPoints.start.x)
-                            const minY = Math.min(newPoints.start.y, newPoints.end.y, newPoints.control?.y ?? newPoints.start.y)
-                            const maxX = Math.max(newPoints.start.x, newPoints.end.x, newPoints.control?.x ?? newPoints.end.x)
-                            const maxY = Math.max(newPoints.start.y, newPoints.end.y, newPoints.control?.y ?? newPoints.end.y)
+                            const minX = Math.min(newPoints.start.x, newPoints.end.x, newPoints.control?.x ?? newPoints.start.x, newPoints.control2?.x ?? newPoints.start.x)
+                            const minY = Math.min(newPoints.start.y, newPoints.end.y, newPoints.control?.y ?? newPoints.start.y, newPoints.control2?.y ?? newPoints.start.y)
+                            const maxX = Math.max(newPoints.start.x, newPoints.end.x, newPoints.control?.x ?? newPoints.end.x, newPoints.control2?.x ?? newPoints.end.x)
+                            const maxY = Math.max(newPoints.start.y, newPoints.end.y, newPoints.control?.y ?? newPoints.end.y, newPoints.control2?.y ?? newPoints.end.y)
 
                             return { ...n, x: minX, y: minY, width: maxX - minX, height: maxY - minY, points: newPoints }
                         }
@@ -1339,6 +1445,45 @@ export function CanvasView({
     }
 
     const handleMouseUp = (e: React.MouseEvent) => {
+        // Handle drag-and-drop arrow creation from anchors to empty space
+        if (isCreatingArrow && arrowStart && arrowStartNodeId) {
+            const rect = containerRef.current?.getBoundingClientRect()
+            if (rect) {
+                const mouseX = (e.clientX - rect.left - camera.x) / camera.zoom
+                const mouseY = (e.clientY - rect.top - camera.y) / camera.zoom
+
+                // Only create if we actually dragged a bit, to prevent creating tiny arrows
+                const dist = Math.sqrt(Math.pow(mouseX - arrowStart.x, 2) + Math.pow(mouseY - arrowStart.y, 2))
+                if (dist > 10) {
+                    const controls = calculateBezierControls(arrowStart, { x: mouseX, y: mouseY }, arrowStartSide)
+                    const newNode: CanvasNode = {
+                        id: Math.random().toString(36).substring(7),
+                        type: 'arrow',
+                        x: Math.min(arrowStart.x, mouseX),
+                        y: Math.min(arrowStart.y, mouseY),
+                        width: Math.abs(mouseX - arrowStart.x),
+                        height: Math.abs(mouseY - arrowStart.y),
+                        content: '',
+                        startNodeId: arrowStartNodeId,
+                        points: {
+                            start: arrowStart,
+                            end: { x: mouseX, y: mouseY },
+                            control: controls.cp1,
+                            control2: controls.cp2
+                        }
+                    }
+                    setNodes((prev: CanvasNode[]) => [...prev, newNode])
+                    setSelection(new Set([newNode.id]))
+                }
+            }
+            setArrowStart(null)
+            setArrowStartNodeId(null)
+            setArrowStartSide(null)
+            setArrowEndPreview(null)
+            setIsCreatingArrow(false)
+            return
+        }
+
         if (hasMoved) {
             // Restore original z-order for multi-selection drags
             if (preDragOrder && selection.size > 1) {
@@ -1415,7 +1560,7 @@ export function CanvasView({
                 height: 200,
                 content: imageUrlInput
             }
-            setNodes(prev => [...prev, newNode])
+            setNodes((prev: CanvasNode[]) => [...prev, newNode])
             setSelection(new Set([newNode.id]))
         } else if (modalMode === 'edit' && pendingNodeId) {
             updateNodeContent(pendingNodeId, imageUrlInput)
@@ -1436,12 +1581,12 @@ export function CanvasView({
             height: 150,
             content: ''
         }
-        setNodes(prev => [...prev, newNode])
+        setNodes((prev: CanvasNode[]) => [...prev, newNode])
         setSelection(new Set([newNode.id]))
     }
 
     const updateNodeContent = (id: string, content: string) => {
-        setNodes(prev => prev.map(n => n.id === id ? { ...n, content } : n))
+        setNodes((prev: CanvasNode[]) => prev.map((n: CanvasNode) => n.id === id ? { ...n, content } : n))
     }
 
     const addTable = () => {
@@ -1638,7 +1783,17 @@ export function CanvasView({
                             onTouchEnd={clearTouchTimer}
                             onClick={(e) => {
                                 e.stopPropagation()
-                                if (selection.has(node.id) && selection.size === 1 && !hasMoved && editingId !== node.id && node.type === 'document') {
+                                if (!e.shiftKey && selection.size <= 1) {
+                                    setSelection(new Set([node.id]))
+                                }
+                            }}
+                            onDoubleClick={(e) => {
+                                e.stopPropagation()
+                                const dragDistance = dragStartPosition.current
+                                    ? Math.sqrt(Math.pow(e.clientX - dragStartPosition.current.x, 2) + Math.pow(e.clientY - dragStartPosition.current.y, 2))
+                                    : 0;
+
+                                if (selection.has(node.id) && selection.size === 1 && dragDistance < 5 && editingId !== node.id && node.type === 'document') {
                                     // Identify if Title or Content area was clicked
                                     const target = e.target as HTMLElement;
                                     const field = target.closest('[data-field]')?.getAttribute('data-field') as 'title' | 'content' | null;
@@ -1662,10 +1817,6 @@ export function CanvasView({
                                         setDoubleClickPos({ x: e.clientX, y: e.clientY })
                                         setEditingCaretOffset(0)
                                     }
-                                } else {
-                                    if (!e.shiftKey && selection.size <= 1) {
-                                        setSelection(new Set([node.id]))
-                                    }
                                 }
                             }}
                         >
@@ -1679,7 +1830,16 @@ export function CanvasView({
                                         "focus:cursor-text"
                                     )}
                                     value={node.content}
-                                    onChange={(e) => updateNodeContent(node.id, e.target.value)}
+                                    onChange={(e) => {
+                                        updateNodeContent(node.id, e.target.value)
+                                        // Auto-resize height logic
+                                        const el = e.target;
+                                        el.style.height = 'auto';
+                                        const newHeight = Math.max(node.height, el.scrollHeight);
+                                        if (newHeight > node.height) {
+                                            setNodes(prev => prev.map(n => n.id === node.id ? { ...n, height: newHeight } : n));
+                                        }
+                                    }}
                                     onMouseDown={(e) => {
                                         e.stopPropagation()
                                         if (e.button !== 0) return
@@ -1691,8 +1851,12 @@ export function CanvasView({
                                         e.preventDefault()
                                         handleNodeMouseDown(e, node)
                                     }}
-                                    onMouseUp={(e) => {
-                                        if (!hasMoved && document.activeElement !== e.currentTarget) {
+                                    onDoubleClick={(e) => {
+                                        const dragDistance = dragStartPosition.current
+                                            ? Math.sqrt(Math.pow(e.clientX - dragStartPosition.current.x, 2) + Math.pow(e.clientY - dragStartPosition.current.y, 2))
+                                            : 0;
+
+                                        if (dragDistance < 5 && document.activeElement !== e.currentTarget) {
                                             (e.currentTarget as HTMLTextAreaElement).focus()
                                         }
                                     }}
@@ -1914,9 +2078,9 @@ export function CanvasView({
                                                 </defs>
                                                 {/* Hit area for easier selection/dragging */}
                                                 <path
-                                                    d={`M ${node.points?.start.x ? node.points.start.x - node.x : 0} ${node.points?.start.y ? node.points.start.y - node.y : 0} Q ${node.points?.control?.x ? node.points.control.x - node.x : ((node.points?.start.x || 0) + (node.points?.end.x || node.width)) / 2 - node.x} ${node.points?.control?.y ? node.points.control.y - node.y : ((node.points?.start.y || 0) + (node.points?.end.y || node.height)) / 2 - node.y} ${node.points?.end.x ? node.points.end.x - node.x : node.width} ${node.points?.end.y ? node.points.end.y - node.y : node.height}`}
+                                                    d={`M ${node.points?.start.x ? node.points.start.x - node.x : 0} ${node.points?.start.y ? node.points.start.y - node.y : 0} C ${node.points?.control?.x ? node.points.control.x - node.x : ((node.points?.start.x || 0) + (node.points?.end.x || node.width)) / 3 - node.x} ${node.points?.control?.y ? node.points.control.y - node.y : ((node.points?.start.y || 0) + (node.points?.end.y || node.height)) / 3 - node.y}, ${node.points?.control2?.x ? node.points.control2.x - node.x : (((node.points?.start.x || 0) + (node.points?.end.x || node.width)) * 2) / 3 - node.x} ${node.points?.control2?.y ? node.points.control2.y - node.y : (((node.points?.start.y || 0) + (node.points?.end.y || node.height)) * 2) / 3 - node.y}, ${node.points?.end.x ? node.points.end.x - node.x : node.width} ${node.points?.end.y ? node.points.end.y - node.y : node.height}`}
                                                     stroke="transparent"
-                                                    strokeWidth="20"
+                                                    strokeWidth="12"
                                                     fill="none"
                                                     className="cursor-pointer pointer-events-auto"
                                                     onMouseDown={(e) => handleNodeMouseDown(e, node)}
@@ -1930,7 +2094,7 @@ export function CanvasView({
                                                 />
                                                 {/* Visible Curved Arrow Line */}
                                                 <path
-                                                    d={`M ${node.points?.start.x ? node.points.start.x - node.x : 0} ${node.points?.start.y ? node.points.start.y - node.y : 0} Q ${node.points?.control?.x ? node.points.control.x - node.x : ((node.points?.start.x || 0) + (node.points?.end.x || node.width)) / 2 - node.x} ${node.points?.control?.y ? node.points.control.y - node.y : ((node.points?.start.y || 0) + (node.points?.end.y || node.height)) / 2 - node.y} ${node.points?.end.x ? node.points.end.x - node.x : node.width} ${node.points?.end.y ? node.points.end.y - node.y : node.height}`}
+                                                    d={`M ${node.points?.start.x ? node.points.start.x - node.x : 0} ${node.points?.start.y ? node.points.start.y - node.y : 0} C ${node.points?.control?.x ? node.points.control.x - node.x : ((node.points?.start.x || 0) + (node.points?.end.x || node.width)) / 3 - node.x} ${node.points?.control?.y ? node.points.control.y - node.y : ((node.points?.start.y || 0) + (node.points?.end.y || node.height)) / 3 - node.y}, ${node.points?.control2?.x ? node.points.control2.x - node.x : (((node.points?.start.x || 0) + (node.points?.end.x || node.width)) * 2) / 3 - node.x} ${node.points?.control2?.y ? node.points.control2.y - node.y : (((node.points?.start.y || 0) + (node.points?.end.y || node.height)) * 2) / 3 - node.y}, ${node.points?.end.x ? node.points.end.x - node.x : node.width} ${node.points?.end.y ? node.points.end.y - node.y : node.height}`}
                                                     stroke="currentColor"
                                                     strokeWidth="2"
                                                     strokeLinecap="round"
@@ -1978,10 +2142,10 @@ export function CanvasView({
                                                                 })
                                                             }}
                                                         />
-                                                        {/* Control Handle */}
+                                                        {/* Control 1 Handle */}
                                                         <circle
-                                                            cx={node.points?.control?.x ? node.points.control.x - node.x : ((node.points?.start.x || 0) + (node.points?.end.x || node.width)) / 2 - node.x}
-                                                            cy={node.points?.control?.y ? node.points.control.y - node.y : ((node.points?.start.y || 0) + (node.points?.end.y || node.height)) / 2 - node.y}
+                                                            cx={node.points?.control?.x ? node.points.control.x - node.x : ((node.points?.start.x || 0) + (node.points?.end.x || node.width)) / 3 - node.x}
+                                                            cy={node.points?.control?.y ? node.points.control.y - node.y : ((node.points?.start.y || 0) + (node.points?.end.y || node.height)) / 3 - node.y}
                                                             r="4"
                                                             className="fill-background stroke-primary stroke-2 cursor-grab active:cursor-grabbing pointer-events-auto hover:scale-125 transition-transform opacity-50 hover:opacity-100"
                                                             style={{ transformBox: 'fill-box', transformOrigin: 'center' }}
@@ -1991,14 +2155,38 @@ export function CanvasView({
                                                                 if (!rect) return
                                                                 const mouseX = (e.clientX - rect.left - camera.x) / camera.zoom
                                                                 const mouseY = (e.clientY - rect.top - camera.y) / camera.zoom
-                                                                const px = node.points?.control?.x ?? ((node.points?.start.x || 0) + (node.points?.end.x || 0)) / 2
-                                                                const py = node.points?.control?.y ?? ((node.points?.start.y || 0) + (node.points?.end.y || 0)) / 2
+                                                                const px = node.points?.control?.x ?? ((node.points?.start.x || 0) * 2 + (node.points?.end.x || 0)) / 3
+                                                                const py = node.points?.control?.y ?? ((node.points?.start.y || 0) * 2 + (node.points?.end.y || 0)) / 3
                                                                 setDraggedHandle({
                                                                     nodeId: node.id,
                                                                     type: 'control',
                                                                     offsetX: mouseX - px,
                                                                     offsetY: mouseY - py,
-                                                                    initialPoints: node.points ? { ...node.points, control: node.points.control || { x: (node.points.start.x + node.points.end.x) / 2, y: (node.points.start.y + node.points.end.y) / 2 } } : undefined
+                                                                    initialPoints: node.points ? { ...node.points, control: node.points.control || { x: px, y: py }, control2: node.points.control2 || { x: ((node.points.start.x + node.points.end.x) * 2) / 3, y: ((node.points.start.y + node.points.end.y) * 2) / 3 } } : undefined
+                                                                })
+                                                            }}
+                                                        />
+                                                        {/* Control 2 Handle */}
+                                                        <circle
+                                                            cx={node.points?.control2?.x ? node.points.control2.x - node.x : (((node.points?.start.x || 0) + (node.points?.end.x || node.width)) * 2) / 3 - node.x}
+                                                            cy={node.points?.control2?.y ? node.points.control2.y - node.y : (((node.points?.start.y || 0) + (node.points?.end.y || node.height)) * 2) / 3 - node.y}
+                                                            r="4"
+                                                            className="fill-background stroke-primary stroke-2 cursor-grab active:cursor-grabbing pointer-events-auto hover:scale-125 transition-transform opacity-50 hover:opacity-100"
+                                                            style={{ transformBox: 'fill-box', transformOrigin: 'center' }}
+                                                            onMouseDown={(e) => {
+                                                                e.stopPropagation()
+                                                                const rect = containerRef.current?.getBoundingClientRect()
+                                                                if (!rect) return
+                                                                const mouseX = (e.clientX - rect.left - camera.x) / camera.zoom
+                                                                const mouseY = (e.clientY - rect.top - camera.y) / camera.zoom
+                                                                const px = node.points?.control2?.x ?? ((node.points?.start.x || 0) + (node.points?.end.x || 0) * 2) / 3
+                                                                const py = node.points?.control2?.y ?? ((node.points?.start.y || 0) + (node.points?.end.y || 0) * 2) / 3
+                                                                setDraggedHandle({
+                                                                    nodeId: node.id,
+                                                                    type: 'control2',
+                                                                    offsetX: mouseX - px,
+                                                                    offsetY: mouseY - py,
+                                                                    initialPoints: node.points ? { ...node.points, control: node.points.control || { x: ((node.points.start.x + node.points.end.x)) / 3, y: ((node.points.start.y + node.points.end.y)) / 3 }, control2: node.points.control2 || { x: px, y: py } } : undefined
                                                                 })
                                                             }}
                                                         />
@@ -2157,6 +2345,81 @@ export function CanvasView({
                                     }}
                                 >
                                     <div className="w-1.5 h-1.5 border-r-2 border-b-2 border-muted-foreground/40 group-hover/resize:border-primary transition-colors mb-1 mr-1" />
+                                </div>
+                            )}
+
+                            {/* Connection Anchors - Show when selected or hovered */}
+                            {((selection.has(node.id) && selection.size === 1) || isCreatingArrow) && node.type !== 'arrow' && (
+                                <div className={cn(
+                                    "absolute inset-0 pointer-events-none overflow-visible transition-opacity duration-200",
+                                    (selection.has(node.id) && selection.size === 1) ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                                )}>
+                                    {[
+                                        { side: 'top', x: '50%', y: '0%', icon: Plus },
+                                        { side: 'right', x: '100%', y: '50%', icon: Plus },
+                                        { side: 'bottom', x: '50%', y: '100%', icon: Plus },
+                                        { side: 'left', x: '0%', y: '50%', icon: Plus }
+                                    ].map((anchor) => (
+                                        <div
+                                            key={anchor.side}
+                                            className="absolute w-4 h-4 bg-background border border-primary rounded-full flex items-center justify-center cursor-crosshair pointer-events-auto hover:scale-125 transition-transform z-[160] shadow-sm"
+                                            style={{
+                                                left: anchor.x,
+                                                top: anchor.y,
+                                                transform: 'translate(-50%, -50%)'
+                                            }}
+                                            onMouseDown={(e) => {
+                                                e.stopPropagation()
+                                                e.preventDefault()
+                                                const rect = containerRef.current?.getBoundingClientRect()
+                                                if (!rect) return
+                                                const startX = (e.clientX - rect.left - camera.x) / camera.zoom
+                                                const startY = (e.clientY - rect.top - camera.y) / camera.zoom
+                                                setArrowStart({ x: startX, y: startY })
+                                                setArrowStartNodeId(node.id)
+                                                setArrowStartSide(anchor.side)
+                                                setIsCreatingArrow(true)
+                                            }}
+                                            onMouseUp={(e) => {
+                                                if (isCreatingArrow && arrowStart && arrowStartNodeId) {
+                                                    e.stopPropagation()
+                                                    e.preventDefault()
+                                                    const rect = containerRef.current?.getBoundingClientRect()
+                                                    if (!rect) return
+                                                    const endX = (e.clientX - rect.left - camera.x) / camera.zoom
+                                                    const endY = (e.clientY - rect.top - camera.y) / camera.zoom
+
+                                                    const controls = calculateBezierControls(arrowStart, { x: endX, y: endY }, arrowStartSide, anchor.side)
+                                                    const newNode: CanvasNode = {
+                                                        id: Math.random().toString(36).substring(7),
+                                                        type: 'arrow',
+                                                        x: Math.min(arrowStart.x, endX),
+                                                        y: Math.min(arrowStart.y, endY),
+                                                        width: Math.abs(endX - arrowStart.x),
+                                                        height: Math.abs(endY - arrowStart.y),
+                                                        content: '',
+                                                        startNodeId: arrowStartNodeId,
+                                                        endNodeId: node.id,
+                                                        points: {
+                                                            start: arrowStart,
+                                                            end: { x: endX, y: endY },
+                                                            control: controls.cp1,
+                                                            control2: controls.cp2
+                                                        }
+                                                    }
+                                                    setNodes((prev: CanvasNode[]) => [...prev, newNode])
+                                                    setArrowStart(null)
+                                                    setArrowStartNodeId(null)
+                                                    setArrowStartSide(null)
+                                                    setArrowEndPreview(null)
+                                                    setIsCreatingArrow(false)
+                                                    setSelection(new Set([newNode.id]))
+                                                }
+                                            }}
+                                        >
+                                            <Plus className="w-2 h-2 text-primary" />
+                                        </div>
+                                    ))}
                                 </div>
                             )}
                         </div>
