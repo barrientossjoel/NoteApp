@@ -3,6 +3,7 @@ import NotesApp from './client/features/notes/components/notes-app';
 import { ErrorBoundary } from './client/components/error-boundary';
 import { ThemeProvider } from './client/components/theme-provider';
 import { AuthProvider, useAuth } from './client/context/AuthContext';
+import { LanguageProvider } from './client/context/LanguageContext';
 import Login from './client/pages/Login';
 import Register from './client/pages/Register';
 
@@ -47,11 +48,13 @@ function MainRouter() {
 function App() {
   return (
     <ThemeProvider defaultTheme="system" storageKey="note-app-theme">
-      <ErrorBoundary>
-        <AuthProvider>
-          <MainRouter />
-        </AuthProvider>
-      </ErrorBoundary>
+      <LanguageProvider>
+        <ErrorBoundary>
+          <AuthProvider>
+            <MainRouter />
+          </AuthProvider>
+        </ErrorBoundary>
+      </LanguageProvider>
     </ThemeProvider>
   );
 }

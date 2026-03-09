@@ -16,6 +16,7 @@ import {
 import { WorkspaceSwitcher } from './workspace-switcher'
 import { RenameDialog } from '../../components/ui/rename-dialog'
 import type { Document, WorkspaceRecord } from "../../../core/types/notes"
+import { useLanguage } from '../../context/LanguageContext'
 
 export type SidebarView = "search" | "calendar" | "trash" | string // string = documentId
 
@@ -60,6 +61,7 @@ export function Sidebar({
   onCloseMobile,
   onOpenSettings,
 }: SidebarProps) {
+  const { t } = useLanguage()
   const [searchQuery, setSearchQuery] = useState('')
   const [isUploading, setIsUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -163,7 +165,7 @@ export function Sidebar({
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
           <Input
             type="search"
-            placeholder="Search..."
+            placeholder={t('searchPlaceholder')}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full h-7 pl-7 bg-transparent border border-border/30 text-xs focus-visible:ring-0 focus-visible:ring-offset-0"
@@ -211,7 +213,7 @@ export function Sidebar({
             <div className="flex items-center justify-between px-2 mb-1">
               <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
                 <BookOpen className="h-3 w-3" />
-                Library
+                {t('library')}
               </h2>
               <button
                 className={cn(
@@ -238,7 +240,7 @@ export function Sidebar({
 
             {pdfDocs.length === 0 ? (
               <p className="text-xs text-muted-foreground/60 px-2 py-1">
-                No files yet — click ↑ to attach
+                {t('noFilesYet')}
               </p>
             ) : (
               <div className="space-y-0.5">
@@ -251,7 +253,7 @@ export function Sidebar({
                       onClick={() => setCurrentView(doc.id)}
                     >
                       <BookOpen className="h-3.5 w-3.5 mr-2 text-muted-foreground shrink-0" />
-                      <span className="truncate flex-1 text-left text-xs">{doc.title || 'Untitled'}</span>
+                      <span className="truncate flex-1 text-left text-xs">{doc.title || t('untitledDocument')}</span>
                     </Button>
                     <div className="absolute right-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 flex items-center shrink-0">
                       <DropdownMenu>
@@ -263,12 +265,12 @@ export function Sidebar({
                         <DropdownMenuContent align="start">
                           <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setRenameNode(doc); }}>
                             <Pencil className="mr-2 h-4 w-4" />
-                            Rename
+                            {t('rename')}
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onDeleteDocument(doc.id); }} className="text-destructive">
                             <Trash2 className="mr-2 h-4 w-4" />
-                            Delete
+                            {t('deleteOption')}
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -283,7 +285,7 @@ export function Sidebar({
 
       <div className="flex items-center justify-between px-4 my-2">
         <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-          Documents
+          {t('documentsHeader')}
         </h2>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -294,11 +296,11 @@ export function Sidebar({
           <DropdownMenuContent align="start">
             <DropdownMenuItem onClick={() => onCreateDocument(null, 'text')}>
               <FileText className="mr-2 h-4 w-4" />
-              <span>New Page</span>
+              <span>{t('newPage')}</span>
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => onCreateDocument(null, 'canvas')}>
               <LayoutDashboard className="mr-2 h-4 w-4" />
-              <span>New Canvas</span>
+              <span>{t('newCanvas')}</span>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -320,7 +322,7 @@ export function Sidebar({
           {documents.some(d => d.isFavorite) && (
             <div className="mt-4 mb-2">
               <h2 className="text-xs font-semibold text-muted-foreground mb-2 px-2 uppercase tracking-wider flex items-center gap-1">
-                Favorites
+                {t('favorites')}
               </h2>
               <div className="space-y-0.5">
                 {documents.filter(d => d.isFavorite).map(doc => (
@@ -331,7 +333,7 @@ export function Sidebar({
                       className="w-full justify-start px-2 h-8 font-normal pr-8"
                       onClick={() => setCurrentView(doc.id)}
                     >
-                      <span className="truncate flex-1 text-left">{doc.title || "Untitled"}</span>
+                      <span className="truncate flex-1 text-left">{doc.title || t('untitledDocument')}</span>
                     </Button>
                     <div className="absolute right-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 flex items-center shrink-0">
                       <DropdownMenu>
@@ -343,12 +345,12 @@ export function Sidebar({
                         <DropdownMenuContent align="start">
                           <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setRenameNode(doc); }}>
                             <Pencil className="mr-2 h-4 w-4" />
-                            Rename
+                            {t('rename')}
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onDeleteDocument(doc.id); }} className="text-destructive">
                             <Trash2 className="mr-2 h-4 w-4" />
-                            Delete
+                            {t('deleteOption')}
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -368,7 +370,7 @@ export function Sidebar({
               title="Trash"
             >
               <Trash2 className="h-4 w-4 mr-2" />
-              <span className="text-xs">Trash</span>
+              <span className="text-xs">{t('trash')}</span>
             </Button>
           </div>
         </div>
@@ -389,7 +391,7 @@ export function Sidebar({
         onClose={() => setRenameNode(null)}
         onRename={handleRename}
         initialValue={renameNode?.title || ''}
-        title={`Rename ${renameNode?.type === 'canvas' ? 'Canvas' : 'Page'}`}
+        title={renameNode?.type === 'canvas' ? t('renameCanvas') : t('renamePage')}
       />
 
     </div>

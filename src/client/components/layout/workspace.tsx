@@ -219,7 +219,7 @@ export function Workspace({
         const handleBlur = () => setIsAltPressed(false)
 
         const handleContextMenu = (e: MouseEvent) => {
-            if (isAltPressed) {
+            if (e.altKey || isAltPressed) {
                 e.preventDefault()
             }
         }
@@ -364,7 +364,10 @@ export function Workspace({
                     }}
                     onContextMenu={(e) => {
                         // Suppress browser context menu when Alt is held (used for resize)
-                        if (e.altKey) e.preventDefault()
+                        if (e.altKey) {
+                            e.preventDefault()
+                            e.stopPropagation()
+                        }
                     }}
                     onMouseDown={(e) => {
                         if (e.altKey && e.button === 2) {

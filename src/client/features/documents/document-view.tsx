@@ -27,6 +27,7 @@ import {
 } from "../../components/ui/dropdown-menu"
 import { Editor, EditorRef } from '../../components/editor/editor'
 import { NotesPanel } from '../notes/components/notes-panel'
+import { useLanguage } from '../../context/LanguageContext'
 
 
 interface DocumentViewProps {
@@ -62,6 +63,7 @@ export function DocumentView({
     onNavigate,
     hideBorder,
 }: DocumentViewProps) {
+    const { t } = useLanguage()
     // State for local changes
     const [title, setTitle] = useState(document.title || '')
     const [content, setContent] = useState(document.content || '')
@@ -278,7 +280,7 @@ export function DocumentView({
                                         <div key={item.id} className="flex items-center">
                                             <BreadcrumbItem>
                                                 {isCurrent ? (
-                                                    <BreadcrumbPage className="font-bold">{item.title || "Untitled"}</BreadcrumbPage>
+                                                    <BreadcrumbPage className="font-bold">{item.title || t('untitledDocument')}</BreadcrumbPage>
                                                 ) : (
                                                     <BreadcrumbLink asChild>
                                                         <button
@@ -294,7 +296,7 @@ export function DocumentView({
                                                                 }
                                                             }}
                                                         >
-                                                            {item.title || "Untitled"}
+                                                            {item.title || t('untitledDocument')}
                                                         </button>
                                                     </BreadcrumbLink>
                                                 )}
@@ -321,7 +323,7 @@ export function DocumentView({
                                             <BreadcrumbItem>
                                                 {isCurrent ? (
                                                     <BreadcrumbPage className="font-bold text-xs truncate max-w-[80px]">
-                                                        {item.title || "Untitled"}
+                                                        {item.title || t('untitledDocument')}
                                                     </BreadcrumbPage>
                                                 ) : (
                                                     <BreadcrumbLink asChild>
@@ -338,7 +340,7 @@ export function DocumentView({
                                                                 }
                                                             }}
                                                         >
-                                                            {item.title || "Untitled"}
+                                                            {item.title || t('untitledDocument')}
                                                         </button>
                                                     </BreadcrumbLink>
                                                 )}
@@ -359,16 +361,16 @@ export function DocumentView({
                                 {isSaving ? (
                                     <>
                                         <Loader2 className="h-3 w-3 animate-spin" />
-                                        Saving...
+                                        {t('saving')}
                                     </>
                                 ) : lastSaved ? (
-                                    `Saved`
+                                    t('saved')
                                 ) : (
-                                    `All changes saved`
+                                    t('allChangesSaved')
                                 )}
                             </span>
 
-                            <Button variant="ghost" size="icon" onClick={() => setIsEditing(!isEditing)} title={isEditing ? "View Mode" : "Edit Mode"}>
+                            <Button variant="ghost" size="icon" onClick={() => setIsEditing(!isEditing)} title={isEditing ? t('viewMode') : t('editMode')}>
                                 {isEditing ? <Eye className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
                             </Button>
 
@@ -377,7 +379,7 @@ export function DocumentView({
                                     variant="ghost"
                                     size="icon"
                                     onClick={onToggleTabs}
-                                    title={showTabs ? "Hide Tabs" : "Show Tabs"}
+                                    title={showTabs ? t('hideTabs') : t('showTabs')}
                                     className={cn(!showTabs && "text-muted-foreground/50")}
                                 >
                                     <PanelTop className="h-4 w-4" />
@@ -388,7 +390,7 @@ export function DocumentView({
                                 variant="ghost"
                                 size="icon"
                                 onClick={() => setLocalShowNotes(!localShowNotes)}
-                                title={localShowNotes ? "Close Notes" : "Open Notes"}
+                                title={localShowNotes ? t('closeNotes') : t('openNotes')}
                                 className={cn(localShowNotes && "bg-accent text-accent-foreground")}
                             >
                                 <MessageSquare className="h-4 w-4" />
@@ -410,21 +412,21 @@ export function DocumentView({
                                         <div className="flex items-center justify-between px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground rounded-sm cursor-pointer" onClick={() => setIsEditing(!isEditing)}>
                                             <div className="flex items-center gap-2">
                                                 {isEditing ? <Eye className="h-4 w-4 text-muted-foreground" /> : <Pencil className="h-4 w-4 text-muted-foreground" />}
-                                                <span>{isEditing ? "View Mode" : "Edit Mode"}</span>
+                                                <span>{isEditing ? t('viewMode') : t('editMode')}</span>
                                             </div>
                                         </div>
                                         {onToggleTabs && (
                                             <div className="flex items-center justify-between px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground rounded-sm cursor-pointer" onClick={onToggleTabs}>
                                                 <div className="flex items-center gap-2">
                                                     <PanelTop className="h-4 w-4 text-muted-foreground" />
-                                                    <span>{showTabs ? "Hide Tabs" : "Show Tabs"}</span>
+                                                    <span>{showTabs ? t('hideTabs') : t('showTabs')}</span>
                                                 </div>
                                             </div>
                                         )}
                                         <div className="flex items-center justify-between px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground rounded-sm cursor-pointer" onClick={() => setLocalShowNotes(!localShowNotes)}>
                                             <div className="flex items-center gap-2">
                                                 <MessageSquare className="h-4 w-4 text-muted-foreground" />
-                                                <span>{localShowNotes ? "Close Notes" : "Open Notes"}</span>
+                                                <span>{localShowNotes ? t('closeNotes') : t('openNotes')}</span>
                                             </div>
                                         </div>
                                         <DropdownMenuSeparator />
@@ -433,7 +435,7 @@ export function DocumentView({
                                 <div className="flex items-center justify-between px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground rounded-sm cursor-pointer" onClick={toggleFavorite}>
                                     <div className="flex items-center gap-2">
                                         <Star className="h-4 w-4 text-muted-foreground" />
-                                        <span>Favorite</span>
+                                        <span>{t('favorite')}</span>
                                     </div>
                                     {document.isFavorite && <Check className="h-4 w-4 ml-auto" />}
                                 </div>
@@ -443,7 +445,7 @@ export function DocumentView({
                                 }}>
                                     <div className="flex items-center gap-2">
                                         <Link2 className="h-4 w-4 text-muted-foreground" />
-                                        <span>Share</span>
+                                        <span>{t('share')}</span>
                                     </div>
                                 </div>
 
@@ -452,11 +454,11 @@ export function DocumentView({
                                         <DropdownMenuSeparator />
                                         <DropdownMenuItem onClick={() => onSplit('horizontal')}>
                                             <Columns className="h-4 w-4 mr-2" />
-                                            <span>Split Right</span>
+                                            <span>{t('splitRight')}</span>
                                         </DropdownMenuItem>
                                         <DropdownMenuItem onClick={() => onSplit('vertical')}>
                                             <Rows className="h-4 w-4 mr-2" />
-                                            <span>Split Down</span>
+                                            <span>{t('splitDown')}</span>
                                         </DropdownMenuItem>
                                     </>
                                 )}
@@ -465,7 +467,7 @@ export function DocumentView({
                                 <div className="px-2 py-1.5">
                                     <div className="flex items-center gap-2 mb-2">
                                         <Tag className="h-4 w-4" />
-                                        <span className="text-sm font-medium">Tags</span>
+                                        <span className="text-sm font-medium">{t('tags')}</span>
                                     </div>
                                     <div className="flex flex-wrap gap-1 mb-2">
                                         {tags.map(tag => (
@@ -481,7 +483,7 @@ export function DocumentView({
                                         <Input
                                             value={tagInput}
                                             onChange={e => setTagInput(e.target.value)}
-                                            placeholder="Add tag..."
+                                            placeholder={t('addTag')}
                                             className="h-7 text-xs bg-white/5 border-white/10 focus-visible:ring-1 focus-visible:ring-white/20 focus-visible:ring-offset-0"
                                             onKeyDown={e => {
                                                 if (e.key === 'Enter') {
@@ -534,14 +536,15 @@ export function DocumentView({
                                         onUpdateDocument({ ...document, title: e.target.value });
                                     }}
                                     className="text-4xl font-bold border-none bg-transparent px-0 h-auto focus-visible:ring-0 focus-visible:ring-offset-0 ring-0 focus:ring-0 outline-none shadow-none placeholder:text-muted-foreground/30 w-full"
-                                    placeholder="Untitled Document"
+                                    placeholder={t('untitledDocument')}
                                 />
                             ) : (
-                                <h1 className="text-4xl font-bold min-h-[1.2em]">{title || "Untitled Document"}</h1>
+                                <h1 className="text-4xl font-bold min-h-[1.2em]">{title || t('untitledDocument')}</h1>
                             )}
                             <Editor
                                 ref={editorRef}
                                 content={content}
+                                placeholder={t('startWriting')}
                                 onChange={setContent}
                                 editable={isEditing}
                                 onCommandTrigger={(position, query, triggerIndex, type) => {

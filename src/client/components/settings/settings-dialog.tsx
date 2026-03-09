@@ -16,6 +16,7 @@ import { cn } from "../../lib/utils/utils"
 import { useTheme } from "../theme-provider"
 import { useMediaQuery } from "../../hooks/useMediaQuery"
 import { useAuth } from "../../context/AuthContext"
+import { useLanguage } from "../../context/LanguageContext"
 import { Avatar, AvatarFallback, AvatarImage } from "../../components/ui/avatar"
 
 interface ShortcutItem {
@@ -28,32 +29,32 @@ interface ShortcutCategory {
     items: ShortcutItem[]
 }
 
-const SHORTCUTS: ShortcutCategory[] = [
+const SHORTCUTS = [
     {
-        name: "Workspace",
+        name: "shortcutWorkspace",
         items: [
-            { label: "Split Horizontal / Vertical", keys: ["Alt", "+", "H / V"] },
-            { label: "Close Active Pane", keys: ["Alt", "+", "Q"] },
-            { label: "Resize Pane", keys: ["Alt", "+", "Drag"] },
-            { label: "Close Tab", keys: ["Middle Click"] },
+            { label: "labelSplitHV", keys: ["keyAlt", "+", "H / V"] },
+            { label: "labelClosePane", keys: ["keyAlt", "+", "Q"] },
+            { label: "labelResizePane", keys: ["keyAlt", "+", "keyDrag"] },
+            { label: "labelCloseTab", keys: ["keyMiddleClick"] },
         ]
     },
     {
-        name: "Canvas",
+        name: "shortcutCanvas",
         items: [
-            { label: "Pan Camera", keys: ["Space", "+", "Drag"] },
-            { label: "Open Doc in New Tab", keys: ["Middle Click"] },
-            { label: "Delete Selected Nodes", keys: ["Delete"] },
+            { label: "labelPanCamera", keys: ["keySpace", "+", "keyDrag"] },
+            { label: "labelOpenNewTab", keys: ["keyMiddleClick"] },
+            { label: "labelDeleteNodes", keys: ["keyDelete"] },
         ]
     },
     {
-        name: "Editor & Notes",
+        name: "shortcutEditorNotes",
         items: [
-            { label: "Command Menu", keys: ["/"] },
-            { label: "Mention Document", keys: ["@"] },
+            { label: "labelCommandMenu", keys: ["/"] },
+            { label: "labelMentionDoc", keys: ["@"] },
         ]
     }
-]
+] as const;
 
 interface SettingsDialogProps {
     open: boolean
@@ -68,6 +69,7 @@ export function SettingsDialog({
     showResizeHandles,
     onShowResizeHandlesChange
 }: SettingsDialogProps) {
+    const { t, language, setLanguage } = useLanguage()
     const [searchQuery, setSearchQuery] = React.useState("")
     const [activeTab, setActiveTab] = React.useState("account")
 
@@ -78,31 +80,43 @@ export function SettingsDialog({
     const { user, logout } = useAuth()
     const isMobile = useMediaQuery('(max-width: 768px)')
 
-    const filteredShortcuts = SHORTCUTS.map(category => ({
-        ...category,
-        items: category.items.filter(item =>
-            item.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            item.keys.some(key => key.toLowerCase().includes(searchQuery.toLowerCase())) ||
-            category.name.toLowerCase().includes(searchQuery.toLowerCase())
-        )
-    })).filter(category => category.items.length > 0)
+    const normalizedShortcuts = React.useMemo(() => {
+        return SHORTCUTS.map(category => ({
+            name: t(category.name as any),
+            items: category.items.map(item => ({
+                label: t(item.label as any),
+                keys: item.keys.map(key => t(key as any))
+            }))
+        }))
+    }, [t]);
+
+    const filteredShortcuts = React.useMemo(() => {
+        return normalizedShortcuts.map(category => ({
+            ...category,
+            items: category.items.filter(item =>
+                item.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                item.keys.some(key => key.toLowerCase().includes(searchQuery.toLowerCase())) ||
+                category.name.toLowerCase().includes(searchQuery.toLowerCase())
+            )
+        })).filter(category => category.items.length > 0)
+    }, [normalizedShortcuts, searchQuery]);
 
     const isSearching = searchQuery.trim().length > 0;
 
     const navCategories = [
         {
-            name: "General",
+            name: t('general'),
             items: [
-                { id: "account", label: "Account" },
-                { id: "appearance", label: "Appearance" },
-                { id: "shortcuts", label: "Shortcuts" },
+                { id: "account", label: t('account') },
+                { id: "appearance", label: t('appearance') },
+                { id: "shortcuts", label: t('shortcuts') },
             ]
         }
     ];
 
     const hasSearchResults = filteredShortcuts.length > 0 ||
-        "appearance theme resize".includes(searchQuery.toLowerCase()) ||
-        "account profile logout".includes(searchQuery.toLowerCase());
+        t('appearance').toLowerCase().includes(searchQuery.toLowerCase()) ||
+        t('account').toLowerCase().includes(searchQuery.toLowerCase());
 
     const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
         setSearchQuery(e.target.value);
@@ -135,8 +149,8 @@ export function SettingsDialog({
             >
                 {/* Visual hidden header for accessibility */}
                 <DialogHeader className="sr-only">
-                    <DialogTitle>Settings</DialogTitle>
-                    <DialogDescription>Manage your preferences</DialogDescription>
+                    <DialogTitle>{t('settings')}</DialogTitle>
+                    <DialogDescription>{t('managePreferences')}</DialogDescription>
                 </DialogHeader>
 
                 {/* Sidebar (Master View) */}
@@ -148,7 +162,7 @@ export function SettingsDialog({
                         <div className="relative">
                             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                             <Input
-                                placeholder="Search settings..."
+                                placeholder={t('searchSettings')}
                                 className="pl-9 bg-background/50 border-input focus-visible:ring-primary/20 rounded-md text-[clamp(13px,1.5vw,14px)] h-9"
                                 value={searchQuery}
                                 onChange={handleSearch}
@@ -194,7 +208,7 @@ export function SettingsDialog({
                             <ChevronLeft className="h-5 w-5" />
                         </Button>
                         <span className="text-[clamp(11px,1.5vw,12px)] font-medium text-muted-foreground truncate">
-                            Settings <span className="mx-1 sm:mx-2">&gt;</span> <span className="text-foreground capitalize">{isSearching ? 'Search Results' : activeTab}</span>
+                            {t('settings')} <span className="mx-1 sm:mx-2">&gt;</span> <span className="text-foreground capitalize">{isSearching ? t('matchingResults') : t(activeTab as any)}</span>
                         </span>
                     </div>
 
@@ -205,7 +219,7 @@ export function SettingsDialog({
                             {(!isSearching && activeTab === 'account') && (
                                 <div className="space-y-[clamp(1.5rem,4vw,2.5rem)] animate-in fade-in duration-300">
                                     <div>
-                                        <h3 className="text-[clamp(1.125rem,2.5vw,1.25rem)] font-medium text-foreground mb-[clamp(0.75rem,2vw,1rem)]">My Profile</h3>
+                                        <h3 className="text-[clamp(1.125rem,2.5vw,1.25rem)] font-medium text-foreground mb-[clamp(0.75rem,2vw,1rem)]">{t('myProfile')}</h3>
                                         {user ? (
                                             <div className="flex items-center justify-between p-[clamp(0.75rem,2vw,1rem)] rounded-lg border border-border bg-card gap-4">
                                                 <div className="flex flex-row items-center gap-[clamp(0.75rem,2vw,1rem)] min-w-0">
@@ -219,22 +233,22 @@ export function SettingsDialog({
                                                     </div>
                                                 </div>
                                                 <Button variant="outline" size="sm" className="hidden sm:flex rounded-md shrink-0">
-                                                    Change name
+                                                    {t('changeName')}
                                                 </Button>
                                             </div>
                                         ) : (
-                                            <p className="text-sm text-muted-foreground">Not logged in.</p>
+                                            <p className="text-sm text-muted-foreground">{t('notLoggedIn')}</p>
                                         )}
                                     </div>
 
                                     {user && (
                                         <div>
-                                            <h3 className="text-[clamp(1.125rem,2.5vw,1.25rem)] font-medium text-foreground mb-[clamp(0.75rem,2vw,1rem)]">Login</h3>
+                                            <h3 className="text-[clamp(1.125rem,2.5vw,1.25rem)] font-medium text-foreground mb-[clamp(0.75rem,2vw,1rem)]">{t('login')}</h3>
                                             <div className="rounded-lg border border-border overflow-hidden bg-card">
                                                 <div className="flex items-center justify-between p-[clamp(0.75rem,2vw,1rem)] gap-4">
                                                     <div className="flex flex-col min-w-0">
-                                                        <span className="text-[clamp(13px,1.5vw,14px)] font-medium text-foreground truncate">Session</span>
-                                                        <span className="text-[clamp(11px,1.2vw,12px)] text-muted-foreground mt-1 truncate">Log out of your current session on this device.</span>
+                                                        <span className="text-[clamp(13px,1.5vw,14px)] font-medium text-foreground truncate">{t('session')}</span>
+                                                        <span className="text-[clamp(11px,1.2vw,12px)] text-muted-foreground mt-1 truncate">{t('logOutDesc')}</span>
                                                     </div>
                                                     <Button
                                                         variant="outline"
@@ -242,7 +256,7 @@ export function SettingsDialog({
                                                         className="rounded-md shrink-0 text-destructive hover:bg-destructive/10 hover:text-destructive hover:border-destructive/30 transition-colors"
                                                         onClick={logout}
                                                     >
-                                                        Log Out
+                                                        {t('logOut')}
                                                     </Button>
                                                 </div>
                                             </div>
@@ -255,30 +269,45 @@ export function SettingsDialog({
                             {(!isSearching && activeTab === 'appearance') && (
                                 <div className="space-y-[clamp(1.5rem,4vw,2.5rem)] animate-in fade-in duration-300">
                                     <div>
-                                        <h3 className="text-[clamp(1.125rem,2.5vw,1.25rem)] font-medium text-foreground mb-[clamp(0.75rem,2vw,1rem)]">Appearance</h3>
+                                        <h3 className="text-[clamp(1.125rem,2.5vw,1.25rem)] font-medium text-foreground mb-[clamp(0.75rem,2vw,1rem)]">{t('appearance')}</h3>
                                         <div className="rounded-lg border border-border overflow-hidden bg-card divide-y divide-border">
+                                            {/* Language switch */}
                                             <div className="flex items-center justify-between p-[clamp(0.75rem,2vw,1rem)] gap-4">
                                                 <div className="flex flex-col min-w-0">
-                                                    <span className="text-[clamp(13px,1.5vw,14px)] font-medium text-foreground">Switch Theme</span>
-                                                    <span className="text-[clamp(11px,1.2vw,12px)] text-muted-foreground mt-1 hidden sm:block">Switch between light and dark mode.</span>
+                                                    <span className="text-[clamp(13px,1.5vw,14px)] font-medium text-foreground">{t('switchLanguage')}</span>
+                                                    <span className="text-[clamp(11px,1.2vw,12px)] text-muted-foreground mt-1 hidden sm:block">{t('switchLanguageDesc')}</span>
+                                                </div>
+                                                <div className="flex items-center gap-1 bg-muted/50 border border-border p-0.5 rounded-md shrink-0">
+                                                    <Button variant={language === "en" ? "secondary" : "ghost"} size="sm" className="h-[clamp(1.5rem,3vw,1.75rem)] px-[clamp(0.5rem,1.5vw,0.75rem)] text-xs" onClick={() => setLanguage("en")}>
+                                                        <span className="hidden sm:inline">{t('english')}</span><span className="inline sm:hidden">EN</span>
+                                                    </Button>
+                                                    <Button variant={language === "es" ? "secondary" : "ghost"} size="sm" className="h-[clamp(1.5rem,3vw,1.75rem)] px-[clamp(0.5rem,1.5vw,0.75rem)] text-xs" onClick={() => setLanguage("es")}>
+                                                        <span className="hidden sm:inline">{t('spanish')}</span><span className="inline sm:hidden">ES</span>
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center justify-between p-[clamp(0.75rem,2vw,1rem)] gap-4">
+                                                <div className="flex flex-col min-w-0">
+                                                    <span className="text-[clamp(13px,1.5vw,14px)] font-medium text-foreground">{t('switchTheme')}</span>
+                                                    <span className="text-[clamp(11px,1.2vw,12px)] text-muted-foreground mt-1 hidden sm:block">{t('switchThemeDesc')}</span>
                                                 </div>
                                                 <div className="flex items-center gap-1 bg-muted/50 border border-border p-0.5 rounded-md shrink-0">
                                                     <Button variant={theme === "light" ? "secondary" : "ghost"} size="sm" className="h-[clamp(1.5rem,3vw,1.75rem)] px-[clamp(0.5rem,1.5vw,0.75rem)] text-xs" onClick={() => setTheme("light")}>
-                                                        <Sun className="h-3 w-3 sm:mr-1.5" /> <span className="hidden sm:inline">Light</span>
+                                                        <Sun className="h-3 w-3 sm:mr-1.5" /> <span className="hidden sm:inline">{t('light')}</span>
                                                     </Button>
                                                     <Button variant={theme === "dark" ? "secondary" : "ghost"} size="sm" className="h-[clamp(1.5rem,3vw,1.75rem)] px-[clamp(0.5rem,1.5vw,0.75rem)] text-xs" onClick={() => setTheme("dark")}>
-                                                        <Moon className="h-3 w-3 sm:mr-1.5" /> <span className="hidden sm:inline">Dark</span>
+                                                        <Moon className="h-3 w-3 sm:mr-1.5" /> <span className="hidden sm:inline">{t('dark')}</span>
                                                     </Button>
                                                     <Button variant={theme === "system" ? "secondary" : "ghost"} size="sm" className="h-[clamp(1.5rem,3vw,1.75rem)] px-[clamp(0.5rem,1.5vw,0.75rem)] text-xs" onClick={() => setTheme("system")}>
-                                                        <Monitor className="h-3 w-3 sm:mr-1.5" /> <span className="hidden sm:inline">System</span>
+                                                        <Monitor className="h-3 w-3 sm:mr-1.5" /> <span className="hidden sm:inline">{t('system')}</span>
                                                     </Button>
                                                 </div>
                                             </div>
                                             {/* Resize handles */}
                                             <div className="flex items-center justify-between p-[clamp(0.75rem,2vw,1rem)] gap-4">
                                                 <div className="flex flex-col min-w-0">
-                                                    <span className="text-[clamp(13px,1.5vw,14px)] font-medium text-foreground">Window Resize Handles</span>
-                                                    <span className="text-[clamp(11px,1.2vw,12px)] text-muted-foreground mt-1 hidden sm:block">Show draggable borders around workspace panels.</span>
+                                                    <span className="text-[clamp(13px,1.5vw,14px)] font-medium text-foreground">{t('windowResizeHandles')}</span>
+                                                    <span className="text-[clamp(11px,1.2vw,12px)] text-muted-foreground mt-1 hidden sm:block">{t('windowResizeHandlesDesc')}</span>
                                                 </div>
                                                 <Button
                                                     variant={showResizeHandles ? "default" : "outline"}
@@ -286,7 +315,7 @@ export function SettingsDialog({
                                                     className="rounded-md shrink-0"
                                                     onClick={() => onShowResizeHandlesChange(!showResizeHandles)}
                                                 >
-                                                    {showResizeHandles ? "Enabled" : "Disabled"}
+                                                    {showResizeHandles ? t('enabled') : t('disabled')}
                                                 </Button>
                                             </div>
                                         </div>
@@ -333,9 +362,9 @@ export function SettingsDialog({
                             {/* Search Results */}
                             {isSearching && hasSearchResults && (
                                 <div className="space-y-[clamp(1.25rem,3vw,1.5rem)] animate-in fade-in duration-300">
-                                    <h3 className="text-[clamp(1.125rem,2.5vw,1.25rem)] font-medium text-foreground mb-[clamp(0.75rem,2vw,1rem)]">Matching results</h3>
+                                    <h3 className="text-[clamp(1.125rem,2.5vw,1.25rem)] font-medium text-foreground mb-[clamp(0.75rem,2vw,1rem)]">{t('matchingResults')}</h3>
                                     {/* Show a simplified list of results if searching */}
-                                    <p className="text-[clamp(12px,1.5vw,14px)] text-muted-foreground">Results are filtered. Clear search to browse categories.</p>
+                                    <p className="text-[clamp(12px,1.5vw,14px)] text-muted-foreground">{t('resultsFiltered')}</p>
 
                                     <div className="grid gap-[clamp(0.75rem,1.5vw,1rem)]">
                                         {filteredShortcuts.map((category, idx) => (
@@ -372,15 +401,15 @@ export function SettingsDialog({
                                     <div className="rounded-full bg-muted p-[clamp(0.75rem,2vw,1rem)] mb-[clamp(0.75rem,2vw,1rem)] border border-border">
                                         <Search className="h-6 w-6 text-muted-foreground/50" />
                                     </div>
-                                    <p className="text-[clamp(14px,1.5vw,16px)] font-medium text-foreground">No matching settings found</p>
-                                    <p className="text-[clamp(12px,1.5vw,14px)] text-muted-foreground mt-1">Try searching for a different keyword</p>
+                                    <p className="text-[clamp(14px,1.5vw,16px)] font-medium text-foreground">{t('noMatchingSettings')}</p>
+                                    <p className="text-[clamp(12px,1.5vw,14px)] text-muted-foreground mt-1">{t('tryDifferentKeyword')}</p>
                                     <Button
                                         variant="outline"
                                         size="sm"
                                         className="mt-4 rounded-md"
                                         onClick={handleBack}
                                     >
-                                        Clear search
+                                        {t('clearSearch')}
                                     </Button>
                                 </div>
                             )}

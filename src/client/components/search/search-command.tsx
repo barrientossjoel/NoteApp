@@ -5,6 +5,7 @@ import { Input } from "../ui/input"
 import { ScrollArea } from "../ui/scroll-area"
 import { cn } from "../../lib/utils/utils"
 import type { Document } from "../../../core/types/notes"
+import { useLanguage } from "../../context/LanguageContext"
 
 interface SearchCommandProps {
     isOpen: boolean
@@ -19,6 +20,7 @@ export function SearchCommand({
     documents,
     onSelect,
 }: SearchCommandProps) {
+    const { t } = useLanguage()
     const [query, setQuery] = React.useState("")
     const [selectedIndex, setSelectedIndex] = React.useState(0)
     const inputRef = React.useRef<HTMLInputElement>(null)
@@ -27,10 +29,10 @@ export function SearchCommand({
         if (!query) return documents.slice(0, 10)
         return documents
             .filter((doc) =>
-                (doc.title || "Untitled").toLowerCase().includes(query.toLowerCase())
+                (doc.title || t('untitledDocument')).toLowerCase().includes(query.toLowerCase())
             )
             .slice(0, 10)
-    }, [query, documents])
+    }, [query, documents, t])
 
     React.useEffect(() => {
         if (isOpen) {
@@ -67,7 +69,7 @@ export function SearchCommand({
                     <Search className="w-5 h-5 mr-3 text-muted-foreground" />
                     <Input
                         ref={inputRef}
-                        placeholder="Search or press / to filter..."
+                        placeholder={t('searchCommandPlaceholder')}
                         value={query}
                         onChange={(e) => {
                             setQuery(e.target.value)
@@ -97,13 +99,13 @@ export function SearchCommand({
                                 >
                                     <FileText className="w-4 h-4 mr-3 opacity-60" />
                                     <span className="truncate flex-1">
-                                        {doc.title || "Untitled"}
+                                        {doc.title || t('untitledDocument')}
                                     </span>
                                 </button>
                             ))
                         ) : (
                             <div className="py-12 text-center text-muted-foreground">
-                                No results found.
+                                {t('noResultsFound')}
                             </div>
                         )}
                     </div>
@@ -111,13 +113,13 @@ export function SearchCommand({
                 <div className="flex items-center px-4 py-3 border-t border-white/5 bg-black/20">
                     <div className="flex items-center gap-4 ml-auto text-[10px] text-muted-foreground">
                         <div className="flex items-center gap-1.5 font-medium">
-                            <span>Open in Pane</span>
+                            <span>{t('openInPane')}</span>
                             <kbd className="h-5 px-1.5 flex items-center justify-center rounded border border-white/10 bg-white/5 text-[11px]">
                                 Alt+↵
                             </kbd>
                         </div>
                         <div className="flex items-center gap-1.5 font-medium">
-                            <span>Open</span>
+                            <span>{t('open')}</span>
                             <kbd className="h-5 px-1.5 flex items-center justify-center rounded border border-white/10 bg-white/5 text-[11px]">
                                 ↵
                             </kbd>
