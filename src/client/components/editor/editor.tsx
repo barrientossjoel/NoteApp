@@ -245,25 +245,27 @@ export const Editor = forwardRef<EditorRef, EditorProps>(({
                 .tiptap ul[data-type="taskList"] li {
                     display: flex;
                     align-items: flex-start;
-                    gap: 0.75rem; /* Equivalent to gap-3 */
-                    margin-bottom: 0.5rem; /* Equivalent to my-2 */
+                    gap: 0.5rem;
+                    margin-bottom: 0.125rem;
                 }
                 .tiptap ul[data-type="taskList"] li > label {
                     flex: 0 0 auto;
                     user-select: none;
-                    margin-top: 0.25rem; /* Equivalent to mt-1 */
+                    margin-top: 0.125rem;
                 }
                 .tiptap ul[data-type="taskList"] li > div {
                     flex: 1 1 auto;
                 }
+                .tiptap ul[data-type="taskList"] li > div > p {
+                    margin: 0;
+                }
                 .tiptap ul[data-type="taskList"] input[type="checkbox"] {
                     cursor: pointer;
-                    width: 1.1rem;
-                    height: 1.1rem;
+                    width: 0.875rem;
+                    height: 0.875rem;
                     margin: 0;
                     appearance: auto;
-                    border: 1px solid var(--border);
-                    border-radius: 0.25rem;
+                    -webkit-appearance: auto;
                 }
                 .tiptap table {
                     border-collapse: collapse;

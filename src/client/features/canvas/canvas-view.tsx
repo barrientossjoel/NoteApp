@@ -877,6 +877,7 @@ export function CanvasView({
             y: mouseCanvasY - node.y
         })
         dragStartPosition.current = { x: e.clientX, y: e.clientY }
+        setLastMousePos({ x: e.clientX, y: e.clientY })
     }
 
     const handleZoom = (delta: number) => {
@@ -1295,19 +1296,15 @@ export function CanvasView({
             const rect = containerRef.current?.getBoundingClientRect()
             if (!rect) return
 
-            const x = (e.clientX - rect.left - camera.x) / camera.zoom - dragOffset.x
-            const y = (e.clientY - rect.top - camera.y) / camera.zoom - dragOffset.y
+            // Calculate delta in canvas space based on screen movement
+            const dx = (e.clientX - lastMousePos.x) / camera.zoom
+            const dy = (e.clientY - lastMousePos.y) / camera.zoom
+
+            if (dx === 0 && dy === 0) return
 
             setNodes(prev => {
                 const mainNode = prev.find(n => n.id === draggedNodeId)
                 if (!mainNode) return prev
-
-                // Calculate delta based on the node we are actually dragging
-                // target pos - current pos
-                const dx = x - mainNode.x
-                const dy = y - mainNode.y
-
-                if (dx === 0 && dy === 0) return prev
 
                 return prev.map(n => {
                     // Move if selected
@@ -1317,13 +1314,31 @@ export function CanvasView({
 
                         // Update arrow points if it's an arrow
                         if (n.type === 'arrow' && n.points) {
+                            const shouldMoveStart = !n.startNodeId || selection.has(n.startNodeId)
+                            const shouldMoveEnd = !n.endNodeId || selection.has(n.endNodeId)
+
                             const newPoints = {
-                                start: { x: n.points.start.x + dx, y: n.points.start.y + dy },
-                                end: { x: n.points.end.x + dx, y: n.points.end.y + dy },
+                                ...n.points,
+                                start: shouldMoveStart ? { x: n.points.start.x + dx, y: n.points.start.y + dy } : n.points.start,
+                                end: shouldMoveEnd ? { x: n.points.end.x + dx, y: n.points.end.y + dy } : n.points.end,
                                 control: n.points.control ? { x: n.points.control.x + dx, y: n.points.control.y + dy } : undefined,
                                 control2: n.points.control2 ? { x: n.points.control2.x + dx, y: n.points.control2.y + dy } : undefined
                             }
-                            return { ...n, x: newX, y: newY, points: newPoints as any }
+
+                            // Recalculate boundaries for the arrow
+                            const minX = Math.min(newPoints.start.x, newPoints.end.x, newPoints.control?.x ?? newPoints.start.x, newPoints.control2?.x ?? newPoints.start.x)
+                            const minY = Math.min(newPoints.start.y, newPoints.end.y, newPoints.control?.y ?? newPoints.start.y, newPoints.control2?.y ?? newPoints.start.y)
+                            const maxX = Math.max(newPoints.start.x, newPoints.end.x, newPoints.control?.x ?? newPoints.end.x, newPoints.control2?.x ?? newPoints.end.x)
+                            const maxY = Math.max(newPoints.start.y, newPoints.end.y, newPoints.control?.y ?? newPoints.end.y, newPoints.control2?.y ?? newPoints.end.y)
+
+                            return {
+                                ...n,
+                                x: minX,
+                                y: minY,
+                                width: Math.max(1, maxX - minX),
+                                height: Math.max(1, maxY - minY),
+                                points: newPoints as any
+                            }
                         }
                         return { ...n, x: newX, y: newY }
                     }
@@ -1345,22 +1360,12 @@ export function CanvasView({
                         }
 
                         if (updated) {
-                            if (newPoints.control) {
-                                // Move control point by same delta? Or average? 
-                                // Simple approach: move control point by same delta if both ends moved (handled above by "selection.has(n.id)" if arrow itself is selected)
-                                // If arrow is NOT selected but attached nodes moved:
-                                // If ONLY start moved: maybe adjust control?
-                                // Let's just translate control point by dx/dy if both moved?
-                                // Logic complexity: if both attached nodes are selected, the arrow SHOULD be selected ideally?
-                                // If not, we just update endpoints. Control point might look weird.
-                                // Let's leave control point logic simple for now: don't move it unless arrow is selected.
-                                // Actually, existing logic moved it.
-                                if (selection.has(n.startNodeId!) && selection.has(n.endNodeId!)) {
-                                    newPoints.control = { x: newPoints.control.x + dx, y: newPoints.control.y + dy }
-                                    if (newPoints.control2) {
-                                        newPoints.control2 = { x: newPoints.control2.x + dx, y: newPoints.control2.y + dy }
-                                    }
-                                }
+                            // If only one node moves, the respective control point should follow to maintain relative shape
+                            if (n.points.control && n.startNodeId && selection.has(n.startNodeId)) {
+                                newPoints.control = { x: n.points.control.x + dx, y: n.points.control.y + dy }
+                            }
+                            if (n.points.control2 && n.endNodeId && selection.has(n.endNodeId)) {
+                                newPoints.control2 = { x: n.points.control2.x + dx, y: n.points.control2.y + dy }
                             }
 
                             // Recalc bounding box
@@ -1376,6 +1381,7 @@ export function CanvasView({
                     return n
                 })
             })
+            setLastMousePos({ x: e.clientX, y: e.clientY })
         } else if (resizingNodeId) {
             const rect = containerRef.current?.getBoundingClientRect()
             if (!rect) return
@@ -1420,20 +1426,26 @@ export function CanvasView({
                         }
 
                         if (updated) {
-                            if (newPoints.control) {
+                            // Synchronize control points during resize to maintain relative shape
+                            if (newPoints.control && n.startNodeId === resizingNodeId) {
                                 newPoints.control = { x: newPoints.control.x + dx, y: newPoints.control.y + dy }
                             }
-                            const minX = Math.min(newPoints.start.x, newPoints.end.x, newPoints.control?.x ?? newPoints.start.x)
-                            const minY = Math.min(newPoints.start.y, newPoints.end.y, newPoints.control?.y ?? newPoints.start.y)
-                            const maxX = Math.max(newPoints.start.x, newPoints.end.x, newPoints.control?.x ?? newPoints.end.x)
-                            const maxY = Math.max(newPoints.start.y, newPoints.end.y, newPoints.control?.y ?? newPoints.end.y)
+                            if (newPoints.control2 && n.endNodeId === resizingNodeId) {
+                                newPoints.control2 = { x: newPoints.control2.x + dx, y: newPoints.control2.y + dy }
+                            }
+
+                            // Recalc bounding box
+                            const minX = Math.min(newPoints.start.x, newPoints.end.x, newPoints.control?.x ?? newPoints.start.x, newPoints.control2?.x ?? newPoints.start.x)
+                            const minY = Math.min(newPoints.start.y, newPoints.end.y, newPoints.control?.y ?? newPoints.start.y, newPoints.control2?.y ?? newPoints.start.y)
+                            const maxX = Math.max(newPoints.start.x, newPoints.end.x, newPoints.control?.x ?? newPoints.end.x, newPoints.control2?.x ?? newPoints.end.x)
+                            const maxY = Math.max(newPoints.start.y, newPoints.end.y, newPoints.control?.y ?? newPoints.end.y, newPoints.control2?.y ?? newPoints.end.y)
 
                             return {
                                 ...n,
                                 x: minX,
                                 y: minY,
-                                width: maxX - minX,
-                                height: maxY - minY,
+                                width: Math.max(1, maxX - minX),
+                                height: Math.max(1, maxY - minY),
                                 points: newPoints
                             }
                         }
@@ -1829,6 +1841,7 @@ export function CanvasView({
                                         draggedNodeId === node.id ? "cursor-grabbing" : "cursor-grab",
                                         "focus:cursor-text"
                                     )}
+                                    onWheel={(e) => e.stopPropagation()}
                                     value={node.content}
                                     onChange={(e) => {
                                         updateNodeContent(node.id, e.target.value)
@@ -1949,9 +1962,10 @@ export function CanvasView({
                                     return (
                                         <div
                                             className={cn(
-                                                "flex-1 flex flex-col p-4 bg-transparent group/doc h-full overflow-hidden",
+                                                "flex-1 flex flex-col p-4 bg-transparent group/doc h-full overflow-y-auto",
                                                 draggedNodeId === node.id ? "cursor-grabbing" : "cursor-grab"
                                             )}
+                                            onWheel={(e) => e.stopPropagation()}
                                             onMouseDown={(e) => {
                                                 if (editingId === node.id) return; // Allow interaction with inputs
                                                 e.stopPropagation()
@@ -1965,13 +1979,13 @@ export function CanvasView({
                                                         value={portalDoc.title}
                                                         onChange={(e) => onUpdateDocument({ ...portalDoc, title: e.target.value })}
                                                         className={cn(
-                                                            "text-2xl font-serif mb-4 border-none bg-transparent px-0 h-auto focus-visible:ring-0 focus-visible:ring-offset-0 ring-0 focus:ring-0 outline-none shadow-none placeholder:text-muted-foreground/50",
+                                                            "text-2xl font-serif mb-2 border-none bg-transparent px-0 h-auto focus-visible:ring-0 focus-visible:ring-offset-0 ring-0 focus:ring-0 outline-none shadow-none placeholder:text-muted-foreground/50",
                                                             "focus:cursor-text"
                                                         )}
                                                         placeholder="Untitled"
                                                         onMouseDown={(e) => e.stopPropagation()}
                                                     />
-                                                    <div className="flex-1 w-full bg-transparent overflow-y-auto" onMouseDown={(e) => e.stopPropagation()}>
+                                                    <div className="flex-1 w-full bg-transparent overflow-y-auto" onMouseDown={(e) => e.stopPropagation()} onWheel={(e) => e.stopPropagation()}>
                                                         {(() => {
                                                             let cleanContent = portalDoc.content || '';
                                                             const title = portalDoc.title?.trim();
@@ -1989,7 +2003,7 @@ export function CanvasView({
                                                                     content={cleanContent}
                                                                     onChange={(newContent) => onUpdateDocument({ ...portalDoc, content: newContent })}
                                                                     placeholder="Type something..."
-                                                                    className="min-h-[auto] prose-p:my-1 prose-ul:my-1 prose-h1:text-lg prose-h2:text-base font-sans"
+                                                                    className="min-h-[auto] !py-0 [&>.tiptap]:!mt-0 prose-p:my-1 prose-ul:my-1 prose-h1:text-lg prose-h2:text-base font-sans"
                                                                 />
                                                             );
                                                         })()}
@@ -2020,13 +2034,13 @@ export function CanvasView({
                                                     <div
                                                         data-field="content"
                                                         className={cn(
-                                                            "flex-1 text-sm leading-relaxed text-muted-foreground font-sans line-clamp-[12]",
+                                                            "flex-1 text-sm leading-relaxed text-muted-foreground font-sans",
                                                             "prose prose-sm dark:prose-invert max-w-none prose-p:my-1 prose-ul:my-1 prose-h1:text-lg prose-h2:text-base pointer-events-none",
                                                             // Task list specific styling
                                                             "[&>ul.contains-task-list]:list-none [&>ul.contains-task-list]:pl-0",
-                                                            "[&>ul.contains-task-list>li]:flex [&>ul.contains-task-list>li]:items-start [&>ul.contains-task-list>li]:gap-3 [&>ul.contains-task-list>li]:mb-2",
+                                                            "[&>ul.contains-task-list>li]:flex [&>ul.contains-task-list>li]:items-start [&>ul.contains-task-list>li]:gap-2 [&>ul.contains-task-list>li]:mb-0.5",
                                                             "[&>ul.contains-task-list>li]:before:hidden [&>ul.contains-task-list>li]:after:hidden",
-                                                            "[&>ul.contains-task-list>li>input[type=checkbox]]:mt-1 [&>ul.contains-task-list>li>input[type=checkbox]]:w-[1.1rem] [&>ul.contains-task-list>li>input[type=checkbox]]:h-[1.1rem] [&>ul.contains-task-list>li>input[type=checkbox]]:m-0 [&>ul.contains-task-list>li>input[type=checkbox]]:appearance-auto [&>ul.contains-task-list>li>input[type=checkbox]]:border [&>ul.contains-task-list>li>input[type=checkbox]]:rounded"
+                                                            "[&_input[type=checkbox]]:mt-0.5 [&_input[type=checkbox]]:w-3.5 [&_input[type=checkbox]]:h-3.5 [&_input[type=checkbox]]:m-0 [&_input[type=checkbox]]:appearance-auto"
                                                         )}
                                                     >
                                                         {(() => {
