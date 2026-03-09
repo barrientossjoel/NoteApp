@@ -113,23 +113,32 @@ const noScrollAdjust = () => false
 
 // ─── PdfRenderer ────────────────────────────────────────────────────────────
 
+import { updateDocument } from '../../actions/actions'
+
 interface PdfRendererProps {
+    documentId: string
     url: string
     invertColors: boolean
     scale: number
+    scrollPosition?: string | null
     onAddHighlight?: (text: string, page: number) => void
 }
 
 const SCROLL_KEY = (url: string) => `pdf-scroll:${url}`
 
-export const PdfRenderer = forwardRef<any, PdfRendererProps>(({ url, invertColors, scale, onAddHighlight }, ref) => {
+export const PdfRenderer = forwardRef<any, PdfRendererProps>(({ documentId, url, invertColors, scale, scrollPosition, onAddHighlight }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null)
     const [selection, setSelection] = useState<{ text: string, page: number, rect: DOMRect } | null>(null)
 
     // Read saved scroll offset ONCE at component init.
-    // Used by the virtualizer's initialOffset so the correct pages are pre-rendered
-    // on the very first render cycle.
+    // Prioritize server-side scrollPosition, fall back to localStorage.
     const savedScrollOffset = useRef<{ top: number, left: number }>((function () {
+        if (scrollPosition) {
+            try {
+                const parsed = JSON.parse(scrollPosition)
+                if (typeof parsed === 'object' && parsed !== null) return parsed
+            } catch (e) { }
+        }
         const saved = localStorage.getItem(SCROLL_KEY(url))
         if (saved && saved.startsWith('{')) {
             try { return JSON.parse(saved) } catch (e) { }
@@ -293,16 +302,21 @@ export const PdfRenderer = forwardRef<any, PdfRendererProps>(({ url, invertColor
 
     const saveScrollPos = useCallback(() => {
         if (containerRef.current) {
-            localStorage.setItem(SCROLL_KEY(url), JSON.stringify({
+            const pos = {
                 top: containerRef.current.scrollTop,
                 left: containerRef.current.scrollLeft
-            }))
+            }
+            const posString = JSON.stringify(pos)
+            localStorage.setItem(SCROLL_KEY(url), posString)
+
+            // Sync to server
+            updateDocument(documentId, { scrollPosition: posString }).catch(console.error)
         }
-    }, [url])
+    }, [url, documentId])
 
     const handleScroll = useCallback(() => {
         if (saveTimer.current) clearTimeout(saveTimer.current)
-        saveTimer.current = setTimeout(saveScrollPos, 300)
+        saveTimer.current = setTimeout(saveScrollPos, 500)
     }, [saveScrollPos])
 
     // Synchronous save on unmount ensures position is captured even if the user

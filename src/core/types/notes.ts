@@ -13,6 +13,7 @@ export interface Document {
   createdAt?: string | Date | null;
   updatedAt?: string | Date | null;
   type?: 'text' | 'canvas' | 'pdf';
+  scrollPosition?: string | null;
   children?: Document[]; // For recursive tree structure on client
 }
 

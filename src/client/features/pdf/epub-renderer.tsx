@@ -6,11 +6,14 @@ import { Loader2, AlertCircle, ChevronLeft, ChevronRight, Highlighter } from 'lu
 import { Button } from '../../components/ui/button'
 import { cn } from '../../lib/utils/utils'
 import { forwardRef, useImperativeHandle } from 'react'
+import { updateDocument } from '../../actions/actions'
 
 interface EpubRendererProps {
+    documentId: string
     url: string
     invertColors: boolean
     scale: number
+    scrollPosition?: string | null
     /** True when this pane is the currently focused pane in the workspace */
     isActivePane?: boolean
     onAddHighlight?: (text: string, chapter: number, scrollPos: number) => void
@@ -28,7 +31,7 @@ const SCROLL_POS_KEY = (url: string, index: number) => `epub-scroll:${url}:${ind
 // the EPUB ZIP on every panel move or remount.
 const epubContentCache = new Map<string, EpubContent>()
 
-export const EpubRenderer = forwardRef<any, EpubRendererProps>(({ url, invertColors, scale, isActivePane = false, onAddHighlight }, ref) => {
+export const EpubRenderer = forwardRef<any, EpubRendererProps>(({ documentId, url, invertColors, scale, scrollPosition, isActivePane = false, onAddHighlight }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null)
     const iframeRef = useRef<HTMLIFrameElement>(null)
     const [selection, setSelection] = useState<{ text: string, chapter: number, scrollY: number, rect: { top: number, left: number, width: number, height: number } } | null>(null)
@@ -38,7 +41,10 @@ export const EpubRenderer = forwardRef<any, EpubRendererProps>(({ url, invertCol
             setCurrentIndex(chapterIndex)
             if (scrollY !== undefined) {
                 // If chapter changes, scroll restoration useEffect handles it if we set localStorage first
+                const pos = { chapter: chapterIndex, scrollY }
+                const posString = JSON.stringify(pos)
                 localStorage.setItem(SCROLL_POS_KEY(url, chapterIndex), String(scrollY))
+                updateDocument(documentId, { scrollPosition: posString }).catch(console.error)
             }
         }
     }))
@@ -52,8 +58,19 @@ export const EpubRenderer = forwardRef<any, EpubRendererProps>(({ url, invertCol
         () => epubContentCache.get(url) ?? null
     )
 
-    // Restore last chapter from localStorage, with bounds-check deferred to after content loads
+    // Parse remote scrollPosition if available
+    const remotePos = useMemo(() => {
+        if (!scrollPosition) return null
+        try {
+            return JSON.parse(scrollPosition)
+        } catch (e) {
+            return null
+        }
+    }, [scrollPosition])
+
+    // Restore last chapter from server or localStorage, with bounds-check deferred to after content loads
     const [currentIndex, setCurrentIndex] = useState(() => {
+        if (remotePos?.chapter !== undefined) return remotePos.chapter
         const saved = localStorage.getItem(CHAPTER_KEY(url))
         return saved ? parseInt(saved, 10) : 0
     })
@@ -154,7 +171,12 @@ export const EpubRenderer = forwardRef<any, EpubRendererProps>(({ url, invertCol
     useEffect(() => {
         const handleMessage = (e: MessageEvent) => {
             if (e.data?.type === 'epub-scroll' && e.data.url === url) {
-                localStorage.setItem(SCROLL_POS_KEY(url, currentIndex), String(e.data.scrollY))
+                const scrollY = e.data.scrollY
+                localStorage.setItem(SCROLL_POS_KEY(url, currentIndex), String(scrollY))
+
+                // Sync to server
+                const pos = { chapter: currentIndex, scrollY }
+                updateDocument(documentId, { scrollPosition: JSON.stringify(pos) }).catch(console.error)
             }
             if (e.data?.type === 'epub-selection' && e.data.url === url) {
                 if (e.data.text) {
@@ -171,15 +193,21 @@ export const EpubRenderer = forwardRef<any, EpubRendererProps>(({ url, invertCol
         }
         window.addEventListener('message', handleMessage)
         return () => window.removeEventListener('message', handleMessage)
-    }, [url, currentIndex])
+    }, [url, currentIndex, documentId])
 
     // ── Scroll Restoration ───────────────────────────────────────────────────
     // Identical setTimeout/StrictMode logic from pdf-renderer
     useEffect(() => {
         if (!iframeReady || scrollRestored.current) return
 
-        const saved = localStorage.getItem(SCROLL_POS_KEY(url, currentIndex))
-        const top = saved ? parseFloat(saved) : 0
+        let top = 0
+        if (remotePos?.chapter === currentIndex && remotePos?.scrollY !== undefined) {
+            top = remotePos.scrollY
+        } else {
+            const saved = localStorage.getItem(SCROLL_POS_KEY(url, currentIndex))
+            top = saved ? parseFloat(saved) : 0
+        }
+
         if (!top) { scrollRestored.current = true; return }
 
         scrollRestored.current = true
@@ -194,7 +222,7 @@ export const EpubRenderer = forwardRef<any, EpubRendererProps>(({ url, invertCol
             clearTimeout(timer)
             scrollRestored.current = false
         }
-    }, [iframeReady, url, currentIndex])
+    }, [iframeReady, url, currentIndex, remotePos])
 
     // Focus on mount
     useEffect(() => {
@@ -214,9 +242,9 @@ export const EpubRenderer = forwardRef<any, EpubRendererProps>(({ url, invertCol
             e.stopPropagation()
             e.preventDefault()
             if (e.key === 'ArrowLeft') {
-                setCurrentIndex(prev => Math.max(0, prev - 1))
+                setCurrentIndex(i => i - 1)
             } else {
-                setCurrentIndex(prev => {
+                setCurrentIndex((prev: number) => {
                     const epubContent = epubContentCache.get(url)
                     if (!epubContent) return prev
                     return Math.min(epubContent.spine.length - 1, prev + 1)
@@ -355,7 +383,7 @@ export const EpubRenderer = forwardRef<any, EpubRendererProps>(({ url, invertCol
                     <Button
                         size="sm"
                         className="h-8 gap-2 shadow-xl bg-primary text-primary-foreground hover:bg-primary/90"
-                        onClick={(e) => {
+                        onClick={(e: React.MouseEvent) => {
                             e.stopPropagation()
                             onAddHighlight?.(selection.text, selection.chapter, selection.scrollY)
                             setSelection(null)
@@ -375,7 +403,7 @@ export const EpubRenderer = forwardRef<any, EpubRendererProps>(({ url, invertCol
                     size="sm"
                     className="gap-2"
                     disabled={currentIndex === 0}
-                    onClick={() => setCurrentIndex(i => i - 1)}
+                    onClick={() => setCurrentIndex((i: number) => i - 1)}
                     aria-label="Previous chapter"
                 >
                     <ChevronLeft className="h-4 w-4" />
@@ -389,7 +417,7 @@ export const EpubRenderer = forwardRef<any, EpubRendererProps>(({ url, invertCol
                     size="sm"
                     className="gap-2"
                     disabled={!content || currentIndex === content.spine.length - 1}
-                    onClick={() => setCurrentIndex(i => i + 1)}
+                    onClick={() => setCurrentIndex((i: number) => i + 1)}
                     aria-label="Next chapter"
                 >
                     Next

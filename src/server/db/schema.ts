@@ -29,6 +29,7 @@ export const documents = sqliteTable('documents', {
     tags: text('tags').default('[]'),
     order: integer('order').default(0),
     type: text('type', { enum: ['text', 'canvas', 'pdf'] }).default('text'),
+    scrollPosition: text('scroll_position'),
     createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
     updatedAt: integer('updated_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
 });

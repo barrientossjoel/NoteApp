@@ -18,6 +18,7 @@ const documentSchema = z.object({
     order: z.number().int().optional(),
     status: z.enum(['active', 'deleted', 'archived']).optional(),
     type: z.enum(['text', 'canvas', 'pdf']).optional(),
+    scrollPosition: z.string().optional(),
 });
 
 // Get documents filtered by status

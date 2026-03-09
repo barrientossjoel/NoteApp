@@ -367,9 +367,11 @@ export function PdfView({
                             {isEbookFile ? (
                                 <EpubRenderer
                                     ref={pdfRendererRef}
+                                    documentId={doc.id}
                                     url={url}
                                     invertColors={isDark}
                                     scale={scale}
+                                    scrollPosition={doc.scrollPosition}
                                     isActivePane={isActivePane}
                                     onAddHighlight={handleEpubHighlight}
                                 />
@@ -378,9 +380,11 @@ export function PdfView({
                             ) : (
                                 <PdfRenderer
                                     ref={pdfRendererRef}
+                                    documentId={doc.id}
                                     url={url}
                                     invertColors={isDark}
                                     scale={scale}
+                                    scrollPosition={doc.scrollPosition}
                                     onAddHighlight={handleAddHighlight}
                                 />
                             )}
