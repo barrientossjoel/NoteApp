@@ -17,6 +17,7 @@ interface EpubRendererProps {
     /** True when this pane is the currently focused pane in the workspace */
     isActivePane?: boolean
     onAddHighlight?: (text: string, chapter: number, scrollPos: number) => void
+    isFullscreen?: boolean
 }
 
 interface EpubContent {
@@ -31,7 +32,7 @@ const SCROLL_POS_KEY = (url: string, index: number) => `epub-scroll:${url}:${ind
 // the EPUB ZIP on every panel move or remount.
 const epubContentCache = new Map<string, EpubContent>()
 
-export const EpubRenderer = forwardRef<any, EpubRendererProps>(({ documentId, url, invertColors, scale, scrollPosition, isActivePane = false, onAddHighlight }, ref) => {
+export const EpubRenderer = forwardRef<any, EpubRendererProps>(({ documentId, url, invertColors, scale, scrollPosition, isActivePane = false, onAddHighlight, isFullscreen = false }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null)
     const iframeRef = useRef<HTMLIFrameElement>(null)
     const [selection, setSelection] = useState<{ text: string, chapter: number, scrollY: number, rect: { top: number, left: number, width: number, height: number } } | null>(null)
@@ -242,7 +243,7 @@ export const EpubRenderer = forwardRef<any, EpubRendererProps>(({ documentId, ur
             e.stopPropagation()
             e.preventDefault()
             if (e.key === 'ArrowLeft') {
-                setCurrentIndex(i => i - 1)
+                setCurrentIndex((i: number) => i - 1)
             } else {
                 setCurrentIndex((prev: number) => {
                     const epubContent = epubContentCache.get(url)
@@ -397,32 +398,40 @@ export const EpubRenderer = forwardRef<any, EpubRendererProps>(({ documentId, ur
             )}
 
             {/* Navigation */}
-            <div className="h-14 border-t border-border/40 flex items-center justify-between px-6 bg-muted/20 shrink-0">
-                <Button
-                    variant="ghost"
-                    size="sm"
-                    className="gap-2"
-                    disabled={currentIndex === 0}
-                    onClick={() => setCurrentIndex((i: number) => i - 1)}
-                    aria-label="Previous chapter"
-                >
-                    <ChevronLeft className="h-4 w-4" />
-                    Previous
-                </Button>
-                <span className="text-xs font-mono text-muted-foreground">
-                    {currentIndex + 1} / {content?.spine.length}
-                </span>
-                <Button
-                    variant="ghost"
-                    size="sm"
-                    className="gap-2"
-                    disabled={!content || currentIndex === content.spine.length - 1}
-                    onClick={() => setCurrentIndex((i: number) => i + 1)}
-                    aria-label="Next chapter"
-                >
-                    Next
-                    <ChevronRight className="h-4 w-4" />
-                </Button>
+            <div className={cn(
+                "shrink-0",
+                isFullscreen ? "absolute bottom-0 left-0 right-0 h-14 z-50 group/nav pointer-events-auto" : "h-14"
+            )}>
+                <div className={cn(
+                    "h-full border-t border-border/40 flex items-center justify-between px-6 transition-all duration-300",
+                    isFullscreen ? "bg-background/95 backdrop-blur-md opacity-0 translate-y-full group-hover/nav:opacity-100 group-hover/nav:translate-y-0" : "bg-muted/20"
+                )}>
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        className="gap-2"
+                        disabled={currentIndex === 0}
+                        onClick={() => setCurrentIndex((i: number) => i - 1)}
+                        aria-label="Previous chapter"
+                    >
+                        <ChevronLeft className="h-4 w-4" />
+                        Previous
+                    </Button>
+                    <span className="text-xs font-mono text-muted-foreground">
+                        {currentIndex + 1} / {content?.spine.length}
+                    </span>
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        className="gap-2"
+                        disabled={!content || currentIndex === content.spine.length - 1}
+                        onClick={() => setCurrentIndex((i: number) => i + 1)}
+                        aria-label="Next chapter"
+                    >
+                        Next
+                        <ChevronRight className="h-4 w-4" />
+                    </Button>
+                </div>
             </div>
         </div>
     )

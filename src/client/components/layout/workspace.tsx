@@ -547,7 +547,7 @@ export function Workspace({
                             >
                                 <div
                                     ref={(el) => { domRefs.current[child.id] = el }}
-                                    className={cn("h-full w-full", isDragging && "pointer-events-none select-none")}
+                                    className={cn("h-full w-full", isDragging && "select-none")}
                                 >
                                     {renderNode(child)}
                                 </div>
@@ -612,7 +612,7 @@ export function Workspace({
 
     return (
         <div className="flex-1 h-full overflow-hidden flex flex-row relative">
-            {isAltPressed && (
+            {(isAltPressed || isDragging) && (
                 <style>{`
                     iframe, canvas, [data-page-number] { pointer-events: none !important; }
                 `}</style>

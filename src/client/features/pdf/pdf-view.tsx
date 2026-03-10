@@ -350,7 +350,7 @@ export function PdfView({
             <div className="flex flex-row flex-1 min-h-0 relative">
                 <div
                     ref={contentRef}
-                    className="flex-1 min-h-0 relative group"
+                    className="flex-1 min-h-0 relative"
                     style={{ touchAction: 'pan-x pan-y pinch-zoom' }}
                 >
                     {!url ? (
@@ -374,6 +374,7 @@ export function PdfView({
                                     scrollPosition={doc.scrollPosition}
                                     isActivePane={isActivePane}
                                     onAddHighlight={handleEpubHighlight}
+                                    isFullscreen={anyExpanded}
                                 />
                             ) : isLiquidMode ? (
                                 <LiquidPdfRenderer url={url} invertColors={isDark} scale={scale} />
@@ -391,10 +392,10 @@ export function PdfView({
                         </Suspense>
                     )}
 
-                    {/* Zoom controls — floating footer, visible on hover */}
+                    {/* Zoom hover zone */}
                     {url && (
-                        <div className="hidden md:block absolute bottom-4 left-1/2 -translate-x-1/2 z-20 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                            <div className="pointer-events-auto flex items-center gap-0.5 bg-background/90 backdrop-blur border border-border/40 rounded-full px-1 py-1 shadow-lg">
+                        <div className="hidden md:block absolute bottom-12 left-1/2 -translate-x-1/2 z-20 group/zoom p-6">
+                            <div className="opacity-0 group-hover/zoom:opacity-100 transition-opacity duration-200 flex items-center gap-0.5 bg-background/90 backdrop-blur border border-border/40 rounded-full px-1 py-1 shadow-lg">
                                 <Button
                                     variant="ghost"
                                     size="icon"
