@@ -29,6 +29,7 @@ interface EditorProps {
     placeholder?: string
     className?: string
     onKeyDown?: (e: KeyboardEvent) => boolean | void
+    onLinkClick?: (href: string) => void
 }
 
 export const Editor = forwardRef<EditorRef, EditorProps>(({
@@ -40,10 +41,15 @@ export const Editor = forwardRef<EditorRef, EditorProps>(({
     editable = true,
     placeholder = 'Start writing...',
     className = '',
-    onKeyDown
+    onKeyDown,
+    onLinkClick
 }, ref) => {
     const wrapperRef = useRef<HTMLDivElement>(null)
-    const [tableToolbar, setTableToolbar] = useState<{ top: number; left: number } | null>(null)
+    const [tableToolbar, setTableToolbar] = useState<{
+        col: { top: number; left: number };
+        row: { top: number; left: number };
+        table: { top: number; left: number };
+    } | null>(null)
 
     const editor = useEditor({
         extensions: [
@@ -114,16 +120,49 @@ export const Editor = forwardRef<EditorRef, EditorProps>(({
         },
         onSelectionUpdate: ({ editor }) => {
             if (editor.isActive('table')) {
-                const { view } = editor
-                const { from } = editor.state.selection
-                const coords = view.coordsAtPos(from)
-                const wrapRect = wrapperRef.current?.getBoundingClientRect()
-                if (wrapRect) {
-                    setTableToolbar({
-                        top: coords.top - wrapRect.top - 48,
-                        left: coords.left - wrapRect.left,
-                    })
-                }
+                setTimeout(() => {
+                    let domNode: Node | null = null;
+                    try {
+                        domNode = editor.view.domAtPos(editor.state.selection.from).node;
+                    } catch (e) {
+                        // ignore
+                    }
+
+                    if (domNode && domNode.nodeType === Node.TEXT_NODE) {
+                        domNode = domNode.parentElement;
+                    }
+
+                    const el = domNode as HTMLElement;
+                    if (el && typeof el.closest === 'function') {
+                        const cell = el.closest('td, th');
+                        const table = el.closest('table');
+                        const row = el.closest('tr');
+                        const wrapRect = wrapperRef.current?.getBoundingClientRect();
+
+                        if (cell && table && row && wrapRect) {
+                            const cellRect = cell.getBoundingClientRect();
+                            const tableRect = table.getBoundingClientRect();
+                            const rowRect = row.getBoundingClientRect();
+
+                            setTableToolbar({
+                                col: {
+                                    top: tableRect.top - wrapRect.top - 32,
+                                    left: cellRect.left - wrapRect.left + (cellRect.width / 2)
+                                },
+                                row: {
+                                    top: rowRect.top - wrapRect.top + (rowRect.height / 2),
+                                    left: tableRect.left - wrapRect.left - 42
+                                },
+                                table: {
+                                    top: tableRect.top - wrapRect.top - 32,
+                                    left: tableRect.left - wrapRect.left - 42
+                                }
+                            });
+                            return;
+                        }
+                    }
+                    setTableToolbar(null);
+                }, 0);
             } else {
                 setTableToolbar(null)
             }
@@ -131,6 +170,19 @@ export const Editor = forwardRef<EditorRef, EditorProps>(({
         editorProps: {
             attributes: {
                 class: `prose dark:prose-invert prose-sm focus:outline-none min-h-[60vh] max-w-full leading-relaxed px-0 py-4 ${className}`,
+            },
+            handleClick: (view, pos, event) => {
+                const target = event.target as HTMLElement
+                const link = target.closest('a')
+                if (link && onLinkClick) {
+                    const href = link.getAttribute('href')
+                    if (href && !href.startsWith('http') && !href.startsWith('#')) {
+                        event.preventDefault()
+                        onLinkClick(href)
+                        return true
+                    }
+                }
+                return false
             },
             handleKeyDown: (view, event) => {
                 if (onKeyDown) {
@@ -163,37 +215,87 @@ export const Editor = forwardRef<EditorRef, EditorProps>(({
     return (
         <div ref={wrapperRef} className="w-full tiptap-wrapper relative">
             {editor && tableToolbar && (
-                <div
-                    className="absolute z-50 flex bg-background border border-border/50 shadow-md rounded-md overflow-hidden p-1 gap-1"
-                    style={{ top: tableToolbar.top, left: tableToolbar.left }}
-                    onMouseDown={(e) => e.preventDefault()}
-                >
-                    <button
-                        type="button"
-                        className="p-1.5 hover:bg-muted text-muted-foreground hover:text-foreground rounded flex items-center gap-1.5 text-xs font-medium transition-colors"
-                        onClick={() => editor.chain().focus().addRowBefore().run()}
-                        title="Add Row Before"
+                <>
+                    {/* Column Toolbar (Top) */}
+                    <div
+                        className="absolute z-50 flex bg-background border border-border/50 shadow-md rounded-md overflow-hidden p-0.5 gap-0.5"
+                        style={{ top: tableToolbar.col.top, left: tableToolbar.col.left, transform: 'translateX(-50%)' }}
+                        onMouseDown={(e) => e.preventDefault()}
                     >
-                        + Row
-                    </button>
-                    <button
-                        type="button"
-                        className="p-1.5 hover:bg-muted text-muted-foreground hover:text-foreground rounded flex items-center gap-1.5 text-xs font-medium transition-colors"
-                        onClick={() => editor.chain().focus().addColumnBefore().run()}
-                        title="Add Column Before"
+                        <button
+                            type="button"
+                            className="p-1 hover:bg-muted text-muted-foreground hover:text-foreground rounded flex items-center justify-center text-xs transition-colors h-6 w-6"
+                            onClick={() => editor.chain().focus().addColumnBefore().run()}
+                            title="Add Column Before"
+                        >
+                            +
+                        </button>
+                        <button
+                            type="button"
+                            className="p-1 hover:bg-muted text-muted-foreground hover:text-destructive rounded flex items-center justify-center text-xs transition-colors h-6 w-6"
+                            onClick={() => editor.chain().focus().deleteColumn().run()}
+                            title="Delete Column"
+                        >
+                            -
+                        </button>
+                        <button
+                            type="button"
+                            className="p-1 hover:bg-muted text-muted-foreground hover:text-foreground rounded flex items-center justify-center text-xs transition-colors h-6 w-6"
+                            onClick={() => editor.chain().focus().addColumnAfter().run()}
+                            title="Add Column After"
+                        >
+                            +
+                        </button>
+                    </div>
+
+                    {/* Row Toolbar (Left) */}
+                    <div
+                        className="absolute z-50 flex flex-col bg-background border border-border/50 shadow-md rounded-md overflow-hidden p-0.5 gap-0.5"
+                        style={{ top: tableToolbar.row.top, left: tableToolbar.row.left, transform: 'translateY(-50%)' }}
+                        onMouseDown={(e) => e.preventDefault()}
                     >
-                        + Col
-                    </button>
-                    <div className="w-px bg-border/50 mx-1 my-1"></div>
-                    <button
-                        type="button"
-                        className="p-1.5 hover:bg-muted text-muted-foreground hover:text-destructive rounded flex items-center gap-1.5 text-xs font-medium transition-colors"
-                        onClick={() => editor.chain().focus().deleteTable().run()}
-                        title="Delete Table"
+                        <button
+                            type="button"
+                            className="p-1 hover:bg-muted text-muted-foreground hover:text-foreground rounded flex items-center justify-center text-xs transition-colors h-6 w-6"
+                            onClick={() => editor.chain().focus().addRowBefore().run()}
+                            title="Add Row Before"
+                        >
+                            +
+                        </button>
+                        <button
+                            type="button"
+                            className="p-1 hover:bg-muted text-muted-foreground hover:text-destructive rounded flex items-center justify-center text-xs transition-colors h-6 w-6"
+                            onClick={() => editor.chain().focus().deleteRow().run()}
+                            title="Delete Row"
+                        >
+                            -
+                        </button>
+                        <button
+                            type="button"
+                            className="p-1 hover:bg-muted text-muted-foreground hover:text-foreground rounded flex items-center justify-center text-xs transition-colors h-6 w-6"
+                            onClick={() => editor.chain().focus().addRowAfter().run()}
+                            title="Add Row After"
+                        >
+                            +
+                        </button>
+                    </div>
+
+                    {/* Delete Table Button (Top Left) */}
+                    <div
+                        className="absolute z-50 flex bg-background border border-border/50 shadow-md rounded-md overflow-hidden p-1"
+                        style={{ top: tableToolbar.table.top, left: tableToolbar.table.left }}
+                        onMouseDown={(e) => e.preventDefault()}
                     >
-                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" /><line x1="10" y1="11" x2="10" y2="17" /><line x1="14" y1="11" x2="14" y2="17" /></svg>
-                    </button>
-                </div>
+                        <button
+                            type="button"
+                            className="p-1 hover:bg-muted text-muted-foreground hover:text-destructive rounded flex items-center justify-center text-xs transition-colors h-6 w-6"
+                            onClick={() => editor.chain().focus().deleteTable().run()}
+                            title="Delete Table"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" /><line x1="10" y1="11" x2="10" y2="17" /><line x1="14" y1="11" x2="14" y2="17" /></svg>
+                        </button>
+                    </div>
+                </>
             )}
             <EditorContent editor={editor} />
             {/* Tiptap styles embedded */}
@@ -287,6 +389,9 @@ export const Editor = forwardRef<EditorRef, EditorProps>(({
                     font-weight: bold;
                     text-align: left;
                     background-color: var(--muted);
+                }
+                .tiptap a {
+                    cursor: pointer;
                 }
             `}} />
         </div>

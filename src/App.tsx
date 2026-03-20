@@ -6,6 +6,7 @@ import { AuthProvider, useAuth } from './client/context/AuthContext';
 import { LanguageProvider } from './client/context/LanguageContext';
 import Login from './client/pages/Login';
 import Register from './client/pages/Register';
+import Landing from './client/pages/Landing';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
@@ -24,6 +25,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
 function MainRouter() {
   const [path, setPath] = useState(window.location.pathname);
+  const { user, isLoading } = useAuth();
 
   useEffect(() => {
     const handlePopState = () => setPath(window.location.pathname);
@@ -31,8 +33,16 @@ function MainRouter() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
+  if (isLoading) {
+    return <div className="flex bg-neutral-900 justify-center items-center h-screen w-full text-white">Loading...</div>;
+  }
+
   if (path === '/login') return <Login />;
   if (path === '/register') return <Register />;
+
+  if (!user && path === '/') {
+    return <Landing />;
+  }
 
   return (
     <ProtectedRoute>

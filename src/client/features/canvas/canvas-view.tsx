@@ -133,12 +133,53 @@ function CanvasTableNode({ node, isEditing, draggedNodeId, updateNodeContent, se
         updateNodeContent(node.id, generateMarkdown(newRows));
     };
 
+    const deleteRow = (r: number) => {
+        if (localRows.length <= 1) return; // Don't delete last row (header)
+        const newRows = localRows.filter((_, i) => i !== r);
+        setLocalRows(newRows);
+        updateNodeContent(node.id, generateMarkdown(newRows));
+    }
+
+    const deleteCol = (c: number) => {
+        if (localRows[0].length <= 1) return; // Don't delete last column
+        const newRows = localRows.map(row => row.filter((_, j) => j !== c));
+        setLocalRows(newRows);
+        updateNodeContent(node.id, generateMarkdown(newRows));
+    }
+
+    const [tableContextMenu, setTableContextMenu] = useState<{ x: number, y: number, r?: number, c?: number } | null>(null);
+    const tableRef = useRef<HTMLTableElement>(null);
+
+    const handleContextMenu = (e: React.MouseEvent, r?: number, c?: number) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (tableRef.current) {
+            const rect = tableRef.current.getBoundingClientRect();
+            // Calculate position relative to the table, accounting for current zoom
+            // but since the menu is inside the scaled container, we can just use
+            // the relative mouse position inside the table
+            const x = (e.clientX - rect.left) / (rect.width / tableRef.current.offsetWidth);
+            const y = (e.clientY - rect.top) / (rect.height / tableRef.current.offsetHeight);
+            setTableContextMenu({ x, y, r, c });
+        } else {
+            // fallback
+            setTableContextMenu({ x: 0, y: 0, r, c });
+        }
+    };
+
+    useEffect(() => {
+        const handleClick = () => setTableContextMenu(null);
+        if (tableContextMenu) document.addEventListener('click', handleClick);
+        return () => document.removeEventListener('click', handleClick);
+    }, [tableContextMenu]);
+
     if (isEditing) {
         return (
             <div
                 className={cn(
                     "flex-1 overflow-visible bg-transparent p-1 pointer-events-auto",
-                    draggedNodeId === node.id ? "cursor-grabbing" : "cursor-grab"
+                    "cursor-default" // Use default cursor while editing to show normal text/pointer cursors
                 )}
                 onMouseDown={(e) => {
                     e.stopPropagation()
@@ -146,25 +187,29 @@ function CanvasTableNode({ node, isEditing, draggedNodeId, updateNodeContent, se
                 style={{ marginLeft: '-32px', marginTop: '-28px', width: 'calc(100% + 32px)' }}
             >
                 <div className="relative w-full flex flex-col">
-                    <table className="w-full border-collapse text-sm table-fixed">
+                    <table ref={tableRef} className="w-full border-collapse text-sm table-fixed relative">
                         <thead>
                             {/* Excel-like Column Headers */}
                             <tr>
                                 <th className="border border-border/50 bg-muted/50 p-1 w-8" />
                                 {localRows[0].map((_, j) => (
-                                    <th key={j} className="border border-border/50 bg-muted/50 p-1 text-center font-medium text-xs text-muted-foreground w-full">
-                                        {getColumnLetter(j)}
+                                    <th
+                                        key={j}
+                                        className="border border-border/50 bg-muted/50 p-1 text-center font-medium text-xs text-muted-foreground w-full relative group/col select-none cursor-default"
+                                        onContextMenu={(e) => handleContextMenu(e, undefined, j)}
+                                    >
+                                        <span>{getColumnLetter(j)}</span>
                                     </th>
                                 ))}
                             </tr>
                             <tr>
-                                <th className="border border-border/50 bg-muted/50 p-1 text-center text-xs text-muted-foreground font-medium w-8">
+                                <th className="border border-border/50 bg-muted/50 p-1 text-center text-xs text-muted-foreground font-medium w-8 relative group">
                                     1
                                 </th>
                                 {localRows[0].map((col, j) => (
                                     <th key={j} className="border border-border/50 bg-background p-0 text-left font-medium text-foreground relative">
                                         <input
-                                            className="w-full bg-transparent px-3 py-1.5 outline-none focus:bg-background/50 placeholder:text-muted-foreground/30 font-medium min-w-0 focus:ring-1 focus:ring-primary focus:z-10 relative"
+                                            className="w-full bg-transparent px-3 py-1.5 outline-none focus:bg-background/50 placeholder:text-muted-foreground/30 font-medium min-w-0 focus:ring-1 focus:ring-primary focus:z-10 relative cursor-text"
                                             value={focusedCell?.r === 0 && focusedCell?.c === j ? localRows[0][j] : evaluatedRows[0][j]}
                                             onChange={(e) => updateCell(0, j, e.target.value)}
                                             onFocus={() => setFocusedCell({ r: 0, c: j })}
@@ -179,13 +224,20 @@ function CanvasTableNode({ node, isEditing, draggedNodeId, updateNodeContent, se
                         <tbody>
                             {localRows.slice(1).map((row, i) => (
                                 <tr key={i + 1} className="transition-colors focus-within:bg-muted/10">
-                                    <td className="border border-border/50 bg-muted/50 p-1 text-center text-xs text-muted-foreground font-medium w-8">
-                                        {i + 2}
+                                    <td
+                                        className="border border-border/50 bg-muted/50 p-1 text-center text-xs text-muted-foreground font-medium w-8 relative group/row select-none cursor-default"
+                                        onContextMenu={(e) => handleContextMenu(e, i + 1)}
+                                    >
+                                        <span>{i + 2}</span>
                                     </td>
                                     {row.map((cell, j) => (
-                                        <td key={j} className="border border-border/50 p-0 text-muted-foreground relative">
+                                        <td
+                                            key={j}
+                                            className="border border-border/50 p-0 text-muted-foreground relative"
+                                            onContextMenu={(e) => handleContextMenu(e, i + 1, j)}
+                                        >
                                             <input
-                                                className="w-full bg-transparent px-3 py-1.5 outline-none focus:bg-background/50 placeholder:text-muted-foreground/30 min-w-0 focus:ring-1 focus:ring-primary focus:z-10 relative"
+                                                className="w-full bg-transparent px-3 py-1.5 outline-none focus:bg-background/50 placeholder:text-muted-foreground/30 min-w-0 focus:ring-1 focus:ring-primary focus:z-10 relative cursor-text"
                                                 value={focusedCell?.r === i + 1 && focusedCell?.c === j ? localRows[i + 1][j] : evaluatedRows[i + 1][j]}
                                                 onChange={(e) => updateCell(i + 1, j, e.target.value)}
                                                 onFocus={() => setFocusedCell({ r: i + 1, c: j })}
@@ -212,6 +264,34 @@ function CanvasTableNode({ node, isEditing, draggedNodeId, updateNodeContent, se
                         </Button>
                     </div>
                 </div>
+
+                {/* Table Context Menu */}
+                {tableContextMenu && (
+                    <div
+                        className="absolute z-[100] min-w-[160px] overflow-hidden rounded-md border border-border/30 bg-popover p-1 text-popover-foreground shadow-md animate-in fade-in-0 zoom-in-95"
+                        style={{ left: tableContextMenu.x, top: tableContextMenu.y }}
+                        onMouseDown={(e) => e.stopPropagation()}
+                    >
+                        {tableContextMenu.c !== undefined && localRows[0].length > 1 && (
+                            <button
+                                onClick={(e) => { e.stopPropagation(); deleteCol(tableContextMenu.c!); setTableContextMenu(null); }}
+                                className="relative flex w-full cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-destructive/10 hover:text-destructive text-muted-foreground"
+                            >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                <span>Delete Column {getColumnLetter(tableContextMenu.c)}</span>
+                            </button>
+                        )}
+                        {tableContextMenu.r !== undefined && localRows.length > 2 && (
+                            <button
+                                onClick={(e) => { e.stopPropagation(); deleteRow(tableContextMenu.r!); setTableContextMenu(null); }}
+                                className="relative flex w-full cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-destructive/10 hover:text-destructive text-muted-foreground"
+                            >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                <span>Delete Row {tableContextMenu.r + 1}</span>
+                            </button>
+                        )}
+                    </div>
+                )}
 
                 {/* Add Row Button (Absolute Bottom) */}
                 <div className="absolute -bottom-11 left-0 right-0 h-8 flex items-center justify-center pointer-events-none">
@@ -2004,6 +2084,7 @@ export function CanvasView({
                                                                     onChange={(newContent) => onUpdateDocument({ ...portalDoc, content: newContent })}
                                                                     placeholder="Type something..."
                                                                     className="min-h-[auto] !py-0 [&>.tiptap]:!mt-0 prose-p:my-1 prose-ul:my-1 prose-h1:text-lg prose-h2:text-base font-sans"
+                                                                    onLinkClick={(href) => onOpenDocument?.(href)}
                                                                 />
                                                             );
                                                         })()}

@@ -547,6 +547,7 @@ export function DocumentView({
                                 placeholder={t('startWriting')}
                                 onChange={setContent}
                                 editable={isEditing}
+                                onLinkClick={(href) => onOpenDocument?.(href)}
                                 onCommandTrigger={(position, query, triggerIndex, type) => {
                                     setCommandMenu({ isOpen: true, position, query, triggerIndex, type })
                                 }}

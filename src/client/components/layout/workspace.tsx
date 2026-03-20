@@ -211,12 +211,30 @@ export function Workspace({
         }
 
         const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.key === 'Alt') setIsAltPressed(true)
+            if (e.key === 'Alt') {
+                setIsAltPressed(true)
+                document.body.classList.add('workspace-alt-pressed')
+            }
         }
         const handleKeyUp = (e: KeyboardEvent) => {
-            if (e.key === 'Alt') setIsAltPressed(false)
+            if (e.key === 'Alt') {
+                setIsAltPressed(false)
+                document.body.classList.remove('workspace-alt-pressed')
+            }
         }
-        const handleBlur = () => setIsAltPressed(false)
+        const handleWorkspaceAltDown = () => {
+            setIsAltPressed(true)
+            document.body.classList.add('workspace-alt-pressed')
+        }
+        const handleWorkspaceAltUp = () => {
+            setIsAltPressed(false)
+            document.body.classList.remove('workspace-alt-pressed')
+        }
+        const handleBlur = () => {
+            if (document.activeElement?.tagName === 'IFRAME') return;
+            setIsAltPressed(false)
+            document.body.classList.remove('workspace-alt-pressed')
+        }
 
         const handleContextMenu = (e: MouseEvent) => {
             if (e.altKey || isAltPressed) {
@@ -228,6 +246,8 @@ export function Workspace({
         window.addEventListener('mouseup', handleMouseUp)
         window.addEventListener('keydown', handleKeyDown)
         window.addEventListener('keyup', handleKeyUp)
+        window.addEventListener('workspace-alt-keydown', handleWorkspaceAltDown)
+        window.addEventListener('workspace-alt-keyup', handleWorkspaceAltUp)
         window.addEventListener('blur', handleBlur)
         window.addEventListener('contextmenu', handleContextMenu)
         return () => {
@@ -235,6 +255,8 @@ export function Workspace({
             window.removeEventListener('mouseup', handleMouseUp)
             window.removeEventListener('keydown', handleKeyDown)
             window.removeEventListener('keyup', handleKeyUp)
+            window.removeEventListener('workspace-alt-keydown', handleWorkspaceAltDown)
+            window.removeEventListener('workspace-alt-keyup', handleWorkspaceAltUp)
             window.removeEventListener('blur', handleBlur)
             window.removeEventListener('contextmenu', handleContextMenu)
         }
@@ -267,25 +289,51 @@ export function Workspace({
         document.body.style.cursor = 'move'
     }
 
-    // Keyboard shortcuts
+    // Keyboard shortcuts - using capture phase so nothing (e.g. react-pdf, iframes) can swallow them
     React.useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.altKey) {
                 if (e.key === 'h' || e.key === 'H') {
                     e.preventDefault()
+                    e.stopPropagation()
                     handleSplitPane(activePaneId, 'horizontal')
                 } else if (e.key === 'v' || e.key === 'V') {
                     e.preventDefault()
+                    e.stopPropagation()
                     handleSplitPane(activePaneId, 'vertical')
                 } else if (e.key === 'q' || e.key === 'Q') {
                     e.preventDefault()
+                    e.stopPropagation()
                     handleClosePane(activePaneId)
                 }
             }
         }
 
-        window.addEventListener('keydown', handleKeyDown)
-        return () => window.removeEventListener('keydown', handleKeyDown)
+        const handleCustomShortcut = (e: any) => {
+            const action = e.detail?.action
+            const sourcePaneId = e.detail?.sourcePaneId
+            const targetPaneId = sourcePaneId || activePaneId
+
+            if (action === 'horizontal') handleSplitPane(targetPaneId, 'horizontal')
+            if (action === 'vertical') handleSplitPane(targetPaneId, 'vertical')
+            if (action === 'close') handleClosePane(targetPaneId)
+        }
+
+        const handleFocus = (e: any) => {
+            const paneId = e.detail?.paneId
+            if (paneId) {
+                setActivePaneId(paneId)
+            }
+        }
+
+        window.addEventListener('keydown', handleKeyDown, true)
+        window.addEventListener('workspace-shortcut', handleCustomShortcut)
+        window.addEventListener('workspace-focus', handleFocus)
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown, true)
+            window.removeEventListener('workspace-shortcut', handleCustomShortcut)
+            window.removeEventListener('workspace-focus', handleFocus)
+        }
     }, [activePaneId, layout, documents])
 
     const handleMoveTab = (tabId: string, fromPaneId: string, toPaneId: string, index?: number) => {
@@ -612,6 +660,13 @@ export function Workspace({
 
     return (
         <div className="flex-1 h-full overflow-hidden flex flex-row relative">
+            <style>{`
+                body.workspace-alt-pressed iframe, 
+                body.workspace-alt-pressed canvas, 
+                body.workspace-alt-pressed [data-page-number] { 
+                    pointer-events: none !important; 
+                }
+            `}</style>
             {(isAltPressed || isDragging) && (
                 <style>{`
                     iframe, canvas, [data-page-number] { pointer-events: none !important; }

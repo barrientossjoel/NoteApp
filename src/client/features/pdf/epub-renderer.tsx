@@ -164,6 +164,9 @@ export const EpubRenderer = forwardRef<any, EpubRendererProps>(({ documentId, ur
         scrollRestored.current = false
     }, [currentIndex])
 
+    // Generate a unique ID for this specific EpubRenderer instance to isolate iframe messages
+    const instanceId = useMemo(() => crypto.randomUUID(), [])
+
     // ── Scroll persistence ───────────────────────────────────────────────────
     // We cannot reliably read iframeRef.current.contentWindow.scrollY during
     // unmount or beforeunload due to cross-origin sandboxing in some browsers.
@@ -171,6 +174,8 @@ export const EpubRenderer = forwardRef<any, EpubRendererProps>(({ documentId, ur
     // events as the user scrolls, which we intercept here and save instantly.
     useEffect(() => {
         const handleMessage = (e: MessageEvent) => {
+            if (e.data?.instanceId !== instanceId) return
+
             if (e.data?.type === 'epub-scroll' && e.data.url === url) {
                 const scrollY = e.data.scrollY
                 localStorage.setItem(SCROLL_POS_KEY(url, currentIndex), String(scrollY))
@@ -189,6 +194,46 @@ export const EpubRenderer = forwardRef<any, EpubRendererProps>(({ documentId, ur
                     })
                 } else {
                     setSelection(null)
+                }
+            }
+            if (e.data?.type === 'epub-shortcut') {
+                const { keyStr } = e.data
+                let action = ''
+                if (keyStr === 'h' || keyStr === 'H') action = 'horizontal'
+                if (keyStr === 'v' || keyStr === 'V') action = 'vertical'
+                if (keyStr === 'q' || keyStr === 'Q') action = 'close'
+
+                const paneDiv = containerRef.current?.closest('[data-pane-id]')
+                const sourcePaneId = paneDiv?.getAttribute('data-pane-id')
+
+                if (action) {
+                    window.dispatchEvent(new CustomEvent('workspace-shortcut', { detail: { action, sourcePaneId } }))
+                }
+            }
+            if (e.data?.type === 'epub-alt-keydown') {
+                window.dispatchEvent(new CustomEvent('workspace-alt-keydown'))
+            }
+            if (e.data?.type === 'epub-alt-keyup') {
+                window.dispatchEvent(new CustomEvent('workspace-alt-keyup'))
+            }
+            if (e.data?.type === 'epub-nav') {
+                if (e.data.keyStr === 'ArrowLeft') {
+                    setCurrentIndex((i: number) => i - 1)
+                } else if (e.data.keyStr === 'ArrowRight') {
+                    setCurrentIndex((prev: number) => {
+                        const epubContent = epubContentCache.get(url)
+                        if (!epubContent) return prev
+                        return Math.min(epubContent.spine.length - 1, prev + 1)
+                    })
+                }
+            }
+            if (e.data?.type === 'epub-focus') {
+                const paneDiv = containerRef.current?.closest('[data-pane-id]')
+                if (paneDiv) {
+                    const paneId = paneDiv.getAttribute('data-pane-id')
+                    if (paneId) {
+                        window.dispatchEvent(new CustomEvent('workspace-focus', { detail: { paneId } }))
+                    }
                 }
             }
         }
@@ -225,9 +270,29 @@ export const EpubRenderer = forwardRef<any, EpubRendererProps>(({ documentId, ur
         }
     }, [iframeReady, url, currentIndex, remotePos])
 
-    // Focus on mount
+    // Focus on mount and detect iframe clicks
     useEffect(() => {
         if (!loading && !error) containerRef.current?.focus()
+
+        // When you click inside an iframe, the parent window fires a 'blur' event 
+        // and document.activeElement becomes the iframe. This is the most bulletproof
+        // cross-browser way to detect if the user interacted with the iframe.
+        const handleWindowBlur = () => {
+            requestAnimationFrame(() => {
+                if (document.activeElement === iframeRef.current) {
+                    const paneDiv = containerRef.current?.closest('[data-pane-id]')
+                    if (paneDiv) {
+                        const paneId = paneDiv.getAttribute('data-pane-id')
+                        if (paneId) {
+                            window.dispatchEvent(new CustomEvent('workspace-focus', { detail: { paneId } }))
+                        }
+                    }
+                }
+            })
+        }
+
+        window.addEventListener('blur', handleWindowBlur)
+        return () => window.removeEventListener('blur', handleWindowBlur)
     }, [loading, error])
 
     // Keyboard navigation: attach a window-level capture listener so we intercept
@@ -281,7 +346,8 @@ export const EpubRenderer = forwardRef<any, EpubRendererProps>(({ documentId, ur
                         window.parent.postMessage({
                             type: 'epub-scroll',
                             url: '${url}',
-                            scrollY: window.scrollY
+                            scrollY: window.scrollY,
+                            instanceId: '${instanceId}'
                         }, '*');
                     }, 100);
                 });
@@ -289,12 +355,12 @@ export const EpubRenderer = forwardRef<any, EpubRendererProps>(({ documentId, ur
                 window.addEventListener('mouseup', () => {
                     const sel = window.getSelection();
                     if (!sel || sel.isCollapsed) {
-                        window.parent.postMessage({ type: 'epub-selection', url: '${url}', text: null }, '*');
+                        window.parent.postMessage({ type: 'epub-selection', url: '${url}', text: null, instanceId: '${instanceId}' }, '*');
                         return;
                     }
                     const text = sel.toString().trim();
                     if (!text) {
-                        window.parent.postMessage({ type: 'epub-selection', url: '${url}', text: null }, '*');
+                        window.parent.postMessage({ type: 'epub-selection', url: '${url}', text: null, instanceId: '${instanceId}' }, '*');
                         return;
                     }
                     const range = sel.getRangeAt(0);
@@ -306,6 +372,7 @@ export const EpubRenderer = forwardRef<any, EpubRendererProps>(({ documentId, ur
                             url: '${url}',
                             text,
                             scrollY: window.scrollY,
+                            instanceId: '${instanceId}',
                             rect: {
                                 top: rect.top,
                                 left: rect.left,
@@ -313,8 +380,50 @@ export const EpubRenderer = forwardRef<any, EpubRendererProps>(({ documentId, ur
                                 height: rect.height
                             }
                         }, '*');
-                    }
                 });
+
+                window.addEventListener('keydown', (e) => {
+                    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+                        e.preventDefault();
+                        window.parent.postMessage({
+                            type: 'epub-nav',
+                            keyStr: e.key,
+                            instanceId: '${instanceId}'
+                        }, '*');
+                    }
+                    if (e.altKey && ['h', 'H', 'v', 'V', 'q', 'Q'].includes(e.key)) {
+                        e.preventDefault();
+                        window.parent.postMessage({
+                            type: 'epub-shortcut',
+                            keyStr: e.key,
+                            altKey: true,
+                            instanceId: '${instanceId}'
+                        }, '*');
+                    }
+                    if (e.key === 'Alt' || e.altKey) {
+                        window.parent.postMessage({ type: 'epub-alt-keydown', instanceId: '${instanceId}' }, '*');
+                    }
+                }, true); // Use capture phase so nothing else inside the EPUB can stop it
+
+                window.addEventListener('keyup', (e) => {
+                    if (e.key === 'Alt') {
+                        window.parent.postMessage({ type: 'epub-alt-keyup', instanceId: '${instanceId}' }, '*');
+                    }
+                }, true);
+                
+                // If the user clicks into the iframe while holding Alt, we must tell the parent immediately
+                window.addEventListener('mouseenter', (e) => {
+                    if (e.altKey) window.parent.postMessage({ type: 'epub-alt-keydown', instanceId: '${instanceId}' }, '*');
+                });
+                window.addEventListener('mousemove', (e) => {
+                    if (e.altKey) window.parent.postMessage({ type: 'epub-alt-keydown', instanceId: '${instanceId}' }, '*');
+                });
+
+                // Also listen for interactions to focus the app workspace pane
+                const notifyFocus = () => window.parent.postMessage({ type: 'epub-focus', instanceId: '${instanceId}' }, '*');
+                window.addEventListener('mousedown', notifyFocus, true);
+                window.addEventListener('touchstart', notifyFocus, true);
+                window.addEventListener('click', notifyFocus, true);
             </script>
         `
 
