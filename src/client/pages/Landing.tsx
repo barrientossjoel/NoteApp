@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowRight, BookOpen, Cloud, Lock, Sparkles, Layers, Search, Cpu, Globe, FileText } from 'lucide-react';
+import { ArrowRight, Cloud, Sparkles, Search, Globe, FileText, Workflow, Command, Lock, Cpu, Terminal, Layers } from 'lucide-react';
 import { Button } from '../components/ui/button';
 
 const translations = {
@@ -187,10 +187,8 @@ export default function Landing() {
                         {/* Feature 1: Canvas */}
                         <div className="flex flex-col md:flex-row items-center gap-16">
                             <div className="w-full md:w-5/12 space-y-6">
-                                <div className="w-12 h-12 rounded-xl bg-white/5 flex items-center justify-center border border-white/10">
-                                    <Layers className="w-6 h-6 text-indigo-400" />
-                                </div>
-                                <h3 className="text-3xl font-bold text-foreground">{t.feat1Title}</h3>
+                                <Workflow className="w-8 h-8 text-white" />
+                                <h3 className="text-3xl font-bold font-serif text-foreground">{t.feat1Title}</h3>
                                 <p className="text-lg text-neutral-400 leading-relaxed">{t.feat1Desc}</p>
                             </div>
                             <div className="w-full md:w-7/12">
@@ -242,14 +240,12 @@ export default function Landing() {
                         {/* Feature 2: Editor (Image Left) */}
                         <div className="flex flex-col md:flex-row-reverse items-center gap-16">
                             <div className="w-full md:w-5/12 space-y-6 md:pl-8">
-                                <div className="w-12 h-12 rounded-xl bg-white/5 flex items-center justify-center border border-white/10">
-                                    <BookOpen className="w-6 h-6 text-emerald-400" />
-                                </div>
-                                <h3 className="text-3xl font-bold text-foreground">{t.feat2Title}</h3>
+                                <Terminal className="w-8 h-8 text-white" />
+                                <h3 className="text-3xl font-bold font-serif text-foreground">{t.feat2Title}</h3>
                                 <p className="text-lg text-neutral-400 leading-relaxed">{t.feat2Desc}</p>
                             </div>
                             <div className="w-full md:w-7/12">
-                                <div className="relative rounded-2xl border border-white/10 bg-[#0f0f0f] shadow-2xl overflow-hidden group h-[350px]">
+                                <div className="relative rounded-2xl border border-white/10 bg-[#0a0a0a] shadow-2xl overflow-hidden group h-[350px]">
                                     <div className="w-full h-full flex p-6 gap-6 font-mono text-sm group-hover:scale-[1.02] transition-transform duration-700">
                                         <div className="w-1/3 hidden sm:flex flex-col gap-3 opacity-60 border-r border-white/10 pr-6 pt-2">
                                             <div className="flex items-center gap-2 text-white bg-white/10 px-3 py-2 rounded-md"><FileText className="w-4 h-4" /> <span>architecture.md</span></div>
@@ -278,14 +274,12 @@ export default function Landing() {
                         {/* Feature 3: Search */}
                         <div className="flex flex-col md:flex-row items-center gap-16">
                             <div className="w-full md:w-5/12 space-y-6">
-                                <div className="w-12 h-12 rounded-xl bg-white/5 flex items-center justify-center border border-white/10">
-                                    <Search className="w-6 h-6 text-fuchsia-400" />
-                                </div>
-                                <h3 className="text-3xl font-bold text-foreground">{t.feat6Title}</h3>
+                                <Command className="w-8 h-8 text-white" />
+                                <h3 className="text-3xl font-bold font-serif text-foreground">{t.feat6Title}</h3>
                                 <p className="text-lg text-neutral-400 leading-relaxed">{t.feat6Desc}</p>
                             </div>
                             <div className="w-full md:w-7/12">
-                                <div className="relative rounded-2xl border border-white/10 bg-[#1e1e1e]/80 backdrop-blur-md shadow-2xl font-sans group overflow-hidden h-[350px] flex flex-col transition-transform duration-700 hover:scale-[1.02]">
+                                <div className="relative rounded-2xl border border-white/10 bg-[#0a0a0a] shadow-2xl font-sans group overflow-hidden h-[350px] flex flex-col transition-transform duration-700 hover:scale-[1.02]">
                                     <div className="p-4 pb-0">
                                         <div className="flex items-center px-4 h-[46px] rounded-lg border border-white/10 bg-black/20 text-[14px]">
                                             <Search className="w-4 h-4 mr-3 text-muted-foreground" />
@@ -329,16 +323,16 @@ export default function Landing() {
 
                     {/* Under the hood features */}
                     <div className="grid md:grid-cols-3 gap-6 pt-20 border-t border-white/10">
-                        {features.map((feature, i) => (
-                            <div key={i} className="p-8 rounded-2xl bg-card border border-border hover:border-neutral-700 transition-colors group">
-                                <div className="w-12 h-12 rounded-xl bg-white/5 flex items-center justify-center mb-6 overflow-hidden relative">
-                                    <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                                    <feature.icon className="w-6 h-6 text-neutral-300" />
+                        {features.map((feature, i) => {
+                            const Icon = feature.icon;
+                            return (
+                                <div key={i} className="p-8 rounded-2xl bg-card border border-border hover:border-neutral-700 transition-colors group">
+                                    <Icon className="w-8 h-8 text-white mb-6" />
+                                    <h3 className="text-xl font-semibold font-serif mb-3 text-foreground">{feature.title}</h3>
+                                    <p className="text-muted-foreground leading-relaxed">{feature.desc}</p>
                                 </div>
-                                <h3 className="text-xl font-semibold mb-3 text-foreground">{feature.title}</h3>
-                                <p className="text-muted-foreground leading-relaxed text-sm">{feature.desc}</p>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 </div>
             </section>
