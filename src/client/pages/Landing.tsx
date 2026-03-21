@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowRight, BookOpen, Cloud, Lock, Sparkles, Layers, Search, Cpu, Globe } from 'lucide-react';
+import { ArrowRight, BookOpen, Cloud, Lock, Sparkles, Layers, Search, Cpu, Globe, FileText } from 'lucide-react';
 import { Button } from '../components/ui/button';
 
 const translations = {
@@ -97,12 +97,9 @@ export default function Landing() {
     };
 
     const features = [
-        { icon: Layers, title: t.feat1Title, desc: t.feat1Desc },
-        { icon: BookOpen, title: t.feat2Title, desc: t.feat2Desc },
         { icon: Cloud, title: t.feat3Title, desc: t.feat3Desc },
         { icon: Lock, title: t.feat4Title, desc: t.feat4Desc },
-        { icon: Cpu, title: t.feat5Title, desc: t.feat5Desc },
-        { icon: Search, title: t.feat6Title, desc: t.feat6Desc }
+        { icon: Cpu, title: t.feat5Title, desc: t.feat5Desc }
     ];
 
     return (
@@ -175,8 +172,8 @@ export default function Landing() {
 
             {/* Features Section */}
             <section id="features" className="relative z-10 py-32 px-4 bg-background">
-                <div className="max-w-6xl mx-auto">
-                    <div className="text-center mb-20">
+                <div className="max-w-7xl mx-auto">
+                    <div className="text-center mb-32">
                         <h2
                             className="text-4xl md:text-6xl font-medium tracking-tight mb-6 text-foreground leading-[1.1]"
                             style={{ fontFamily: "'Playfair Display', serif" }}
@@ -185,7 +182,153 @@ export default function Landing() {
                         <p className="text-neutral-400 text-lg max-w-2xl mx-auto">{t.featSectionSub}</p>
                     </div>
 
-                    <div className="grid md:grid-cols-3 gap-6">
+                    {/* Main Features with Mockups */}
+                    <div className="flex flex-col gap-32 mb-32">
+                        {/* Feature 1: Canvas */}
+                        <div className="flex flex-col md:flex-row items-center gap-16">
+                            <div className="w-full md:w-5/12 space-y-6">
+                                <div className="w-12 h-12 rounded-xl bg-white/5 flex items-center justify-center border border-white/10">
+                                    <Layers className="w-6 h-6 text-indigo-400" />
+                                </div>
+                                <h3 className="text-3xl font-bold text-foreground">{t.feat1Title}</h3>
+                                <p className="text-lg text-neutral-400 leading-relaxed">{t.feat1Desc}</p>
+                            </div>
+                            <div className="w-full md:w-7/12">
+                                <div className="relative rounded-2xl border border-white/10 bg-[#0a0a0a] shadow-2xl overflow-hidden group h-[350px]">
+                                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.08)_1px,transparent_1px)] bg-[size:20px_20px] pointer-events-none opacity-50 transition-opacity group-hover:opacity-100 duration-700" />
+
+                                    <div className="w-full h-full relative group-hover:scale-[1.02] transition-transform duration-700">
+                                        {/* Canvas Node 1 */}
+                                        <div className="absolute top-10 left-8 w-48 bg-[#1e1e1e] border border-white/10 rounded-lg shadow-xl font-sans text-sm z-10">
+                                            <div className="px-3 py-2 border-b border-white/5 flex items-center gap-2 bg-white/5 font-medium text-neutral-200">
+                                                <Layers className="w-3.5 h-3.5 text-indigo-400" /> Core Concept
+                                            </div>
+                                            <div className="p-3 text-neutral-400 text-xs">
+                                                NoteApp features a completely block-based canvas.
+                                            </div>
+                                            <div className="absolute right-[-4px] top-1/2 -translate-y-1/2 w-2 h-2 bg-indigo-400 rounded-full border border-[#1e1e1e]"></div>
+                                        </div>
+
+                                        {/* SVG Connections */}
+                                        <svg className="absolute inset-0 w-full h-full pointer-events-none z-0">
+                                            <path d="M 224 85 C 280 85, 280 145, 310 145" fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="2" />
+                                            <path d="M 224 85 C 260 85, 260 225, 340 225" fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="2" strokeDasharray="4 4" />
+                                        </svg>
+
+                                        {/* Canvas Node 2 */}
+                                        <div className="absolute top-28 left-[310px] w-40 bg-[#1e1e1e] border border-white/10 rounded-lg shadow-xl font-sans text-sm z-10">
+                                            <div className="absolute left-[-4px] top-1/2 -translate-y-1/2 w-2 h-2 bg-white/50 rounded-full border border-[#1e1e1e]"></div>
+                                            <div className="px-3 py-2 flex items-center gap-2 bg-white/5 font-medium text-neutral-200">
+                                                <Cloud className="w-3.5 h-3.5 text-sky-400" /> Synced Data
+                                            </div>
+                                        </div>
+
+                                        {/* Canvas Node 3 */}
+                                        <div className="absolute top-48 left-[340px] w-44 bg-[#1e1e1e] border border-[#8ab4f8]/30 rounded-lg shadow-[0_0_15px_rgba(138,180,248,0.1)] font-sans text-sm z-10">
+                                            <div className="absolute left-[-4px] top-1/2 -translate-y-1/2 w-2 h-2 bg-[#8ab4f8] rounded-full border border-[#1e1e1e]"></div>
+                                            <div className="px-3 py-2 border-b border-[#8ab4f8]/20 flex items-center gap-2 bg-[#8ab4f8]/10 font-medium text-[#8ab4f8]">
+                                                <Lock className="w-3.5 h-3.5" /> E2E Encryption
+                                            </div>
+                                            <div className="p-3 text-neutral-300 text-xs">
+                                                Zero-knowledge payload wrapping.
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="absolute inset-0 bg-gradient-to-tr from-white/5 to-transparent pointer-events-none" />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Feature 2: Editor (Image Left) */}
+                        <div className="flex flex-col md:flex-row-reverse items-center gap-16">
+                            <div className="w-full md:w-5/12 space-y-6 md:pl-8">
+                                <div className="w-12 h-12 rounded-xl bg-white/5 flex items-center justify-center border border-white/10">
+                                    <BookOpen className="w-6 h-6 text-emerald-400" />
+                                </div>
+                                <h3 className="text-3xl font-bold text-foreground">{t.feat2Title}</h3>
+                                <p className="text-lg text-neutral-400 leading-relaxed">{t.feat2Desc}</p>
+                            </div>
+                            <div className="w-full md:w-7/12">
+                                <div className="relative rounded-2xl border border-white/10 bg-[#0f0f0f] shadow-2xl overflow-hidden group h-[350px]">
+                                    <div className="w-full h-full flex p-6 gap-6 font-mono text-sm group-hover:scale-[1.02] transition-transform duration-700">
+                                        <div className="w-1/3 hidden sm:flex flex-col gap-3 opacity-60 border-r border-white/10 pr-6 pt-2">
+                                            <div className="flex items-center gap-2 text-white bg-white/10 px-3 py-2 rounded-md"><FileText className="w-4 h-4" /> <span>architecture.md</span></div>
+                                            <div className="flex items-center gap-2 text-neutral-400 px-3 py-2"><FileText className="w-4 h-4" /> <span>roadmap.md</span></div>
+                                            <div className="flex items-center gap-2 text-neutral-400 px-3 py-2"><FileText className="w-4 h-4" /> <span>ideas.md</span></div>
+                                        </div>
+                                        <div className="flex-1 pt-2">
+                                            <div className="text-blue-400 text-xl font-bold mb-4"># Thought Process</div>
+                                            <div className="text-neutral-300 mb-6 leading-relaxed">
+                                                The key to <span className="text-orange-300">**productivity**</span> isn't finding more time, but using time with <span className="italic text-emerald-300">*clarity*</span>.
+                                            </div>
+                                            <div className="bg-black/40 border border-white/5 p-4 rounded-lg text-neutral-400 mb-6">
+                                                <span className="text-pink-400">function</span> <span className="text-yellow-200">think</span>() {'{'} <br />
+                                                &nbsp;&nbsp;<span className="text-pink-400">return</span> <span className="text-green-300">"clarity"</span>; <br />
+                                                {'}'}
+                                            </div>
+                                            <div className="flex items-center gap-3 text-neutral-300 mb-2"><div className="w-4 h-4 border border-white/30 rounded flex items-center justify-center"><div className="w-2 h-2 bg-emerald-400 rounded-sm"></div></div> Capture tasks instantly</div>
+                                            <div className="flex items-center gap-3 text-neutral-600 line-through"><div className="w-4 h-4 border border-white/10 rounded"></div> Forget ideas</div>
+                                        </div>
+                                    </div>
+                                    <div className="absolute inset-0 bg-gradient-to-tr from-white/5 to-transparent pointer-events-none" />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Feature 3: Search */}
+                        <div className="flex flex-col md:flex-row items-center gap-16">
+                            <div className="w-full md:w-5/12 space-y-6">
+                                <div className="w-12 h-12 rounded-xl bg-white/5 flex items-center justify-center border border-white/10">
+                                    <Search className="w-6 h-6 text-fuchsia-400" />
+                                </div>
+                                <h3 className="text-3xl font-bold text-foreground">{t.feat6Title}</h3>
+                                <p className="text-lg text-neutral-400 leading-relaxed">{t.feat6Desc}</p>
+                            </div>
+                            <div className="w-full md:w-7/12">
+                                <div className="relative rounded-2xl border border-white/10 bg-[#1e1e1e]/80 backdrop-blur-md shadow-2xl font-sans group overflow-hidden h-[350px] flex flex-col transition-transform duration-700 hover:scale-[1.02]">
+                                    <div className="p-4 pb-0">
+                                        <div className="flex items-center px-4 h-[46px] rounded-lg border border-white/10 bg-black/20 text-[14px]">
+                                            <Search className="w-4 h-4 mr-3 text-muted-foreground" />
+                                            <span className="text-muted-foreground/50">Search notes, tags, or commands... (⌘B)</span>
+                                        </div>
+                                    </div>
+                                    <div className="p-4 space-y-4 flex-1">
+                                        <div>
+                                            <div className="px-3 pb-2 text-[11px] font-semibold text-muted-foreground tracking-wider uppercase">NOTES</div>
+                                            <div className="w-full flex items-start px-3 py-3 rounded-xl bg-[#2b3343]/80 border border-white/5">
+                                                <div className="mt-0.5 mr-3 w-8 h-8 rounded flex items-center justify-center bg-[#384b6b] text-[#8ab4f8]">
+                                                    <FileText className="w-4 h-4" />
+                                                </div>
+                                                <div className="flex-1 overflow-hidden">
+                                                    <div className="flex items-center justify-between">
+                                                        <span className="font-medium text-[#8ab4f8] text-[13px]">Meeting Notes: Q3 Roadmap</span>
+                                                        <span className="text-[11px] text-[#8ab4f8]/70">2h ago</span>
+                                                    </div>
+                                                    <div className="text-[13px] truncate mt-0.5 text-[#8ab4f8]/60">Discussing key milestones and delivery dates...</div>
+                                                </div>
+                                            </div>
+                                            <div className="w-full flex items-start px-3 py-3 rounded-xl border border-transparent opacity-60 mt-1">
+                                                <div className="mt-0.5 mr-3 w-8 h-8 rounded flex items-center justify-center bg-white/5 text-muted-foreground">
+                                                    <FileText className="w-4 h-4" />
+                                                </div>
+                                                <div className="flex-1 overflow-hidden">
+                                                    <div className="flex items-center justify-between">
+                                                        <span className="font-medium text-neutral-200 text-[13px]">Product Architecture</span>
+                                                        <span className="text-[11px] text-muted-foreground">Yesterday</span>
+                                                    </div>
+                                                    <div className="text-[13px] truncate mt-0.5 text-muted-foreground/60">System design and database schema...</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="absolute inset-0 bg-gradient-to-tr from-white/5 to-transparent pointer-events-none" />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Under the hood features */}
+                    <div className="grid md:grid-cols-3 gap-6 pt-20 border-t border-white/10">
                         {features.map((feature, i) => (
                             <div key={i} className="p-8 rounded-2xl bg-card border border-border hover:border-neutral-700 transition-colors group">
                                 <div className="w-12 h-12 rounded-xl bg-white/5 flex items-center justify-center mb-6 overflow-hidden relative">
