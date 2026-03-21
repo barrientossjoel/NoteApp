@@ -160,6 +160,7 @@ export default function Landing() {
         }
         return 'en';
     });
+    const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
     const t = translations[lang];
 
     const toggleLanguage = () => {
@@ -192,24 +193,56 @@ export default function Landing() {
             <div className="absolute bottom-0 right-1/4 w-[500px] h-[400px] bg-white/[0.02] rounded-full blur-[100px] pointer-events-none" />
 
             {/* Navigation */}
-            <nav className="relative z-10 flex items-center justify-between px-6 py-6 max-w-7xl mx-auto">
+            <nav className="relative z-50 flex items-center justify-between px-6 py-6 max-w-7xl mx-auto">
                 <div className="flex items-center gap-2.5">
                     <img src="/icon_cropped.png" alt="Closure Logo" className="w-5 h-5 object-contain drop-shadow-[0_0_15px_rgba(255,255,255,0.1)] shrink-0" />
                     <span className="text-2xl font-semibold tracking-tight text-foreground lowercase" style={{ fontFamily: "'Playfair Display', serif" }}>closure</span>
                 </div>
-                <div className="flex items-center gap-6">
-                    <button onClick={toggleLanguage} className="flex items-center gap-1.5 text-sm font-medium text-neutral-400 hover:text-foreground transition-colors group w-16">
-                        <Globe className="w-4 h-4 group-hover:rotate-12 transition-transform shrink-0" />
-                        <span className="block group-hover:hidden">{t.langShort}</span>
-                        <span className="hidden group-hover:block">{t.langFull}</span>
+
+                {/* Desktop Menu */}
+                <div className="hidden md:flex items-center gap-6">
+                    <button aria-label="Toggle language" onClick={toggleLanguage} className="flex items-center justify-center text-neutral-400 hover:text-foreground transition-colors group">
+                        <Globe className="w-5 h-5 group-hover:rotate-12 transition-transform shrink-0" />
                     </button>
                     <div className="flex items-center gap-4">
-                        <a href="/login" onClick={(e) => navigate(e, '/login')} className="text-sm font-medium text-neutral-400 hover:text-foreground transition-colors">
+                        <a href="/login" onClick={(e) => navigate(e, '/login')} className="text-sm font-medium text-neutral-400 hover:text-foreground transition-colors whitespace-nowrap">
                             {t.loginBtn}
                         </a>
                         <Button asChild className="bg-white/90 text-black hover:bg-white transition-colors rounded-[6px]">
                             <a href="/register" onClick={(e) => navigate(e, '/register')}>{t.registerBtn}</a>
                         </Button>
+                    </div>
+                </div>
+
+                {/* Mobile Menu */}
+                <div className="md:hidden flex items-center">
+                    <div className="relative">
+                        <button
+                            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                            className="p-2 text-neutral-400 hover:text-foreground transition-colors"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+                        </button>
+
+                        {mobileMenuOpen && (
+                            <>
+                                <div className="fixed inset-0 z-40" onClick={() => setMobileMenuOpen(false)} />
+                                <div className="absolute right-0 top-full mt-2 w-48 bg-[#1e1e1e] border border-white/10 rounded-lg shadow-xl py-2 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                                    <button onClick={() => { toggleLanguage(); setMobileMenuOpen(false); }} className="w-full flex items-center gap-3 px-4 py-2 text-sm text-neutral-400 hover:text-foreground hover:bg-white/5 transition-colors">
+                                        <Globe className="w-4 h-4" />
+                                        <span>{t.langFull}</span>
+                                    </button>
+                                    <a href="/login" onClick={(e) => { navigate(e, '/login'); setMobileMenuOpen(false); }} className="flex items-center px-4 py-2 text-sm text-neutral-400 hover:text-foreground hover:bg-white/5 transition-colors">
+                                        {t.loginBtn}
+                                    </a>
+                                    <div className="px-4 py-2">
+                                        <Button asChild className="w-full bg-white/90 text-black hover:bg-white transition-colors rounded-[6px]">
+                                            <a href="/register" onClick={(e) => { navigate(e, '/register'); setMobileMenuOpen(false); }}>{t.registerBtn}</a>
+                                        </Button>
+                                    </div>
+                                </div>
+                            </>
+                        )}
                     </div>
                 </div>
             </nav>
