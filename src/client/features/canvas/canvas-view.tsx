@@ -79,6 +79,26 @@ interface CanvasTableNodeProps {
     handleNodeMouseDown: (e: React.MouseEvent, node: CanvasNode) => void
 }
 
+const MemoizedMarkdownPreview = React.memo(({ title, content }: { title?: string, content: string }) => {
+    let cleanContent = content;
+    const t = title?.trim();
+    if (t) {
+        const lines = cleanContent.split('\n');
+        const firstLine = lines[0].trim();
+        const headerMatch = firstLine.match(/^#+\s*(.*)$/);
+        const firstLineText = headerMatch ? headerMatch[1].trim() : firstLine;
+        if (firstLineText.toLowerCase() === t.toLowerCase()) {
+            cleanContent = lines.slice(1).join('\n').trim() || "Empty document";
+        }
+    }
+    return (
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+            {cleanContent}
+        </ReactMarkdown>
+    );
+});
+
+// Helper functions for
 function CanvasTableNode({ node, isEditing, draggedNodeId, updateNodeContent, setEditingId, handleNodeMouseDown }: CanvasTableNodeProps) {
     const parseMarkdown = (content: string) => {
         const lines = content.trim().split('\n').filter(line => line.trim().startsWith('|') && line.trim().endsWith('|'));
@@ -349,6 +369,696 @@ function CanvasTableNode({ node, isEditing, draggedNodeId, updateNodeContent, se
     )
 }
 
+
+const MemoizedCanvasNode = React.memo(({ node, envRef, triggers }: any) => {
+    const portalDoc = triggers.portalDoc;
+    return (
+        <div
+            key={node.id}
+            className={cn(
+                "absolute flex flex-col group",
+                // Z-Index Logic
+                node.type === 'arrow' ? "z-20" : "z-10",
+                envRef.current.selection.has(node.id) && envRef.current.selection.size === 1 && "z-[150]",
+                envRef.current.selection.has(node.id) && node.type !== 'arrow' && node.type !== 'note' && "ring-2 ring-primary",
+                envRef.current.selectionCandidates.has(node.id) && !envRef.current.selection.has(node.id) && node.type !== 'arrow' && "z-[140] ring-2 ring-primary/40 shadow-lg",
+                envRef.current.snapTargetId === node.id && "z-[100] ring-4 ring-primary/60 scale-[1.02] shadow-2xl",
+
+                // Styling
+                (node.type === 'arrow' || node.type === 'shape' || node.type === 'note')
+                    ? "overflow-visible bg-transparent border-none shadow-none"
+                    : "rounded-lg shadow-sm overflow-hidden bg-muted/50 backdrop-blur-sm border border-foreground/20",
+                node.type === 'table' && "overflow-visible", // Allow '+' buttons to show
+
+                // Drag animation
+                "transition-transform transition-shadow duration-200 ease-out",
+                envRef.current.draggedNodeId === node.id && node.type !== 'arrow' ? "scale-[1.02] -rotate-2 shadow-[0_20px_50px_rgba(0,0,0,0.5)] z-[999]" : "scale-100 rotate-0"
+            )}
+            style={{
+                left: node.x,
+                top: node.y,
+                width: node.width,
+                height: node.height,
+                cursor: (node.type === 'note' || node.type === 'document' || node.type === 'shape' || node.type === 'image')
+                    ? (envRef.current.draggedNodeId === node.id ? 'grabbing' : 'grab')
+                    : 'default'
+            }}
+            onMouseDown={(e) => {
+                if (node.type !== 'arrow') {
+                    envRef.current.handleNodeMouseDown(e, node)
+                }
+            }}
+            onTouchStart={(e) => {
+                if (node.type !== 'arrow') {
+                    envRef.current.handleNodeTouchStart(e, node)
+                }
+            }}
+            onTouchMove={envRef.current.clearTouchTimer}
+            onTouchEnd={envRef.current.clearTouchTimer}
+            onClick={(e) => {
+                e.stopPropagation()
+                if (!e.shiftKey && envRef.current.selection.size <= 1) {
+                    envRef.current.setSelection(new Set([node.id]))
+                }
+            }}
+            onDoubleClick={(e) => {
+                e.stopPropagation()
+                const dragDistance = envRef.current.dragStartPosition.current
+                    ? Math.sqrt(Math.pow(e.clientX - envRef.current.dragStartPosition.current.x, 2) + Math.pow(e.clientY - envRef.current.dragStartPosition.current.y, 2))
+                    : 0;
+
+                if (envRef.current.selection.has(node.id) && envRef.current.selection.size === 1 && dragDistance < 5 && envRef.current.editingId !== node.id && node.type === 'document') {
+                    // Identify if Title or Content area was clicked
+                    const target = e.target as HTMLElement;
+                    const field = target.closest('[data-field]')?.getAttribute('data-field') as 'title' | 'content' | null;
+
+                    if (field) {
+                        // Capture caret offset before swapping to input
+                        let offset = 0
+                        if ((document as any).caretRangeFromPoint) {
+                            const range = (document as any).caretRangeFromPoint(e.clientX, e.clientY)
+                            if (range) offset = range.startOffset
+                        }
+
+                        envRef.current.setEditingId(node.id)
+                        envRef.current.setFocusTarget(field)
+                        envRef.current.setDoubleClickPos({ x: e.clientX, y: e.clientY })
+                        envRef.current.setEditingCaretOffset(offset)
+                    } else {
+                        // Default to content if cliked outside but inside document body
+                        envRef.current.setEditingId(node.id)
+                        envRef.current.setFocusTarget('content')
+                        envRef.current.setDoubleClickPos({ x: e.clientX, y: e.clientY })
+                        envRef.current.setEditingCaretOffset(0)
+                    }
+                }
+            }}
+        >
+            {/* Node Content */}
+            {node.type === 'note' ? (
+                <textarea
+                    id={`textarea-${node.id}`}
+                    className={cn(
+                        "flex-1 bg-transparent p-3 text-sm outline-none resize-none text-foreground placeholder:text-muted-foreground",
+                        envRef.current.draggedNodeId === node.id ? "cursor-grabbing" : "cursor-grab",
+                        "focus:cursor-text"
+                    )}
+                    onWheel={(e) => e.stopPropagation()}
+                    value={node.content}
+                    onChange={(e) => {
+                        envRef.current.updateNodeContent(node.id, e.target.value)
+                        // Auto-resize height logic
+                        const el = e.target;
+                        el.style.height = 'auto';
+                        const newHeight = Math.max(node.height, el.scrollHeight);
+                        if (newHeight > node.height) {
+                            envRef.current.setNodes((prev: any[]) => prev.map((n: any) => n.id === node.id ? { ...n, height: newHeight } : n));
+                        }
+                    }}
+                    onMouseDown={(e) => {
+                        e.stopPropagation()
+                        if (e.button !== 0) return
+
+                        // If already focused, allow normal text envRef.current.selection
+                        if (document.activeElement === e.currentTarget) return
+
+                        // Otherwise, prevent focus and start dragging
+                        e.preventDefault()
+                        envRef.current.handleNodeMouseDown(e, node)
+                    }}
+                    onDoubleClick={(e) => {
+                        const dragDistance = envRef.current.dragStartPosition.current
+                            ? Math.sqrt(Math.pow(e.clientX - envRef.current.dragStartPosition.current.x, 2) + Math.pow(e.clientY - envRef.current.dragStartPosition.current.y, 2))
+                            : 0;
+
+                        if (dragDistance < 5 && document.activeElement !== e.currentTarget) {
+                            (e.currentTarget as HTMLTextAreaElement).focus()
+                        }
+                    }}
+                    placeholder="Type something..."
+                />
+            ) : node.type === 'table' ? (
+                <CanvasTableNode
+                    node={node}
+                    isEditing={envRef.current.editingId === node.id}
+                    draggedNodeId={envRef.current.draggedNodeId}
+                    updateNodeContent={envRef.current.updateNodeContent}
+                    setEditingId={envRef.current.setEditingId}
+                    handleNodeMouseDown={envRef.current.handleNodeMouseDown}
+                />
+            ) : node.type === 'document' ? (
+                (() => {
+                    // Portal Implementation
+                    let docId = node.content;
+                    // Backward compatibility: check if content is JSON
+                    if (node.content.startsWith('{')) {
+                        try {
+                            const parsed = JSON.parse(node.content);
+                            docId = parsed.id;
+                        } catch (e) { }
+                    }
+
+                    const portalDoc = envRef.current.documents.find((d: any) => d.id === docId);
+
+                    if (!portalDoc) {
+                        return (
+                            <div className="flex-1 flex items-center justify-center p-4 bg-muted/10">
+                                <div className="text-center text-muted-foreground text-sm">
+                                    Document not found
+                                </div>
+                            </div>
+                        )
+                    }
+
+                    if (portalDoc.type === 'canvas') {
+                        // Try to parse envRef.current.nodes to count them
+                        let nodeCount = 0;
+                        try {
+                            const parsed = portalDoc.content ? JSON.parse(portalDoc.content) : [];
+                            const nodes = Array.isArray(parsed) ? parsed : (parsed.nodes || []);
+                            nodeCount = nodes.length;
+                        } catch (e) { }
+
+                        return (
+                            <div
+                                className={cn(
+                                    "flex-1 flex flex-col items-center justify-center p-6 bg-gradient-to-br from-background to-muted/50 group/doc h-full overflow-hidden border border-border/50 rounded-lg hover:border-primary/50 transition-colors cursor-pointer",
+                                    envRef.current.draggedNodeId === node.id ? "cursor-grabbing" : "cursor-grab"
+                                )}
+                                onMouseDown={(e) => {
+                                    e.stopPropagation()
+                                    envRef.current.handleNodeMouseDown(e, node)
+                                }}
+                                onDoubleClick={(e) => {
+                                    e.stopPropagation();
+                                    if (envRef.current.onOpenDocument) envRef.current.onOpenDocument(portalDoc.id);
+                                }}
+                            >
+                                <div className="p-3 bg-primary/10 rounded-xl mb-4 text-primary group-hover/doc:scale-110 transition-transform">
+                                    <Frame className="w-8 h-8" />
+                                </div>
+                                <div className="text-lg font-semibold text-foreground text-center mb-1">
+                                    {portalDoc.title || "Untitled Canvas"}
+                                </div>
+                                <div className="text-xs text-muted-foreground text-center">
+                                    {nodeCount} item{nodeCount !== 1 ? 's' : ''}
+                                </div>
+                                {envRef.current.onOpenDocument && (
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="absolute top-2 right-2 h-8 w-8 opacity-0 group-hover/doc:opacity-100 transition-opacity hover:bg-primary/20 hover:text-primary"
+                                        onClick={(e) => {
+                                            e.stopPropagation()
+                                            envRef.current.onOpenDocument(portalDoc.id)
+                                        }}
+                                        title="Open in new tab"
+                                    >
+                                        <ExternalLink className="h-4 w-4" />
+                                    </Button>
+                                )}
+                            </div>
+                        )
+                    }
+
+                    return (
+                        <div
+                            className={cn(
+                                "flex-1 flex flex-col p-4 bg-transparent group/doc h-full overflow-y-auto",
+                                envRef.current.draggedNodeId === node.id ? "cursor-grabbing" : "cursor-grab"
+                            )}
+                            onWheel={(e) => e.stopPropagation()}
+                            onMouseDown={(e) => {
+                                if (envRef.current.editingId === node.id) return; // Allow interaction with inputs
+                                e.stopPropagation()
+                                envRef.current.handleNodeMouseDown(e, node)
+                            }}
+                        >
+                            {envRef.current.editingId === node.id ? (
+                                <>
+                                    <Input
+                                        id={`edit-title-${node.id}`}
+                                        value={portalDoc.title}
+                                        onChange={(e) => envRef.current.onUpdateDocument({ ...portalDoc, title: e.target.value })}
+                                        className={cn(
+                                            "text-2xl font-serif mb-2 border-none bg-transparent px-0 h-auto focus-visible:ring-0 focus-visible:ring-offset-0 ring-0 focus:ring-0 outline-none shadow-none placeholder:text-muted-foreground/50",
+                                            "focus:cursor-text"
+                                        )}
+                                        placeholder="Untitled"
+                                        onMouseDown={(e) => e.stopPropagation()}
+                                    />
+                                    <div className="flex-1 w-full bg-transparent overflow-y-auto" onMouseDown={(e) => e.stopPropagation()} onWheel={(e) => e.stopPropagation()}>
+                                        {(() => {
+                                            let cleanContent = portalDoc.content || '';
+                                            const title = portalDoc.title?.trim();
+                                            if (title && cleanContent) {
+                                                const lines = cleanContent.split('\n');
+                                                const firstLine = lines[0].trim();
+                                                const headerMatch = firstLine.match(/^#+\s*(.*)$/);
+                                                const firstLineText = headerMatch ? headerMatch[1].trim() : firstLine;
+                                                if (firstLineText.toLowerCase() === title.toLowerCase()) {
+                                                    cleanContent = lines.slice(1).join('\n').trim();
+                                                }
+                                            }
+                                            return (
+                                                <Editor
+                                                    content={cleanContent}
+                                                    onChange={(newContent) => envRef.current.onUpdateDocument({ ...portalDoc, content: newContent })}
+                                                    placeholder="Type something..."
+                                                    className="min-h-[auto] !py-0 [&>.tiptap]:!mt-0 prose-p:my-1 prose-ul:my-1 prose-h1:text-lg prose-h2:text-base font-sans"
+                                                    onLinkClick={(href) => envRef.current.onOpenDocument?.(href)}
+                                                />
+                                            );
+                                        })()}
+                                    </div>
+                                    {envRef.current.onOpenDocument && (
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="absolute top-2 right-2 h-8 w-8 hover:bg-muted text-muted-foreground"
+                                            onClick={(e) => {
+                                                e.stopPropagation()
+                                                envRef.current.onOpenDocument(portalDoc.id)
+                                            }}
+                                            title="Open in new tab"
+                                        >
+                                            <ExternalLink className="h-4 w-4" />
+                                        </Button>
+                                    )}
+                                </>
+                            ) : (
+                                <>
+                                    <div
+                                        data-field="title"
+                                        className="text-2xl font-serif mb-4 line-clamp-2 min-h-[1.5em]"
+                                    >
+                                        {portalDoc.title || "Untitled"}
+                                    </div>
+                                    <div
+                                        data-field="content"
+                                        className={cn(
+                                            "flex-1 text-sm leading-relaxed text-muted-foreground font-sans",
+                                            "prose prose-sm dark:prose-invert max-w-none prose-p:my-1 prose-ul:my-1 prose-h1:text-lg prose-h2:text-base pointer-events-none",
+                                            // Task list specific styling
+                                            "[&>ul.contains-task-list]:list-none [&>ul.contains-task-list]:pl-0",
+                                            "[&>ul.contains-task-list>li]:flex [&>ul.contains-task-list>li]:items-start [&>ul.contains-task-list>li]:gap-2 [&>ul.contains-task-list>li]:mb-0.5",
+                                            "[&>ul.contains-task-list>li]:before:hidden [&>ul.contains-task-list>li]:after:hidden",
+                                            "[&_input[type=checkbox]]:mt-0.5 [&_input[type=checkbox]]:w-3.5 [&_input[type=checkbox]]:h-3.5 [&_input[type=checkbox]]:m-0 [&_input[type=checkbox]]:appearance-auto"
+                                        )}
+                                    >
+                                        {(() => {
+                                            if (!portalDoc.content) return "Empty document";
+                                            return <MemoizedMarkdownPreview title={portalDoc.title} content={portalDoc.content} />;
+                                        })()}
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    );
+                })()
+            ) : node.type === 'arrow' ? (
+                (() => {
+                    const { x, y } = envRef.current.getArrowMidpoint(node)
+                    return (
+                        <>
+                            <svg className="w-full h-full overflow-visible">
+                                <defs>
+                                    <marker
+                                        id={`arrowhead-${node.id}`}
+                                        markerWidth="10"
+                                        markerHeight="7"
+                                        refX="9"
+                                        refY="3.5"
+                                        orient="auto"
+                                    >
+                                        <polygon
+                                            points="0 0, 10 3.5, 0 7"
+                                            fill="currentColor"
+                                            className={cn("transition-colors", envRef.current.selection.has(node.id) ? "text-primary" : envRef.current.selectionCandidates.has(node.id) ? "text-primary/40" : "text-muted-foreground")}
+                                        />
+                                    </marker>
+                                </defs>
+                                {/* Hit area for easier envRef.current.selection/dragging */}
+                                <path
+                                    d={`M ${node.points?.start.x ? node.points.start.x - node.x : 0} ${node.points?.start.y ? node.points.start.y - node.y : 0} C ${node.points?.control?.x ? node.points.control.x - node.x : ((node.points?.start.x || 0) + (node.points?.end.x || node.width)) / 3 - node.x} ${node.points?.control?.y ? node.points.control.y - node.y : ((node.points?.start.y || 0) + (node.points?.end.y || node.height)) / 3 - node.y}, ${node.points?.control2?.x ? node.points.control2.x - node.x : (((node.points?.start.x || 0) + (node.points?.end.x || node.width)) * 2) / 3 - node.x} ${node.points?.control2?.y ? node.points.control2.y - node.y : (((node.points?.start.y || 0) + (node.points?.end.y || node.height)) * 2) / 3 - node.y}, ${node.points?.end.x ? node.points.end.x - node.x : node.width} ${node.points?.end.y ? node.points.end.y - node.y : node.height}`}
+                                    stroke="transparent"
+                                    strokeWidth="12"
+                                    fill="none"
+                                    className="cursor-pointer pointer-events-auto"
+                                    onMouseDown={(e) => envRef.current.handleNodeMouseDown(e, node)}
+                                    onDoubleClick={(e) => {
+                                        e.stopPropagation()
+                                        envRef.current.setEditingId(node.id)
+                                        setTimeout(() => {
+                                            document.getElementById(`arrow-input-${node.id}`)?.focus()
+                                        }, 0)
+                                    }}
+                                />
+                                {/* Visible Curved Arrow Line */}
+                                <path
+                                    d={`M ${node.points?.start.x ? node.points.start.x - node.x : 0} ${node.points?.start.y ? node.points.start.y - node.y : 0} C ${node.points?.control?.x ? node.points.control.x - node.x : ((node.points?.start.x || 0) + (node.points?.end.x || node.width)) / 3 - node.x} ${node.points?.control?.y ? node.points.control.y - node.y : ((node.points?.start.y || 0) + (node.points?.end.y || node.height)) / 3 - node.y}, ${node.points?.control2?.x ? node.points.control2.x - node.x : (((node.points?.start.x || 0) + (node.points?.end.x || node.width)) * 2) / 3 - node.x} ${node.points?.control2?.y ? node.points.control2.y - node.y : (((node.points?.start.y || 0) + (node.points?.end.y || node.height)) * 2) / 3 - node.y}, ${node.points?.end.x ? node.points.end.x - node.x : node.width} ${node.points?.end.y ? node.points.end.y - node.y : node.height}`}
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    fill="none"
+                                    markerEnd={`url(#arrowhead-${node.id})`}
+                                    className={cn("transition-colors pointer-events-none", envRef.current.selection.has(node.id) ? "text-primary" : envRef.current.selectionCandidates.has(node.id) ? "text-primary/40" : "text-muted-foreground")}
+                                />
+
+                                {/* Text Label Display */}
+                                {node.content && envRef.current.editingId !== node.id && (
+                                    <foreignObject x={x - 50} y={y - 12} width="100" height="24" className="overflow-visible pointer-events-none">
+                                        <div className="flex items-center justify-center w-full h-full">
+                                            <span className="bg-background/80 backdrop-blur-sm px-1 rounded text-xs text-foreground/80 whitespace-nowrap border border-border/50 shadow-sm">
+                                                {node.content}
+                                            </span>
+                                        </div>
+                                    </foreignObject>
+                                )}
+
+                                {/* Handles - Only visible when selected */}
+                                {envRef.current.selection.has(node.id) && envRef.current.selection.size === 1 && (
+                                    <>
+                                        {/* Start Handle */}
+                                        <circle
+                                            cx={node.points?.start.x ? node.points.start.x - node.x : 0}
+                                            cy={node.points?.start.y ? node.points.start.y - node.y : 0}
+                                            r="4"
+                                            className="fill-background stroke-primary stroke-2 cursor-grab active:cursor-grabbing pointer-events-auto hover:scale-125 transition-transform"
+                                            style={{ transformBox: 'fill-box', transformOrigin: 'center' }}
+                                            onMouseDown={(e) => {
+                                                e.stopPropagation()
+                                                const rect = envRef.current.containerRef.current?.getBoundingClientRect()
+                                                if (!rect) return
+                                                const mouseX = (e.clientX - rect.left - envRef.current.camera.x) / envRef.current.camera.zoom
+                                                const mouseY = (e.clientY - rect.top - envRef.current.camera.y) / envRef.current.camera.zoom
+                                                const px = node.points?.start.x || 0
+                                                const py = node.points?.start.y || 0
+                                                envRef.current.setDraggedHandle({
+                                                    nodeId: node.id,
+                                                    type: 'start',
+                                                    offsetX: mouseX - px,
+                                                    offsetY: mouseY - py,
+                                                    initialPoints: node.points ? { ...node.points, control: node.points.control || { x: (node.points.start.x + node.points.end.x) / 2, y: (node.points.start.y + node.points.end.y) / 2 } } : undefined
+                                                })
+                                            }}
+                                        />
+                                        {/* Control 1 Handle */}
+                                        <circle
+                                            cx={node.points?.control?.x ? node.points.control.x - node.x : ((node.points?.start.x || 0) + (node.points?.end.x || node.width)) / 3 - node.x}
+                                            cy={node.points?.control?.y ? node.points.control.y - node.y : ((node.points?.start.y || 0) + (node.points?.end.y || node.height)) / 3 - node.y}
+                                            r="4"
+                                            className="fill-background stroke-primary stroke-2 cursor-grab active:cursor-grabbing pointer-events-auto hover:scale-125 transition-transform opacity-50 hover:opacity-100"
+                                            style={{ transformBox: 'fill-box', transformOrigin: 'center' }}
+                                            onMouseDown={(e) => {
+                                                e.stopPropagation()
+                                                const rect = envRef.current.containerRef.current?.getBoundingClientRect()
+                                                if (!rect) return
+                                                const mouseX = (e.clientX - rect.left - envRef.current.camera.x) / envRef.current.camera.zoom
+                                                const mouseY = (e.clientY - rect.top - envRef.current.camera.y) / envRef.current.camera.zoom
+                                                const px = node.points?.control?.x ?? ((node.points?.start.x || 0) * 2 + (node.points?.end.x || 0)) / 3
+                                                const py = node.points?.control?.y ?? ((node.points?.start.y || 0) * 2 + (node.points?.end.y || 0)) / 3
+                                                envRef.current.setDraggedHandle({
+                                                    nodeId: node.id,
+                                                    type: 'control',
+                                                    offsetX: mouseX - px,
+                                                    offsetY: mouseY - py,
+                                                    initialPoints: node.points ? { ...node.points, control: node.points.control || { x: px, y: py }, control2: node.points.control2 || { x: ((node.points.start.x + node.points.end.x) * 2) / 3, y: ((node.points.start.y + node.points.end.y) * 2) / 3 } } : undefined
+                                                })
+                                            }}
+                                        />
+                                        {/* Control 2 Handle */}
+                                        <circle
+                                            cx={node.points?.control2?.x ? node.points.control2.x - node.x : (((node.points?.start.x || 0) + (node.points?.end.x || node.width)) * 2) / 3 - node.x}
+                                            cy={node.points?.control2?.y ? node.points.control2.y - node.y : (((node.points?.start.y || 0) + (node.points?.end.y || node.height)) * 2) / 3 - node.y}
+                                            r="4"
+                                            className="fill-background stroke-primary stroke-2 cursor-grab active:cursor-grabbing pointer-events-auto hover:scale-125 transition-transform opacity-50 hover:opacity-100"
+                                            style={{ transformBox: 'fill-box', transformOrigin: 'center' }}
+                                            onMouseDown={(e) => {
+                                                e.stopPropagation()
+                                                const rect = envRef.current.containerRef.current?.getBoundingClientRect()
+                                                if (!rect) return
+                                                const mouseX = (e.clientX - rect.left - envRef.current.camera.x) / envRef.current.camera.zoom
+                                                const mouseY = (e.clientY - rect.top - envRef.current.camera.y) / envRef.current.camera.zoom
+                                                const px = node.points?.control2?.x ?? ((node.points?.start.x || 0) + (node.points?.end.x || 0) * 2) / 3
+                                                const py = node.points?.control2?.y ?? ((node.points?.start.y || 0) + (node.points?.end.y || 0) * 2) / 3
+                                                envRef.current.setDraggedHandle({
+                                                    nodeId: node.id,
+                                                    type: 'control2',
+                                                    offsetX: mouseX - px,
+                                                    offsetY: mouseY - py,
+                                                    initialPoints: node.points ? { ...node.points, control: node.points.control || { x: ((node.points.start.x + node.points.end.x)) / 3, y: ((node.points.start.y + node.points.end.y)) / 3 }, control2: node.points.control2 || { x: px, y: py } } : undefined
+                                                })
+                                            }}
+                                        />
+                                        {/* End Handle */}
+                                        <circle
+                                            cx={node.points?.end.x ? node.points.end.x - node.x : node.width}
+                                            cy={node.points?.end.y ? node.points.end.y - node.y : node.height}
+                                            r="4"
+                                            className="fill-background stroke-primary stroke-2 cursor-grab active:cursor-grabbing pointer-events-auto hover:scale-125 transition-transform"
+                                            style={{ transformBox: 'fill-box', transformOrigin: 'center' }}
+                                            onMouseDown={(e) => {
+                                                e.stopPropagation()
+                                                const rect = envRef.current.containerRef.current?.getBoundingClientRect()
+                                                if (!rect) return
+                                                const mouseX = (e.clientX - rect.left - envRef.current.camera.x) / envRef.current.camera.zoom
+                                                const mouseY = (e.clientY - rect.top - envRef.current.camera.y) / envRef.current.camera.zoom
+                                                const px = node.points?.end.x || 0
+                                                const py = node.points?.end.y || 0
+                                                envRef.current.setDraggedHandle({
+                                                    nodeId: node.id,
+                                                    type: 'end',
+                                                    offsetX: mouseX - px,
+                                                    offsetY: mouseY - py,
+                                                    initialPoints: node.points ? { ...node.points, control: node.points.control || { x: (node.points.start.x + node.points.end.x) / 2, y: (node.points.start.y + node.points.end.y) / 2 } } : undefined
+                                                })
+                                            }}
+                                        />
+                                    </>
+                                )}
+                            </svg>
+                            {/* Editing Input */}
+                            {envRef.current.editingId === node.id && (
+                                <div
+                                    className="absolute transform -translate-x-1/2 -translate-y-1/2 pointer-events-auto"
+                                    style={{ left: x, top: y }}
+                                >
+                                    <Input
+                                        id={`arrow-input-${node.id}`}
+                                        value={node.content}
+                                        onChange={(e) => envRef.current.updateNodeContent(node.id, e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                                envRef.current.setEditingId(null)
+                                            }
+                                        }}
+                                        onBlur={() => envRef.current.setEditingId(null)}
+                                        className="h-6 w-32 px-1 py-0 text-xs bg-background/90 border-primary shadow-sm text-center"
+                                        autoFocus
+                                    />
+                                </div>
+                            )}
+                        </>
+                    )
+                })()
+            ) : node.type === 'shape' ? (
+                <div className="w-full h-full cursor-grab active:cursor-grabbing pointer-events-auto">
+                    <svg className="w-full h-full overflow-visible pointer-events-none">
+                        {node.shapeType === 'rectangle' ? (
+                            <rect
+                                x="0"
+                                y="0"
+                                width="100%"
+                                height="100%"
+                                rx="12"
+                                strokeWidth="2"
+                                className={cn(
+                                    "transition-colors fill-transparent",
+                                    envRef.current.selection.has(node.id)
+                                        ? "stroke-primary"
+                                        : "stroke-muted-foreground"
+                                )}
+                            />
+                        ) : (
+                            <circle
+                                cx="50%"
+                                cy="50%"
+                                r="48%"
+                                strokeWidth="2"
+                                className={cn(
+                                    "transition-colors fill-transparent",
+                                    envRef.current.selection.has(node.id)
+                                        ? "stroke-primary"
+                                        : "stroke-muted-foreground"
+                                )}
+                            />
+                        )}
+                    </svg>
+                </div>
+            ) : (
+                <div className="flex-1 relative group/img overflow-hidden bg-muted/10 cursor-grab active:cursor-grabbing pointer-events-auto">
+                    <img
+                        src={node.content}
+                        alt=""
+                        className="w-full h-full object-cover select-none pointer-events-none"
+                        onError={(e) => {
+                            (e.target as HTMLImageElement).src = 'https://via.placeholder.com/400x300?text=Invalid+Image+URL'
+                        }}
+                        onDoubleClick={(e) => {
+                            e.stopPropagation()
+                            envRef.current.initiateEditImage(node.id, node.content)
+                        }}
+                    />
+                </div>
+            )}
+
+            {/* Snap Anchors Overlay (Rendered Last for Z-Index) */}
+            {envRef.current.snapTargetId === node.id && (
+                <div className="absolute inset-0 pointer-events-none z-[100] overflow-visible">
+                    {[
+                        { x: node.x + node.width / 2, y: node.y }, // Top
+                        { x: node.x + node.width / 2, y: node.y + node.height }, // Bottom
+                        { x: node.x, y: node.y + node.height / 2 }, // Left
+                        { x: node.x + node.width, y: node.y + node.height / 2 } // Right
+                    ].map((anchor, i) => (
+                        <div
+                            key={i}
+                            className="absolute w-2 h-2 bg-background border border-primary/40 rounded-full opacity-40"
+                            style={{
+                                left: anchor.x - node.x,
+                                top: anchor.y - node.y,
+                                transform: 'translate(-50%, -50%)'
+                            }}
+                        />
+                    ))}
+                    {/* Selected Arrow Snap Point Highlight */}
+                    {Array.from(envRef.current.selection).map(id => envRef.current.nodes.find((n: any) => n.id === id)).filter((n: any) => n?.type === 'arrow').map(selectedArrow => (() => {
+                        if (!selectedArrow) return null
+                        const isStartAttached = selectedArrow?.startNodeId === node.id
+                        const isEndAttached = selectedArrow?.endNodeId === node.id
+
+
+                        const snapPos = isStartAttached ? selectedArrow?.points?.start : selectedArrow?.points?.end
+                        if (!snapPos) return null
+
+                        return (
+                            <div
+                                className="absolute w-3 h-3 bg-primary rounded-full shadow-sm ring-2 ring-primary/30 z-[101]"
+                                style={{
+                                    left: snapPos.x - node.x,
+                                    top: snapPos.y - node.y,
+                                    transform: 'translate(-50%, -50%)'
+                                }}
+                            />
+                        )
+                    })())}
+                </div>
+            )}
+            {/* Resize Handle */}
+            {envRef.current.selection.has(node.id) && envRef.current.selection.size === 1 && (
+                <div
+                    className="absolute bottom-0 right-0 w-4 h-4 cursor-nwse-resize z-10 flex items-center justify-center group/resize"
+                    onMouseDown={(e) => {
+                        e.stopPropagation()
+                        e.preventDefault()
+                        envRef.current.setResizingNodeId(node.id)
+                    }}
+                >
+                    <div className="w-1.5 h-1.5 border-r-2 border-b-2 border-muted-foreground/40 group-hover/resize:border-primary transition-colors mb-1 mr-1" />
+                </div>
+            )}
+
+            {/* Connection Anchors - Show when selected or hovered */}
+            {((envRef.current.selection.has(node.id) && envRef.current.selection.size === 1) || envRef.current.isCreatingArrow) && node.type !== 'arrow' && (
+                <div className={cn(
+                    "absolute inset-0 pointer-events-none overflow-visible transition-opacity duration-200",
+                    (envRef.current.selection.has(node.id) && envRef.current.selection.size === 1) ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                )}>
+                    {[
+                        { side: 'top', x: '50%', y: '0%', icon: Plus },
+                        { side: 'right', x: '100%', y: '50%', icon: Plus },
+                        { side: 'bottom', x: '50%', y: '100%', icon: Plus },
+                        { side: 'left', x: '0%', y: '50%', icon: Plus }
+                    ].map((anchor) => (
+                        <div
+                            key={anchor.side}
+                            className="absolute w-4 h-4 bg-background border border-primary rounded-full flex items-center justify-center cursor-crosshair pointer-events-auto hover:scale-125 transition-transform z-[160] shadow-sm"
+                            style={{
+                                left: anchor.x,
+                                top: anchor.y,
+                                transform: 'translate(-50%, -50%)'
+                            }}
+                            onMouseDown={(e) => {
+                                e.stopPropagation()
+                                e.preventDefault()
+                                const rect = envRef.current.containerRef.current?.getBoundingClientRect()
+                                if (!rect) return
+                                const startX = (e.clientX - rect.left - envRef.current.camera.x) / envRef.current.camera.zoom
+                                const startY = (e.clientY - rect.top - envRef.current.camera.y) / envRef.current.camera.zoom
+                                envRef.current.setArrowStart({ x: startX, y: startY })
+                                envRef.current.setArrowStartNodeId(node.id)
+                                envRef.current.setArrowStartSide(anchor.side)
+                                envRef.current.setIsCreatingArrow(true)
+                            }}
+                            onMouseUp={(e) => {
+                                if (envRef.current.isCreatingArrow && envRef.current.arrowStart && envRef.current.arrowStartNodeId) {
+                                    e.stopPropagation()
+                                    e.preventDefault()
+                                    const rect = envRef.current.containerRef.current?.getBoundingClientRect()
+                                    if (!rect) return
+                                    const endX = (e.clientX - rect.left - envRef.current.camera.x) / envRef.current.camera.zoom
+                                    const endY = (e.clientY - rect.top - envRef.current.camera.y) / envRef.current.camera.zoom
+
+                                    const controls = envRef.current.calculateBezierControls(envRef.current.arrowStart, { x: endX, y: endY }, envRef.current.arrowStartSide, anchor.side)
+                                    const newNode: CanvasNode = {
+                                        id: Math.random().toString(36).substring(7),
+                                        type: 'arrow',
+                                        x: Math.min(envRef.current.arrowStart.x, endX),
+                                        y: Math.min(envRef.current.arrowStart.y, endY),
+                                        width: Math.abs(endX - envRef.current.arrowStart.x),
+                                        height: Math.abs(endY - envRef.current.arrowStart.y),
+                                        content: '',
+                                        startNodeId: envRef.current.arrowStartNodeId,
+                                        endNodeId: node.id,
+                                        points: {
+                                            start: envRef.current.arrowStart,
+                                            end: { x: endX, y: endY },
+                                            control: controls.cp1,
+                                            control2: controls.cp2
+                                        }
+                                    }
+                                    envRef.current.setNodes((prev: CanvasNode[]) => [...prev, newNode])
+                                    envRef.current.setArrowStart(null)
+                                    envRef.current.setArrowStartNodeId(null)
+                                    envRef.current.setArrowStartSide(null)
+                                    envRef.current.setArrowEndPreview(null)
+                                    envRef.current.setIsCreatingArrow(false)
+                                    envRef.current.setSelection(new Set([newNode.id]))
+                                }
+                            }}
+                        >
+                            <Plus className="w-2 h-2 text-primary" />
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}, (prev, next) => {
+    return prev.node === next.node &&
+        prev.triggers.isSelected === next.triggers.isSelected &&
+        prev.triggers.isOnlySelection === next.triggers.isOnlySelection &&
+        prev.triggers.isSelectionCandidate === next.triggers.isSelectionCandidate &&
+        prev.triggers.isSnapTarget === next.triggers.isSnapTarget &&
+        prev.triggers.isDragged === next.triggers.isDragged &&
+        prev.triggers.isEditing === next.triggers.isEditing &&
+        prev.triggers.isResizing === next.triggers.isResizing &&
+        prev.triggers.portalDoc === next.triggers.portalDoc &&
+        prev.triggers.isCreatingArrow === next.triggers.isCreatingArrow;
+});
+
 export function CanvasView({
     document: doc,
     documents = [],
@@ -360,6 +1070,8 @@ export function CanvasView({
     onOpenDocument
 }: CanvasViewProps) {
     const containerRef = useRef<HTMLDivElement>(null)
+    const envRef = useRef<any>({});
+
     const wrapperRef = useRef<HTMLDivElement>(null)
     const isMobile = useMediaQuery('(max-width: 768px)')
 
@@ -785,6 +1497,78 @@ export function CanvasView({
         const node = currentNodes.find(n => n.id === nodeId)
         if (!node || !node.groupId) return [nodeId]
         return currentNodes.filter(n => n.groupId === node.groupId).map(n => n.id)
+    }
+    const isPointInNode = (x: number, y: number, node: CanvasNode) => {
+        return x >= node.x && x <= node.x + node.width && y >= node.y && y <= node.y + node.height;
+    }
+
+    const isPathIntersectingNode = (start: { x: number, y: number }, end: { x: number, y: number }, cp1: { x: number, y: number }, cp2: { x: number, y: number }, node: CanvasNode) => {
+        // Broad phase: Bounding box check
+        const minX = Math.min(start.x, end.x, cp1.x, cp2.x);
+        const maxX = Math.max(start.x, end.x, cp1.x, cp2.x);
+        const minY = Math.min(start.y, end.y, cp1.y, cp2.y);
+        const maxY = Math.max(start.y, end.y, cp1.y, cp2.y);
+
+        if (maxX < node.x || minX > node.x + node.width || maxY < node.y || minY > node.y + node.height) {
+            return false;
+        }
+
+        // Narrow phase: Sampling
+        const steps = 10;
+        for (let i = 1; i < steps; i++) {
+            const t = i / steps;
+            const x = Math.pow(1 - t, 3) * start.x + 3 * Math.pow(1 - t, 2) * t * cp1.x + 3 * (1 - t) * Math.pow(t, 2) * cp2.x + Math.pow(t, 3) * end.x;
+            const y = Math.pow(1 - t, 3) * start.y + 3 * Math.pow(1 - t, 2) * t * cp1.y + 3 * (1 - t) * Math.pow(t, 2) * cp2.y + Math.pow(t, 3) * end.y;
+
+            // Padding of 5px to avoid grazing edges
+            if (x > node.x + 5 && x < node.x + node.width - 5 && y > node.y + 5 && y < node.y + node.height - 5) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    const getBestSides = (startNode: CanvasNode, endNode: CanvasNode, allNodes: CanvasNode[]) => {
+        const sides = ['top', 'bottom', 'left', 'right'];
+        let bestCombo = { startSide: 'right', endSide: 'left', score: Infinity };
+
+        for (const s1 of sides) {
+            for (const s2 of sides) {
+                const startPos = {
+                    x: startNode.x + (s1 === 'left' ? 0 : s1 === 'right' ? startNode.width : startNode.width / 2),
+                    y: startNode.y + (s1 === 'top' ? 0 : s1 === 'bottom' ? startNode.height : startNode.height / 2)
+                };
+                const endPos = {
+                    x: endNode.x + (s2 === 'left' ? 0 : s2 === 'right' ? endNode.width : endNode.width / 2),
+                    y: endNode.y + (s2 === 'top' ? 0 : s2 === 'bottom' ? endNode.height : endNode.height / 2)
+                };
+
+                const { cp1, cp2 } = calculateBezierControls(startPos, endPos, s1, s2);
+
+                let intersections = 0;
+                // Check if it intersects the start or end node body (excluding the anchor connection area)
+                if (isPathIntersectingNode(startPos, endPos, cp1, cp2, startNode)) intersections += 10;
+                if (isPathIntersectingNode(startPos, endPos, cp1, cp2, endNode)) intersections += 10;
+
+                // Check other nodes
+                for (const node of allNodes) {
+                    if (node.id === startNode.id || node.id === endNode.id || node.type === 'arrow') continue;
+                    if (isPathIntersectingNode(startPos, endPos, cp1, cp2, node)) intersections += 20;
+                }
+
+                const dx = endPos.x - startPos.x;
+                const dy = endPos.y - startPos.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                // Score = distance + heavy penalty for intersections
+                const score = dist + intersections * 1000;
+
+                if (score < bestCombo.score) {
+                    bestCombo = { startSide: s1, endSide: s2, score };
+                }
+            }
+        }
+        return bestCombo;
     }
 
     const calculateBezierControls = (start: { x: number, y: number }, end: { x: number, y: number }, startSide?: string | null, endSide?: string | null) => {
@@ -1404,6 +2188,33 @@ export function CanvasView({
                                 control: n.points.control ? { x: n.points.control.x + dx, y: n.points.control.y + dy } : undefined,
                                 control2: n.points.control2 ? { x: n.points.control2.x + dx, y: n.points.control2.y + dy } : undefined
                             }
+                            if (n.startNodeId && n.endNodeId) {
+                                const startNode = prev.find(node => node.id === n.startNodeId);
+                                const endNode = prev.find(node => node.id === n.endNodeId);
+                                if (startNode && endNode) {
+                                    const { startSide: s1, endSide: s2 } = getBestSides(startNode, endNode, prev);
+
+                                    // Update offsets to snap to new sides
+                                    const startPos = {
+                                        x: startNode.x + (s1 === 'left' ? 0 : s1 === 'right' ? startNode.width : startNode.width / 2),
+                                        y: startNode.y + (s1 === 'top' ? 0 : s1 === 'bottom' ? startNode.height : startNode.height / 2)
+                                    };
+                                    const endPos = {
+                                        x: endNode.x + (s2 === 'left' ? 0 : s2 === 'right' ? endNode.width : endNode.width / 2),
+                                        y: endNode.y + (s2 === 'top' ? 0 : s2 === 'bottom' ? endNode.height : endNode.height / 2)
+                                    };
+
+                                    newPoints.start = startPos;
+                                    newPoints.end = endPos;
+                                    const { cp1, cp2 } = calculateBezierControls(startPos, endPos, s1, s2);
+                                    newPoints.control = cp1;
+                                    newPoints.control2 = cp2;
+
+                                    // Update arrow internal state to keep the new snap
+                                    n.startOffset = { x: startPos.x - startNode.x, y: startPos.y - startNode.y };
+                                    n.endOffset = { x: endPos.x - endNode.x, y: endPos.y - endNode.y };
+                                }
+                            }
 
                             // Recalculate boundaries for the arrow
                             const minX = Math.min(newPoints.start.x, newPoints.end.x, newPoints.control?.x ?? newPoints.start.x, newPoints.control2?.x ?? newPoints.start.x)
@@ -1440,12 +2251,42 @@ export function CanvasView({
                         }
 
                         if (updated) {
-                            // If only one node moves, the respective control point should follow to maintain relative shape
-                            if (n.points.control && n.startNodeId && selection.has(n.startNodeId)) {
-                                newPoints.control = { x: n.points.control.x + dx, y: n.points.control.y + dy }
-                            }
-                            if (n.points.control2 && n.endNodeId && selection.has(n.endNodeId)) {
-                                newPoints.control2 = { x: n.points.control2.x + dx, y: n.points.control2.y + dy }
+                            if (n.startNodeId && n.endNodeId) {
+                                const startNode = prev.find(node => node.id === n.startNodeId);
+                                const endNode = prev.find(node => node.id === n.endNodeId);
+                                if (startNode && endNode) {
+                                    // Apply movement to the nodes in our look-ahead logic if they are in selection
+                                    const sNode = selection.has(startNode.id) ? { ...startNode, x: startNode.x + dx, y: startNode.y + dy } : startNode;
+                                    const eNode = selection.has(endNode.id) ? { ...endNode, x: endNode.x + dx, y: endNode.y + dy } : endNode;
+
+                                    const { startSide: s1, endSide: s2 } = getBestSides(sNode, eNode, prev);
+
+                                    const startPos = {
+                                        x: sNode.x + (s1 === 'left' ? 0 : s1 === 'right' ? sNode.width : sNode.width / 2),
+                                        y: sNode.y + (s1 === 'top' ? 0 : s1 === 'bottom' ? sNode.height : sNode.height / 2)
+                                    };
+                                    const endPos = {
+                                        x: eNode.x + (s2 === 'left' ? 0 : s2 === 'right' ? eNode.width : eNode.width / 2),
+                                        y: eNode.y + (s2 === 'top' ? 0 : s2 === 'bottom' ? eNode.height : eNode.height / 2)
+                                    };
+
+                                    newPoints.start = startPos;
+                                    newPoints.end = endPos;
+                                    const { cp1, cp2 } = calculateBezierControls(startPos, endPos, s1, s2);
+                                    newPoints.control = cp1;
+                                    newPoints.control2 = cp2;
+
+                                    n.startOffset = { x: startPos.x - sNode.x, y: startPos.y - sNode.y };
+                                    n.endOffset = { x: endPos.x - eNode.x, y: endPos.y - eNode.y };
+                                }
+                            } else {
+                                // Both nodes moving (or logic missed): rigid shift
+                                if (n.points.control && n.startNodeId && selection.has(n.startNodeId)) {
+                                    newPoints.control = { x: n.points.control.x + dx, y: n.points.control.y + dy }
+                                }
+                                if (n.points.control2 && n.endNodeId && selection.has(n.endNodeId)) {
+                                    newPoints.control2 = { x: n.points.control2.x + dx, y: n.points.control2.y + dy }
+                                }
                             }
 
                             // Recalc bounding box
@@ -1506,12 +2347,26 @@ export function CanvasView({
                         }
 
                         if (updated) {
-                            // Synchronize control points during resize to maintain relative shape
-                            if (newPoints.control && n.startNodeId === resizingNodeId) {
-                                newPoints.control = { x: newPoints.control.x + dx, y: newPoints.control.y + dy }
-                            }
-                            if (newPoints.control2 && n.endNodeId === resizingNodeId) {
-                                newPoints.control2 = { x: newPoints.control2.x + dx, y: newPoints.control2.y + dy }
+                            if (n.startNodeId && n.endNodeId) {
+                                // Eloastic stretching: recalculate controls
+                                const getSide = (offset?: { x: number, y: number }) => {
+                                    if (!offset) return null;
+                                    if (Math.abs(offset.x) > Math.abs(offset.y)) return offset.x > 0 ? 'right' : 'left';
+                                    return offset.y > 0 ? 'bottom' : 'top';
+                                };
+                                const startSide = getSide(n.startOffset);
+                                const endSide = getSide(n.endOffset);
+                                const { cp1, cp2 } = calculateBezierControls(newPoints.start, newPoints.end, startSide, endSide);
+                                newPoints.control = cp1;
+                                newPoints.control2 = cp2;
+                            } else {
+                                // Synchronize control points during resize to maintain relative shape if floated
+                                if (newPoints.control && n.startNodeId === resizingNodeId) {
+                                    newPoints.control = { x: newPoints.control.x + dx, y: newPoints.control.y + dy }
+                                }
+                                if (newPoints.control2 && n.endNodeId === resizingNodeId) {
+                                    newPoints.control2 = { x: newPoints.control2.x + dx, y: newPoints.control2.y + dy }
+                                }
                             }
 
                             // Recalc bounding box
@@ -1711,6 +2566,17 @@ export function CanvasView({
         setSelection(new Set([newNode.id]))
     }
 
+    Object.assign(envRef.current, {
+        camera, selection, selectionCandidates, snapTargetId, draggedNodeId, editingId, documents,
+        containerRef, dragStartPosition, fileInputRef, handleNodeMouseDown, handleNodeTouchStart,
+        clearTouchTimer, setSelection, setEditingId, setFocusTarget, setDoubleClickPos,
+        setEditingCaretOffset, updateNodeContent, setNodes, onOpenDocument, onUpdateDocument,
+        getArrowMidpoint, setDraggedHandle, initiateEditImage, setResizingNodeId, setArrowStart,
+        setArrowStartNodeId, setArrowStartSide, setIsCreatingArrow, setArrowEndPreview,
+        handleImageUpload, isPanning, isSpacePressed, isCreatingArrow, arrowStart, arrowStartNodeId,
+        arrowStartSide, calculateBezierControls, resizingNodeId, nodes
+    });
+
     return (
         <div ref={wrapperRef} className="flex flex-col w-full h-full relative overflow-hidden bg-muted/50 select-none touch-none group/canvas">
             {/* Header / Breadcrumb - Hidden in Fullscreen or depending on design preferences */}
@@ -1830,695 +2696,36 @@ export function CanvasView({
                         transformOrigin: '0 0'
                     }}
                 >
-                    {nodes.map(node => (
-                        <div
-                            key={node.id}
-                            className={cn(
-                                "absolute flex flex-col group",
-                                // Z-Index Logic
-                                node.type === 'arrow' ? "z-20" : "z-10",
-                                selection.has(node.id) && selection.size === 1 && "z-[150]",
-                                selection.has(node.id) && node.type !== 'arrow' && node.type !== 'note' && "ring-2 ring-primary",
-                                selectionCandidates.has(node.id) && !selection.has(node.id) && node.type !== 'arrow' && "z-[140] ring-2 ring-primary/40 shadow-lg",
-                                snapTargetId === node.id && "z-[100] ring-4 ring-primary/60 scale-[1.02] shadow-2xl",
 
-                                // Styling
-                                (node.type === 'arrow' || node.type === 'shape' || node.type === 'note')
-                                    ? "overflow-visible bg-transparent border-none shadow-none"
-                                    : "rounded-lg shadow-sm overflow-hidden bg-muted/50 backdrop-blur-sm border border-foreground/20",
-                                node.type === 'table' && "overflow-visible", // Allow '+' buttons to show
+                    {nodes.map(node => {
+                        let portalDoc = undefined;
+                        if (node.type === 'document') {
+                            let docId = node.content;
+                            if (node.content.startsWith('{')) {
+                                try { docId = JSON.parse(node.content).id; } catch (e) { }
+                            }
+                            portalDoc = documents.find((d: any) => d.id === docId);
+                        }
 
-                                // Drag animation
-                                "transition-transform transition-shadow duration-200 ease-out",
-                                draggedNodeId === node.id && node.type !== 'arrow' ? "scale-[1.02] -rotate-2 shadow-[0_20px_50px_rgba(0,0,0,0.5)] z-[999]" : "scale-100 rotate-0"
-                            )}
-                            style={{
-                                left: node.x,
-                                top: node.y,
-                                width: node.width,
-                                height: node.height,
-                                cursor: (node.type === 'note' || node.type === 'document' || node.type === 'shape' || node.type === 'image')
-                                    ? (draggedNodeId === node.id ? 'grabbing' : 'grab')
-                                    : 'default'
-                            }}
-                            onMouseDown={(e) => {
-                                if (node.type !== 'arrow') {
-                                    handleNodeMouseDown(e, node)
-                                }
-                            }}
-                            onTouchStart={(e) => {
-                                if (node.type !== 'arrow') {
-                                    handleNodeTouchStart(e, node)
-                                }
-                            }}
-                            onTouchMove={clearTouchTimer}
-                            onTouchEnd={clearTouchTimer}
-                            onClick={(e) => {
-                                e.stopPropagation()
-                                if (!e.shiftKey && selection.size <= 1) {
-                                    setSelection(new Set([node.id]))
-                                }
-                            }}
-                            onDoubleClick={(e) => {
-                                e.stopPropagation()
-                                const dragDistance = dragStartPosition.current
-                                    ? Math.sqrt(Math.pow(e.clientX - dragStartPosition.current.x, 2) + Math.pow(e.clientY - dragStartPosition.current.y, 2))
-                                    : 0;
-
-                                if (selection.has(node.id) && selection.size === 1 && dragDistance < 5 && editingId !== node.id && node.type === 'document') {
-                                    // Identify if Title or Content area was clicked
-                                    const target = e.target as HTMLElement;
-                                    const field = target.closest('[data-field]')?.getAttribute('data-field') as 'title' | 'content' | null;
-
-                                    if (field) {
-                                        // Capture caret offset before swapping to input
-                                        let offset = 0
-                                        if ((document as any).caretRangeFromPoint) {
-                                            const range = (document as any).caretRangeFromPoint(e.clientX, e.clientY)
-                                            if (range) offset = range.startOffset
-                                        }
-
-                                        setEditingId(node.id)
-                                        setFocusTarget(field)
-                                        setDoubleClickPos({ x: e.clientX, y: e.clientY })
-                                        setEditingCaretOffset(offset)
-                                    } else {
-                                        // Default to content if cliked outside but inside document body
-                                        setEditingId(node.id)
-                                        setFocusTarget('content')
-                                        setDoubleClickPos({ x: e.clientX, y: e.clientY })
-                                        setEditingCaretOffset(0)
-                                    }
-                                }
-                            }}
-                        >
-                            {/* Node Content */}
-                            {node.type === 'note' ? (
-                                <textarea
-                                    id={`textarea-${node.id}`}
-                                    className={cn(
-                                        "flex-1 bg-transparent p-3 text-sm outline-none resize-none text-foreground placeholder:text-muted-foreground",
-                                        draggedNodeId === node.id ? "cursor-grabbing" : "cursor-grab",
-                                        "focus:cursor-text"
-                                    )}
-                                    onWheel={(e) => e.stopPropagation()}
-                                    value={node.content}
-                                    onChange={(e) => {
-                                        updateNodeContent(node.id, e.target.value)
-                                        // Auto-resize height logic
-                                        const el = e.target;
-                                        el.style.height = 'auto';
-                                        const newHeight = Math.max(node.height, el.scrollHeight);
-                                        if (newHeight > node.height) {
-                                            setNodes(prev => prev.map(n => n.id === node.id ? { ...n, height: newHeight } : n));
-                                        }
-                                    }}
-                                    onMouseDown={(e) => {
-                                        e.stopPropagation()
-                                        if (e.button !== 0) return
-
-                                        // If already focused, allow normal text selection
-                                        if (document.activeElement === e.currentTarget) return
-
-                                        // Otherwise, prevent focus and start dragging
-                                        e.preventDefault()
-                                        handleNodeMouseDown(e, node)
-                                    }}
-                                    onDoubleClick={(e) => {
-                                        const dragDistance = dragStartPosition.current
-                                            ? Math.sqrt(Math.pow(e.clientX - dragStartPosition.current.x, 2) + Math.pow(e.clientY - dragStartPosition.current.y, 2))
-                                            : 0;
-
-                                        if (dragDistance < 5 && document.activeElement !== e.currentTarget) {
-                                            (e.currentTarget as HTMLTextAreaElement).focus()
-                                        }
-                                    }}
-                                    placeholder="Type something..."
-                                />
-                            ) : node.type === 'table' ? (
-                                <CanvasTableNode
-                                    node={node}
-                                    isEditing={editingId === node.id}
-                                    draggedNodeId={draggedNodeId}
-                                    updateNodeContent={updateNodeContent}
-                                    setEditingId={setEditingId}
-                                    handleNodeMouseDown={handleNodeMouseDown}
-                                />
-                            ) : node.type === 'document' ? (
-                                (() => {
-                                    // Portal Implementation
-                                    let docId = node.content;
-                                    // Backward compatibility: check if content is JSON
-                                    if (node.content.startsWith('{')) {
-                                        try {
-                                            const parsed = JSON.parse(node.content);
-                                            docId = parsed.id;
-                                        } catch (e) { }
-                                    }
-
-                                    const portalDoc = documents.find(d => d.id === docId);
-
-                                    if (!portalDoc) {
-                                        return (
-                                            <div className="flex-1 flex items-center justify-center p-4 bg-muted/10">
-                                                <div className="text-center text-muted-foreground text-sm">
-                                                    Document not found
-                                                </div>
-                                            </div>
-                                        )
-                                    }
-
-                                    if (portalDoc.type === 'canvas') {
-                                        // Try to parse nodes to count them
-                                        let nodeCount = 0;
-                                        try {
-                                            const parsed = portalDoc.content ? JSON.parse(portalDoc.content) : [];
-                                            const nodes = Array.isArray(parsed) ? parsed : (parsed.nodes || []);
-                                            nodeCount = nodes.length;
-                                        } catch (e) { }
-
-                                        return (
-                                            <div
-                                                className={cn(
-                                                    "flex-1 flex flex-col items-center justify-center p-6 bg-gradient-to-br from-background to-muted/50 group/doc h-full overflow-hidden border border-border/50 rounded-lg hover:border-primary/50 transition-colors cursor-pointer",
-                                                    draggedNodeId === node.id ? "cursor-grabbing" : "cursor-grab"
-                                                )}
-                                                onMouseDown={(e) => {
-                                                    e.stopPropagation()
-                                                    handleNodeMouseDown(e, node)
-                                                }}
-                                                onDoubleClick={(e) => {
-                                                    e.stopPropagation();
-                                                    if (onOpenDocument) onOpenDocument(portalDoc.id);
-                                                }}
-                                            >
-                                                <div className="p-3 bg-primary/10 rounded-xl mb-4 text-primary group-hover/doc:scale-110 transition-transform">
-                                                    <Frame className="w-8 h-8" />
-                                                </div>
-                                                <div className="text-lg font-semibold text-foreground text-center mb-1">
-                                                    {portalDoc.title || "Untitled Canvas"}
-                                                </div>
-                                                <div className="text-xs text-muted-foreground text-center">
-                                                    {nodeCount} item{nodeCount !== 1 ? 's' : ''}
-                                                </div>
-                                                {onOpenDocument && (
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        className="absolute top-2 right-2 h-8 w-8 opacity-0 group-hover/doc:opacity-100 transition-opacity hover:bg-primary/20 hover:text-primary"
-                                                        onClick={(e) => {
-                                                            e.stopPropagation()
-                                                            onOpenDocument(portalDoc.id)
-                                                        }}
-                                                        title="Open in new tab"
-                                                    >
-                                                        <ExternalLink className="h-4 w-4" />
-                                                    </Button>
-                                                )}
-                                            </div>
-                                        )
-                                    }
-
-                                    return (
-                                        <div
-                                            className={cn(
-                                                "flex-1 flex flex-col p-4 bg-transparent group/doc h-full overflow-y-auto",
-                                                draggedNodeId === node.id ? "cursor-grabbing" : "cursor-grab"
-                                            )}
-                                            onWheel={(e) => e.stopPropagation()}
-                                            onMouseDown={(e) => {
-                                                if (editingId === node.id) return; // Allow interaction with inputs
-                                                e.stopPropagation()
-                                                handleNodeMouseDown(e, node)
-                                            }}
-                                        >
-                                            {editingId === node.id ? (
-                                                <>
-                                                    <Input
-                                                        id={`edit-title-${node.id}`}
-                                                        value={portalDoc.title}
-                                                        onChange={(e) => onUpdateDocument({ ...portalDoc, title: e.target.value })}
-                                                        className={cn(
-                                                            "text-2xl font-serif mb-2 border-none bg-transparent px-0 h-auto focus-visible:ring-0 focus-visible:ring-offset-0 ring-0 focus:ring-0 outline-none shadow-none placeholder:text-muted-foreground/50",
-                                                            "focus:cursor-text"
-                                                        )}
-                                                        placeholder="Untitled"
-                                                        onMouseDown={(e) => e.stopPropagation()}
-                                                    />
-                                                    <div className="flex-1 w-full bg-transparent overflow-y-auto" onMouseDown={(e) => e.stopPropagation()} onWheel={(e) => e.stopPropagation()}>
-                                                        {(() => {
-                                                            let cleanContent = portalDoc.content || '';
-                                                            const title = portalDoc.title?.trim();
-                                                            if (title && cleanContent) {
-                                                                const lines = cleanContent.split('\n');
-                                                                const firstLine = lines[0].trim();
-                                                                const headerMatch = firstLine.match(/^#+\s*(.*)$/);
-                                                                const firstLineText = headerMatch ? headerMatch[1].trim() : firstLine;
-                                                                if (firstLineText.toLowerCase() === title.toLowerCase()) {
-                                                                    cleanContent = lines.slice(1).join('\n').trim();
-                                                                }
-                                                            }
-                                                            return (
-                                                                <Editor
-                                                                    content={cleanContent}
-                                                                    onChange={(newContent) => onUpdateDocument({ ...portalDoc, content: newContent })}
-                                                                    placeholder="Type something..."
-                                                                    className="min-h-[auto] !py-0 [&>.tiptap]:!mt-0 prose-p:my-1 prose-ul:my-1 prose-h1:text-lg prose-h2:text-base font-sans"
-                                                                    onLinkClick={(href) => onOpenDocument?.(href)}
-                                                                />
-                                                            );
-                                                        })()}
-                                                    </div>
-                                                    {onOpenDocument && (
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="icon"
-                                                            className="absolute top-2 right-2 h-8 w-8 hover:bg-muted text-muted-foreground"
-                                                            onClick={(e) => {
-                                                                e.stopPropagation()
-                                                                onOpenDocument(portalDoc.id)
-                                                            }}
-                                                            title="Open in new tab"
-                                                        >
-                                                            <ExternalLink className="h-4 w-4" />
-                                                        </Button>
-                                                    )}
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <div
-                                                        data-field="title"
-                                                        className="text-2xl font-serif mb-4 line-clamp-2 min-h-[1.5em]"
-                                                    >
-                                                        {portalDoc.title || "Untitled"}
-                                                    </div>
-                                                    <div
-                                                        data-field="content"
-                                                        className={cn(
-                                                            "flex-1 text-sm leading-relaxed text-muted-foreground font-sans",
-                                                            "prose prose-sm dark:prose-invert max-w-none prose-p:my-1 prose-ul:my-1 prose-h1:text-lg prose-h2:text-base pointer-events-none",
-                                                            // Task list specific styling
-                                                            "[&>ul.contains-task-list]:list-none [&>ul.contains-task-list]:pl-0",
-                                                            "[&>ul.contains-task-list>li]:flex [&>ul.contains-task-list>li]:items-start [&>ul.contains-task-list>li]:gap-2 [&>ul.contains-task-list>li]:mb-0.5",
-                                                            "[&>ul.contains-task-list>li]:before:hidden [&>ul.contains-task-list>li]:after:hidden",
-                                                            "[&_input[type=checkbox]]:mt-0.5 [&_input[type=checkbox]]:w-3.5 [&_input[type=checkbox]]:h-3.5 [&_input[type=checkbox]]:m-0 [&_input[type=checkbox]]:appearance-auto"
-                                                        )}
-                                                    >
-                                                        {(() => {
-                                                            if (!portalDoc.content) return "Empty document";
-                                                            let cleanContent = portalDoc.content;
-                                                            const title = portalDoc.title?.trim();
-                                                            if (title) {
-                                                                const lines = cleanContent.split('\n');
-                                                                const firstLine = lines[0].trim();
-                                                                const headerMatch = firstLine.match(/^#+\s*(.*)$/);
-                                                                const firstLineText = headerMatch ? headerMatch[1].trim() : firstLine;
-                                                                if (firstLineText.toLowerCase() === title.toLowerCase()) {
-                                                                    cleanContent = lines.slice(1).join('\n').trim() || "Empty document";
-                                                                }
-                                                            }
-                                                            return (
-                                                                <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                                                    {cleanContent}
-                                                                </ReactMarkdown>
-                                                            );
-                                                        })()}
-                                                    </div>
-                                                </>
-                                            )}
-                                        </div>
-                                    );
-                                })()
-                            ) : node.type === 'arrow' ? (
-                                (() => {
-                                    const { x, y } = getArrowMidpoint(node)
-                                    return (
-                                        <>
-                                            <svg className="w-full h-full overflow-visible">
-                                                <defs>
-                                                    <marker
-                                                        id={`arrowhead-${node.id}`}
-                                                        markerWidth="10"
-                                                        markerHeight="7"
-                                                        refX="9"
-                                                        refY="3.5"
-                                                        orient="auto"
-                                                    >
-                                                        <polygon
-                                                            points="0 0, 10 3.5, 0 7"
-                                                            fill="currentColor"
-                                                            className={cn("transition-colors", selection.has(node.id) ? "text-primary" : selectionCandidates.has(node.id) ? "text-primary/40" : "text-muted-foreground")}
-                                                        />
-                                                    </marker>
-                                                </defs>
-                                                {/* Hit area for easier selection/dragging */}
-                                                <path
-                                                    d={`M ${node.points?.start.x ? node.points.start.x - node.x : 0} ${node.points?.start.y ? node.points.start.y - node.y : 0} C ${node.points?.control?.x ? node.points.control.x - node.x : ((node.points?.start.x || 0) + (node.points?.end.x || node.width)) / 3 - node.x} ${node.points?.control?.y ? node.points.control.y - node.y : ((node.points?.start.y || 0) + (node.points?.end.y || node.height)) / 3 - node.y}, ${node.points?.control2?.x ? node.points.control2.x - node.x : (((node.points?.start.x || 0) + (node.points?.end.x || node.width)) * 2) / 3 - node.x} ${node.points?.control2?.y ? node.points.control2.y - node.y : (((node.points?.start.y || 0) + (node.points?.end.y || node.height)) * 2) / 3 - node.y}, ${node.points?.end.x ? node.points.end.x - node.x : node.width} ${node.points?.end.y ? node.points.end.y - node.y : node.height}`}
-                                                    stroke="transparent"
-                                                    strokeWidth="12"
-                                                    fill="none"
-                                                    className="cursor-pointer pointer-events-auto"
-                                                    onMouseDown={(e) => handleNodeMouseDown(e, node)}
-                                                    onDoubleClick={(e) => {
-                                                        e.stopPropagation()
-                                                        setEditingId(node.id)
-                                                        setTimeout(() => {
-                                                            document.getElementById(`arrow-input-${node.id}`)?.focus()
-                                                        }, 0)
-                                                    }}
-                                                />
-                                                {/* Visible Curved Arrow Line */}
-                                                <path
-                                                    d={`M ${node.points?.start.x ? node.points.start.x - node.x : 0} ${node.points?.start.y ? node.points.start.y - node.y : 0} C ${node.points?.control?.x ? node.points.control.x - node.x : ((node.points?.start.x || 0) + (node.points?.end.x || node.width)) / 3 - node.x} ${node.points?.control?.y ? node.points.control.y - node.y : ((node.points?.start.y || 0) + (node.points?.end.y || node.height)) / 3 - node.y}, ${node.points?.control2?.x ? node.points.control2.x - node.x : (((node.points?.start.x || 0) + (node.points?.end.x || node.width)) * 2) / 3 - node.x} ${node.points?.control2?.y ? node.points.control2.y - node.y : (((node.points?.start.y || 0) + (node.points?.end.y || node.height)) * 2) / 3 - node.y}, ${node.points?.end.x ? node.points.end.x - node.x : node.width} ${node.points?.end.y ? node.points.end.y - node.y : node.height}`}
-                                                    stroke="currentColor"
-                                                    strokeWidth="2"
-                                                    strokeLinecap="round"
-                                                    strokeLinejoin="round"
-                                                    fill="none"
-                                                    markerEnd={`url(#arrowhead-${node.id})`}
-                                                    className={cn("transition-colors pointer-events-none", selection.has(node.id) ? "text-primary" : selectionCandidates.has(node.id) ? "text-primary/40" : "text-muted-foreground")}
-                                                />
-
-                                                {/* Text Label Display */}
-                                                {node.content && editingId !== node.id && (
-                                                    <foreignObject x={x - 50} y={y - 12} width="100" height="24" className="overflow-visible pointer-events-none">
-                                                        <div className="flex items-center justify-center w-full h-full">
-                                                            <span className="bg-background/80 backdrop-blur-sm px-1 rounded text-xs text-foreground/80 whitespace-nowrap border border-border/50 shadow-sm">
-                                                                {node.content}
-                                                            </span>
-                                                        </div>
-                                                    </foreignObject>
-                                                )}
-
-                                                {/* Handles - Only visible when selected */}
-                                                {selection.has(node.id) && selection.size === 1 && (
-                                                    <>
-                                                        {/* Start Handle */}
-                                                        <circle
-                                                            cx={node.points?.start.x ? node.points.start.x - node.x : 0}
-                                                            cy={node.points?.start.y ? node.points.start.y - node.y : 0}
-                                                            r="4"
-                                                            className="fill-background stroke-primary stroke-2 cursor-grab active:cursor-grabbing pointer-events-auto hover:scale-125 transition-transform"
-                                                            style={{ transformBox: 'fill-box', transformOrigin: 'center' }}
-                                                            onMouseDown={(e) => {
-                                                                e.stopPropagation()
-                                                                const rect = containerRef.current?.getBoundingClientRect()
-                                                                if (!rect) return
-                                                                const mouseX = (e.clientX - rect.left - camera.x) / camera.zoom
-                                                                const mouseY = (e.clientY - rect.top - camera.y) / camera.zoom
-                                                                const px = node.points?.start.x || 0
-                                                                const py = node.points?.start.y || 0
-                                                                setDraggedHandle({
-                                                                    nodeId: node.id,
-                                                                    type: 'start',
-                                                                    offsetX: mouseX - px,
-                                                                    offsetY: mouseY - py,
-                                                                    initialPoints: node.points ? { ...node.points, control: node.points.control || { x: (node.points.start.x + node.points.end.x) / 2, y: (node.points.start.y + node.points.end.y) / 2 } } : undefined
-                                                                })
-                                                            }}
-                                                        />
-                                                        {/* Control 1 Handle */}
-                                                        <circle
-                                                            cx={node.points?.control?.x ? node.points.control.x - node.x : ((node.points?.start.x || 0) + (node.points?.end.x || node.width)) / 3 - node.x}
-                                                            cy={node.points?.control?.y ? node.points.control.y - node.y : ((node.points?.start.y || 0) + (node.points?.end.y || node.height)) / 3 - node.y}
-                                                            r="4"
-                                                            className="fill-background stroke-primary stroke-2 cursor-grab active:cursor-grabbing pointer-events-auto hover:scale-125 transition-transform opacity-50 hover:opacity-100"
-                                                            style={{ transformBox: 'fill-box', transformOrigin: 'center' }}
-                                                            onMouseDown={(e) => {
-                                                                e.stopPropagation()
-                                                                const rect = containerRef.current?.getBoundingClientRect()
-                                                                if (!rect) return
-                                                                const mouseX = (e.clientX - rect.left - camera.x) / camera.zoom
-                                                                const mouseY = (e.clientY - rect.top - camera.y) / camera.zoom
-                                                                const px = node.points?.control?.x ?? ((node.points?.start.x || 0) * 2 + (node.points?.end.x || 0)) / 3
-                                                                const py = node.points?.control?.y ?? ((node.points?.start.y || 0) * 2 + (node.points?.end.y || 0)) / 3
-                                                                setDraggedHandle({
-                                                                    nodeId: node.id,
-                                                                    type: 'control',
-                                                                    offsetX: mouseX - px,
-                                                                    offsetY: mouseY - py,
-                                                                    initialPoints: node.points ? { ...node.points, control: node.points.control || { x: px, y: py }, control2: node.points.control2 || { x: ((node.points.start.x + node.points.end.x) * 2) / 3, y: ((node.points.start.y + node.points.end.y) * 2) / 3 } } : undefined
-                                                                })
-                                                            }}
-                                                        />
-                                                        {/* Control 2 Handle */}
-                                                        <circle
-                                                            cx={node.points?.control2?.x ? node.points.control2.x - node.x : (((node.points?.start.x || 0) + (node.points?.end.x || node.width)) * 2) / 3 - node.x}
-                                                            cy={node.points?.control2?.y ? node.points.control2.y - node.y : (((node.points?.start.y || 0) + (node.points?.end.y || node.height)) * 2) / 3 - node.y}
-                                                            r="4"
-                                                            className="fill-background stroke-primary stroke-2 cursor-grab active:cursor-grabbing pointer-events-auto hover:scale-125 transition-transform opacity-50 hover:opacity-100"
-                                                            style={{ transformBox: 'fill-box', transformOrigin: 'center' }}
-                                                            onMouseDown={(e) => {
-                                                                e.stopPropagation()
-                                                                const rect = containerRef.current?.getBoundingClientRect()
-                                                                if (!rect) return
-                                                                const mouseX = (e.clientX - rect.left - camera.x) / camera.zoom
-                                                                const mouseY = (e.clientY - rect.top - camera.y) / camera.zoom
-                                                                const px = node.points?.control2?.x ?? ((node.points?.start.x || 0) + (node.points?.end.x || 0) * 2) / 3
-                                                                const py = node.points?.control2?.y ?? ((node.points?.start.y || 0) + (node.points?.end.y || 0) * 2) / 3
-                                                                setDraggedHandle({
-                                                                    nodeId: node.id,
-                                                                    type: 'control2',
-                                                                    offsetX: mouseX - px,
-                                                                    offsetY: mouseY - py,
-                                                                    initialPoints: node.points ? { ...node.points, control: node.points.control || { x: ((node.points.start.x + node.points.end.x)) / 3, y: ((node.points.start.y + node.points.end.y)) / 3 }, control2: node.points.control2 || { x: px, y: py } } : undefined
-                                                                })
-                                                            }}
-                                                        />
-                                                        {/* End Handle */}
-                                                        <circle
-                                                            cx={node.points?.end.x ? node.points.end.x - node.x : node.width}
-                                                            cy={node.points?.end.y ? node.points.end.y - node.y : node.height}
-                                                            r="4"
-                                                            className="fill-background stroke-primary stroke-2 cursor-grab active:cursor-grabbing pointer-events-auto hover:scale-125 transition-transform"
-                                                            style={{ transformBox: 'fill-box', transformOrigin: 'center' }}
-                                                            onMouseDown={(e) => {
-                                                                e.stopPropagation()
-                                                                const rect = containerRef.current?.getBoundingClientRect()
-                                                                if (!rect) return
-                                                                const mouseX = (e.clientX - rect.left - camera.x) / camera.zoom
-                                                                const mouseY = (e.clientY - rect.top - camera.y) / camera.zoom
-                                                                const px = node.points?.end.x || 0
-                                                                const py = node.points?.end.y || 0
-                                                                setDraggedHandle({
-                                                                    nodeId: node.id,
-                                                                    type: 'end',
-                                                                    offsetX: mouseX - px,
-                                                                    offsetY: mouseY - py,
-                                                                    initialPoints: node.points ? { ...node.points, control: node.points.control || { x: (node.points.start.x + node.points.end.x) / 2, y: (node.points.start.y + node.points.end.y) / 2 } } : undefined
-                                                                })
-                                                            }}
-                                                        />
-                                                    </>
-                                                )}
-                                            </svg>
-                                            {/* Editing Input */}
-                                            {editingId === node.id && (
-                                                <div
-                                                    className="absolute transform -translate-x-1/2 -translate-y-1/2 pointer-events-auto"
-                                                    style={{ left: x, top: y }}
-                                                >
-                                                    <Input
-                                                        id={`arrow-input-${node.id}`}
-                                                        value={node.content}
-                                                        onChange={(e) => updateNodeContent(node.id, e.target.value)}
-                                                        onKeyDown={(e) => {
-                                                            if (e.key === 'Enter') {
-                                                                setEditingId(null)
-                                                            }
-                                                        }}
-                                                        onBlur={() => setEditingId(null)}
-                                                        className="h-6 w-32 px-1 py-0 text-xs bg-background/90 border-primary shadow-sm text-center"
-                                                        autoFocus
-                                                    />
-                                                </div>
-                                            )}
-                                        </>
-                                    )
-                                })()
-                            ) : node.type === 'shape' ? (
-                                <div className="w-full h-full cursor-grab active:cursor-grabbing pointer-events-auto">
-                                    <svg className="w-full h-full overflow-visible pointer-events-none">
-                                        {node.shapeType === 'rectangle' ? (
-                                            <rect
-                                                x="0"
-                                                y="0"
-                                                width="100%"
-                                                height="100%"
-                                                rx="12"
-                                                strokeWidth="2"
-                                                className={cn(
-                                                    "transition-colors fill-transparent",
-                                                    selection.has(node.id)
-                                                        ? "stroke-primary"
-                                                        : "stroke-muted-foreground"
-                                                )}
-                                            />
-                                        ) : (
-                                            <circle
-                                                cx="50%"
-                                                cy="50%"
-                                                r="48%"
-                                                strokeWidth="2"
-                                                className={cn(
-                                                    "transition-colors fill-transparent",
-                                                    selection.has(node.id)
-                                                        ? "stroke-primary"
-                                                        : "stroke-muted-foreground"
-                                                )}
-                                            />
-                                        )}
-                                    </svg>
-                                </div>
-                            ) : (
-                                <div className="flex-1 relative group/img overflow-hidden bg-muted/10 cursor-grab active:cursor-grabbing pointer-events-auto">
-                                    <img
-                                        src={node.content}
-                                        alt=""
-                                        className="w-full h-full object-cover select-none pointer-events-none"
-                                        onError={(e) => {
-                                            (e.target as HTMLImageElement).src = 'https://via.placeholder.com/400x300?text=Invalid+Image+URL'
-                                        }}
-                                        onDoubleClick={(e) => {
-                                            e.stopPropagation()
-                                            initiateEditImage(node.id, node.content)
-                                        }}
-                                    />
-                                </div>
-                            )}
-
-                            {/* Snap Anchors Overlay (Rendered Last for Z-Index) */}
-                            {snapTargetId === node.id && (
-                                <div className="absolute inset-0 pointer-events-none z-[100] overflow-visible">
-                                    {[
-                                        { x: node.x + node.width / 2, y: node.y }, // Top
-                                        { x: node.x + node.width / 2, y: node.y + node.height }, // Bottom
-                                        { x: node.x, y: node.y + node.height / 2 }, // Left
-                                        { x: node.x + node.width, y: node.y + node.height / 2 } // Right
-                                    ].map((anchor, i) => (
-                                        <div
-                                            key={i}
-                                            className="absolute w-2 h-2 bg-background border border-primary/40 rounded-full opacity-40"
-                                            style={{
-                                                left: anchor.x - node.x,
-                                                top: anchor.y - node.y,
-                                                transform: 'translate(-50%, -50%)'
-                                            }}
-                                        />
-                                    ))}
-                                    {/* Selected Arrow Snap Point Highlight */}
-                                    {Array.from(selection).map(id => nodes.find(n => n.id === id)).filter(n => n?.type === 'arrow').map(selectedArrow => (() => {
-                                        if (!selectedArrow) return null
-                                        const isStartAttached = selectedArrow?.startNodeId === node.id
-                                        const isEndAttached = selectedArrow?.endNodeId === node.id
-
-
-                                        const snapPos = isStartAttached ? selectedArrow?.points?.start : selectedArrow?.points?.end
-                                        if (!snapPos) return null
-
-                                        return (
-                                            <div
-                                                className="absolute w-3 h-3 bg-primary rounded-full shadow-sm ring-2 ring-primary/30 z-[101]"
-                                                style={{
-                                                    left: snapPos.x - node.x,
-                                                    top: snapPos.y - node.y,
-                                                    transform: 'translate(-50%, -50%)'
-                                                }}
-                                            />
-                                        )
-                                    })())}
-                                </div>
-                            )}
-                            {/* Resize Handle */}
-                            {selection.has(node.id) && selection.size === 1 && (
-                                <div
-                                    className="absolute bottom-0 right-0 w-4 h-4 cursor-nwse-resize z-10 flex items-center justify-center group/resize"
-                                    onMouseDown={(e) => {
-                                        e.stopPropagation()
-                                        e.preventDefault()
-                                        setResizingNodeId(node.id)
-                                    }}
-                                >
-                                    <div className="w-1.5 h-1.5 border-r-2 border-b-2 border-muted-foreground/40 group-hover/resize:border-primary transition-colors mb-1 mr-1" />
-                                </div>
-                            )}
-
-                            {/* Connection Anchors - Show when selected or hovered */}
-                            {((selection.has(node.id) && selection.size === 1) || isCreatingArrow) && node.type !== 'arrow' && (
-                                <div className={cn(
-                                    "absolute inset-0 pointer-events-none overflow-visible transition-opacity duration-200",
-                                    (selection.has(node.id) && selection.size === 1) ? "opacity-100" : "opacity-0 group-hover:opacity-100"
-                                )}>
-                                    {[
-                                        { side: 'top', x: '50%', y: '0%', icon: Plus },
-                                        { side: 'right', x: '100%', y: '50%', icon: Plus },
-                                        { side: 'bottom', x: '50%', y: '100%', icon: Plus },
-                                        { side: 'left', x: '0%', y: '50%', icon: Plus }
-                                    ].map((anchor) => (
-                                        <div
-                                            key={anchor.side}
-                                            className="absolute w-4 h-4 bg-background border border-primary rounded-full flex items-center justify-center cursor-crosshair pointer-events-auto hover:scale-125 transition-transform z-[160] shadow-sm"
-                                            style={{
-                                                left: anchor.x,
-                                                top: anchor.y,
-                                                transform: 'translate(-50%, -50%)'
-                                            }}
-                                            onMouseDown={(e) => {
-                                                e.stopPropagation()
-                                                e.preventDefault()
-                                                const rect = containerRef.current?.getBoundingClientRect()
-                                                if (!rect) return
-                                                const startX = (e.clientX - rect.left - camera.x) / camera.zoom
-                                                const startY = (e.clientY - rect.top - camera.y) / camera.zoom
-                                                setArrowStart({ x: startX, y: startY })
-                                                setArrowStartNodeId(node.id)
-                                                setArrowStartSide(anchor.side)
-                                                setIsCreatingArrow(true)
-                                            }}
-                                            onMouseUp={(e) => {
-                                                if (isCreatingArrow && arrowStart && arrowStartNodeId) {
-                                                    e.stopPropagation()
-                                                    e.preventDefault()
-                                                    const rect = containerRef.current?.getBoundingClientRect()
-                                                    if (!rect) return
-                                                    const endX = (e.clientX - rect.left - camera.x) / camera.zoom
-                                                    const endY = (e.clientY - rect.top - camera.y) / camera.zoom
-
-                                                    const controls = calculateBezierControls(arrowStart, { x: endX, y: endY }, arrowStartSide, anchor.side)
-                                                    const newNode: CanvasNode = {
-                                                        id: Math.random().toString(36).substring(7),
-                                                        type: 'arrow',
-                                                        x: Math.min(arrowStart.x, endX),
-                                                        y: Math.min(arrowStart.y, endY),
-                                                        width: Math.abs(endX - arrowStart.x),
-                                                        height: Math.abs(endY - arrowStart.y),
-                                                        content: '',
-                                                        startNodeId: arrowStartNodeId,
-                                                        endNodeId: node.id,
-                                                        points: {
-                                                            start: arrowStart,
-                                                            end: { x: endX, y: endY },
-                                                            control: controls.cp1,
-                                                            control2: controls.cp2
-                                                        }
-                                                    }
-                                                    setNodes((prev: CanvasNode[]) => [...prev, newNode])
-                                                    setArrowStart(null)
-                                                    setArrowStartNodeId(null)
-                                                    setArrowStartSide(null)
-                                                    setArrowEndPreview(null)
-                                                    setIsCreatingArrow(false)
-                                                    setSelection(new Set([newNode.id]))
-                                                }
-                                            }}
-                                        >
-                                            <Plus className="w-2 h-2 text-primary" />
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    ))}
+                        return (
+                            <MemoizedCanvasNode
+                                key={node.id}
+                                node={node}
+                                envRef={envRef}
+                                triggers={{
+                                    isSelected: selection.has(node.id),
+                                    isOnlySelection: selection.has(node.id) && selection.size === 1,
+                                    isSelectionCandidate: selectionCandidates.has(node.id) && !selection.has(node.id),
+                                    isSnapTarget: snapTargetId === node.id,
+                                    isDragged: draggedNodeId === node.id,
+                                    isEditing: editingId === node.id,
+                                    isResizing: resizingNodeId === node.id,
+                                    portalDoc,
+                                    isCreatingArrow
+                                }}
+                            />
+                        );
+                    })}
 
                     {/* Multi-selection Bounding Box */}
                     {(() => {
