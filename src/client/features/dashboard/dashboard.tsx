@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { Plus, Layout, List, Star, FileText, PanelLeft, PanelTop, MessageSquare } from 'lucide-react'
 import type { Document } from '../../../core/types/notes'
 import { Button } from '../../components/ui/button'
@@ -22,12 +23,17 @@ export function Dashboard({
     onToggleTabs
 }: DashboardProps) {
     const { t } = useLanguage();
-    const favorites = documents.filter(d => d.isFavorite);
-    const recents = [...documents].sort((a, b) => {
-        const dateA = new Date(a.updatedAt || 0).getTime();
-        const dateB = new Date(b.updatedAt || 0).getTime();
-        return dateB - dateA;
-    }).slice(0, 5);
+
+    // Stabilize computation to prevent re-renders when nothing changes
+    const favorites = useMemo(() => documents.filter(d => d.isFavorite), [documents]);
+
+    const recents = useMemo(() => {
+        return [...documents].sort((a, b) => {
+            const dateA = new Date(a.updatedAt || 0).getTime();
+            const dateB = new Date(b.updatedAt || 0).getTime();
+            return dateB - dateA;
+        }).slice(0, 5);
+    }, [documents]);
 
     return (
         <div className="flex flex-col h-full bg-muted/50 animate-in fade-in duration-300">
@@ -78,7 +84,7 @@ export function Dashboard({
                             </div>
                             <div className="flex-1 space-y-1">
                                 {favorites.length > 0 ? (
-                                    favorites.map(doc => (
+                                    favorites.map((doc: Document) => (
                                         <Button
                                             key={doc.id}
                                             variant="ghost"
@@ -106,7 +112,7 @@ export function Dashboard({
                             </div>
                             <div className="flex-1 space-y-1">
                                 {recents.length > 0 ? (
-                                    recents.map(doc => (
+                                    recents.map((doc: Document) => (
                                         <Button
                                             key={doc.id}
                                             variant="ghost"

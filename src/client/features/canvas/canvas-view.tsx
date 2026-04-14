@@ -1192,6 +1192,21 @@ export function CanvasView({
         reader.readAsDataURL(file)
     }
 
+    /** Create a canvas image node from an external URL (no upload needed) */
+    const addImageNodeFromUrl = useCallback((url: string) => {
+        const newNode: CanvasNode = {
+            id: Math.random().toString(36).substring(7),
+            type: 'image',
+            x: -camera.x / camera.zoom + (containerRef.current?.clientWidth || window.innerWidth) / 2 / camera.zoom - 150,
+            y: -camera.y / camera.zoom + (containerRef.current?.clientHeight || window.innerHeight) / 2 / camera.zoom - 100,
+            width: 300,
+            height: 200,
+            content: url
+        }
+        setNodes(prev => [...prev, newNode])
+        setSelection(new Set([newNode.id]))
+    }, [camera])
+
     const triggerFileUpload = () => {
         fileInputRef.current?.click()
     }
@@ -1204,14 +1219,60 @@ export function CanvasView({
     }
 
     const handlePaste = useCallback((e: React.ClipboardEvent) => {
-        const items = e.clipboardData.items
-        for (let i = 0; i < items.length; i++) {
-            if (items[i].type.indexOf('image') !== -1) {
-                const file = items[i].getAsFile()
-                if (file) handleImageUpload(file)
+        // Path 1: Image blob directly in clipboard (screenshots, file paste)
+        const items = Array.from(e.clipboardData?.items || [])
+        const imageItem = items.find(item => item.type.startsWith('image/'))
+        if (imageItem) {
+            const file = imageItem.getAsFile()
+            if (file) {
+                e.preventDefault()
+                handleImageUpload(file)
+                return
             }
         }
-    }, [camera, handleImageUpload])
+
+        // Path 2: HTML clipboard with <img> tag ("Copy image" from Chrome)
+        // Extract the URL synchronously and create a canvas image node directly
+        const htmlData = e.clipboardData?.getData('text/html') || ''
+        if (htmlData) {
+            const match = htmlData.match(/<img[^>]+src=["']([^"']+)["']/i)
+            if (match?.[1]) {
+                const src = match[1]
+                e.preventDefault()
+                if (src.startsWith('http://') || src.startsWith('https://')) {
+                    addImageNodeFromUrl(src)
+                } else if (src.startsWith('data:image/')) {
+                    fetch(src)
+                        .then(r => r.blob())
+                        .then(blob => {
+                            const type = src.split(';')[0].split(':')[1]
+                            const ext = type.split('/')[1]?.replace('x-', '') || 'png'
+                            handleImageUpload(new File([blob], `pasted-image.${ext}`, { type }))
+                        })
+                        .catch(err => console.error('Canvas data URL paste failed:', err))
+                }
+                return
+            }
+        }
+
+        // Path 3: Wayland/Linux fallback via navigator.clipboard.read()
+        if (items.length === 0 && navigator.clipboard?.read) {
+            e.preventDefault()
+            navigator.clipboard.read()
+                .then(clipItems => {
+                    for (const clipItem of clipItems) {
+                        const imageType = clipItem.types.find(t => t.startsWith('image/'))
+                        if (imageType) {
+                            return clipItem.getType(imageType).then(blob => {
+                                const ext = imageType.split('/')[1]?.replace('x-', '') || 'png'
+                                handleImageUpload(new File([blob], `pasted-image.${ext}`, { type: imageType }))
+                            })
+                        }
+                    }
+                })
+                .catch(err => console.warn('navigator.clipboard.read() unavailable:', err))
+        }
+    }, [camera, handleImageUpload, addImageNodeFromUrl])
 
 
 
@@ -1328,35 +1389,50 @@ export function CanvasView({
         }
     }
 
-    // Event Listeners for Space bar (for panning)
+    // Event Listeners for Keyboard commands
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             const target = e.target as HTMLElement
             const isInput = ['INPUT', 'TEXTAREA'].includes(target.tagName) || target.isContentEditable
-            if (e.code === 'Space' && !isInput) {
-                setIsSpacePressed(true)
-            }
-            if (e.key === 'Delete' && selection.size > 0 && !isModalOpen) {
-                setNodes(prev => prev.filter(n => !selection.has(n.id)))
-                setSelection(new Set())
-            }
-            if (e.key === 'Escape') {
-                if (isModalOpen) {
-                    setIsModalOpen(false)
-                } else if (editingId) {
-                    setEditingId(null)
-                } else if (selection.size > 0) {
-                    setSelection(new Set())
+
+            const actions: Record<string, () => void> = {
+                'Space': () => { if (!isInput) setIsSpacePressed(true) },
+                'Delete': () => {
+                    if (selection.size > 0 && !isModalOpen && !isInput) {
+                        setNodes(prev => prev.filter(n => !selection.has(n.id)))
+                        setSelection(new Set())
+                    }
+                },
+                'Escape': () => {
+                    if (isModalOpen) setIsModalOpen(false)
+                    else if (editingId) setEditingId(null)
+                    else if (selection.size > 0) setSelection(new Set())
                 }
             }
+
+            const action = actions[e.code] || actions[e.key]
+            if (action) action()
         }
+
         const handleKeyUp = (e: KeyboardEvent) => {
             if (e.code === 'Space') {
                 setIsSpacePressed(false)
             }
         }
+
         window.addEventListener('keydown', handleKeyDown)
         window.addEventListener('keyup', handleKeyUp)
+
+        // Window-level paste: captures Ctrl+V even when the canvas div has lost focus
+        // (e.g., after clicking on a node that lost focus). Skip when typing in inputs.
+        const handleWindowPaste = (e: ClipboardEvent) => {
+            const target = e.target as HTMLElement
+            const isInput = ['INPUT', 'TEXTAREA'].includes(target.tagName) || target.isContentEditable
+            if (!isInput) {
+                handlePaste(e as any)
+            }
+        }
+        window.addEventListener('paste', handleWindowPaste)
 
         // Close context menu on click elsewhere
         const handleClick = () => setContextMenu(null)
@@ -1365,9 +1441,10 @@ export function CanvasView({
         return () => {
             window.removeEventListener('keydown', handleKeyDown)
             window.removeEventListener('keyup', handleKeyUp)
+            window.removeEventListener('paste', handleWindowPaste)
             window.removeEventListener('click', handleClick)
         }
-    }, [selection, isModalOpen])
+    }, [selection, isModalOpen, editingId, handlePaste])
 
     const handleWheel = (e: React.WheelEvent) => {
         if (e.ctrlKey) {

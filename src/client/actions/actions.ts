@@ -18,6 +18,12 @@ export async function getDocuments(status: 'active' | 'deleted' = 'active') {
     return Array.isArray(data) ? data.map(mapItem) : [];
 }
 
+export async function getDocument(id: string) {
+    const res = await api.documents[':id'].$get({ param: { id } });
+    if (!res.ok) throw new Error('Failed to fetch document');
+    return mapItem(await res.json());
+}
+
 export async function createDocument(data: any) {
     const res = await api.documents.$post({ json: data });
     if (!res.ok) throw new Error('Failed to create document');

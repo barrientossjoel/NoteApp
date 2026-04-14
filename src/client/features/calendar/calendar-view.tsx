@@ -30,7 +30,7 @@ export function CalendarView({
 }: CalendarViewProps) {
   const [selected, setSelected] = useState<Date>(new Date())
 
-  const notesForDay = documents.filter(doc => {
+  const notesForDay = React.useMemo(() => documents.filter(doc => {
     if (!selected) return false
     const dateStr = doc.updatedAt || doc.createdAt || doc.date;
     if (!dateStr) return false;
@@ -40,7 +40,7 @@ export function CalendarView({
       date.getMonth() === selected.getMonth() &&
       date.getFullYear() === selected.getFullYear()
     )
-  })
+  }), [documents, selected])
 
   return (
     <div className="flex flex-col h-full bg-muted/50 animate-in fade-in duration-300">

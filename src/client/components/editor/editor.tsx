@@ -32,6 +32,30 @@ interface EditorProps {
     onLinkClick?: (href: string) => void
 }
 
+/** Uploads an image File and inserts the resulting URL into the editor as an image node */
+function uploadImageFile(file: File, view: import('@tiptap/pm/view').EditorView) {
+    const formData = new FormData()
+    const rawExt = file.type?.split('/')[1]?.replace('x-', '') || 'png'
+    const ext = rawExt === 'jpeg' ? 'jpg' : rawExt
+    formData.append('file', file, `pasted-image.${ext}`)
+
+    fetch('/api/uploads', {
+        method: 'POST',
+        body: formData,
+    })
+        .then(res => res.json())
+        .then(data => {
+            if (data.url) {
+                view.dispatch(view.state.tr.replaceSelectionWith(
+                    view.state.schema.nodes.image.create({ src: data.url })
+                ))
+            } else {
+                console.error('Upload response had no URL:', data)
+            }
+        })
+        .catch(err => console.error('Image upload failed:', err))
+}
+
 export const Editor = forwardRef<EditorRef, EditorProps>(({
     content,
     onChange,
@@ -188,6 +212,77 @@ export const Editor = forwardRef<EditorRef, EditorProps>(({
                 if (onKeyDown) {
                     return onKeyDown(event) === true
                 }
+                return false
+            },
+            handlePaste: (view, event, slice) => {
+                const items = Array.from(event.clipboardData?.items || [])
+
+                // --- Path 1: Image blob directly in clipboard (screenshot paste, etc.) ---
+                const imageItem = items.find(item => item.type.startsWith('image/'))
+                if (imageItem) {
+                    const file = imageItem.getAsFile()
+                    if (file) {
+                        event.preventDefault()
+                        uploadImageFile(file, view)
+                        return true
+                    }
+                }
+
+                // --- Path 2: HTML clipboard with <img> tag (e.g. "Copy image" from Chrome) ---
+                // When you right-click → "Copy image" on any website, Chrome puts text/html
+                // with an <img src="..."> snippet in the clipboard. Use synchronous getData()
+                // so we can call preventDefault() before returning.
+                const htmlData = event.clipboardData?.getData('text/html') || ''
+                if (htmlData) {
+                    const match = htmlData.match(/<img[^>]+src=["']([^"']+)["']/i)
+                    if (match?.[1]) {
+                        const src = match[1]
+                        event.preventDefault()
+                        if (src.startsWith('http://') || src.startsWith('https://')) {
+                            // External URL — insert directly, no upload needed
+                            view.dispatch(view.state.tr.replaceSelectionWith(
+                                view.state.schema.nodes.image.create({ src })
+                            ))
+                        } else if (src.startsWith('data:image/')) {
+                            // Data URL — convert to blob and upload
+                            const type = src.split(';')[0].split(':')[1]
+                            fetch(src)
+                                .then(r => r.blob())
+                                .then(blob => {
+                                    const ext = type.split('/')[1]?.replace('x-', '') || 'png'
+                                    const file = new File([blob], `pasted-image.${ext}`, { type })
+                                    uploadImageFile(file, view)
+                                })
+                                .catch(err => console.error('Data URL image upload failed:', err))
+                        }
+                        return true
+                    }
+                }
+
+                // --- Path 3: Wayland/Linux fallback via navigator.clipboard.read() ---
+                // clipboardData can be completely empty on Wayland even with an image present.
+                // Only try this when there's nothing at all in clipboardData.
+                if (items.length === 0 && navigator.clipboard?.read) {
+                    event.preventDefault()
+                    navigator.clipboard.read()
+                        .then(clipItems => {
+                            for (const clipItem of clipItems) {
+                                const imageType = clipItem.types.find(t => t.startsWith('image/'))
+                                if (imageType) {
+                                    return clipItem.getType(imageType).then(blob => {
+                                        const ext = imageType.split('/')[1]?.replace('x-', '') || 'png'
+                                        const file = new File([blob], `pasted-image.${ext}`, { type: imageType })
+                                        uploadImageFile(file, view)
+                                    })
+                                }
+                            }
+                        })
+                        .catch(err => {
+                            console.warn('navigator.clipboard.read() unavailable:', err)
+                        })
+                    return true
+                }
+
                 return false
             }
         },

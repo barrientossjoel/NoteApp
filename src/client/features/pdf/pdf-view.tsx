@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useEffect, useState, Suspense, lazy, useRef, useCallback } from 'react'
+import { useMediaQuery } from '../../hooks/useMediaQuery'
 import { Button } from '../../components/ui/button'
 import { cn } from '../../lib/utils/utils'
 import { useTheme } from '../../components/theme-provider'
@@ -72,17 +73,17 @@ export function PdfView({
         }
     }, [doc.id, localShowNotes])
 
-    const handleAddHighlight = (text: string, page: number) => {
+    const handleAddHighlight = useCallback((text: string, page: number) => {
         const highlightMsg = `[Highlight: "${text}"](@page:${page})`
         dispatchHighlight(highlightMsg)
-    }
+    }, [dispatchHighlight])
 
-    const handleEpubHighlight = (text: string, chapter: number, scrollY: number) => {
+    const handleEpubHighlight = useCallback((text: string, chapter: number, scrollY: number) => {
         const highlightMsg = `[Highlight: "${text}"](@chapter:${chapter}:${scrollY})`
         dispatchHighlight(highlightMsg)
-    }
+    }, [dispatchHighlight])
 
-    const handleHighlightClick = (ref: string) => {
+    const handleHighlightClick = useCallback((ref: string) => {
         if (ref.startsWith('page:')) {
             const pageNum = parseInt(ref.split(':')[1])
             if (pdfRendererRef.current) {
@@ -96,11 +97,13 @@ export function PdfView({
                 pdfRendererRef.current.scrollToChapter(chapterIdx, scrollY)
             }
         }
-    }
+    }, [])
+
     const url = doc.content || ''
     const isEbookFile = isEbook(url)
 
-    const isDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+    const prefersDark = useMediaQuery('(prefers-color-scheme: dark)')
+    const isDark = theme === 'dark' || (theme === 'system' && prefersDark)
 
     // Panel-overlay expand (multiple panels) — tracks the pane's bounding rect
     const [isExpanded, setIsExpanded] = useState(false)
@@ -126,7 +129,7 @@ export function PdfView({
         return () => document.removeEventListener('fullscreenchange', onFsChange)
     }, [])
 
-    const toggleExpand = () => {
+    const toggleExpand = useCallback(() => {
         const paneCount = document.querySelectorAll('[data-pane-id]').length
         if (paneCount <= 1) {
             // Single panel: use standard browser fullscreen
@@ -139,7 +142,7 @@ export function PdfView({
             // Multiple panels: overlay this specific panel only
             setIsExpanded(v => !v)
         }
-    }
+    }, [])
 
     // Close panel-overlay on Escape (browser fullscreen handles its own Escape)
     useEffect(() => {
@@ -153,6 +156,28 @@ export function PdfView({
 
     // Controls header visibility in fullscreen mode (only shown on top-edge hover)
     const [showHeader, setShowHeader] = useState(false)
+    const [isHeaderVisible, setIsHeaderVisible] = useState(true) // For mobile auto-hide
+    const hideTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+    const isMobile = useMediaQuery('(max-width: 768px)')
+
+    const resetAutoHide = useCallback(() => {
+        if (!isMobile) return
+        if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current)
+        setIsHeaderVisible(true)
+        hideTimeoutRef.current = setTimeout(() => {
+            setIsHeaderVisible(false)
+        }, 3000) // 3 seconds instead of 2 for better readability
+    }, [isMobile])
+
+    useEffect(() => {
+        if (isMobile) {
+            resetAutoHide()
+        }
+        return () => {
+            if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current)
+        }
+    }, [isMobile, resetAutoHide])
+
     useEffect(() => { if (!anyExpanded) setShowHeader(false) }, [anyExpanded])
 
     const [scale, setScale] = useState(() => {
@@ -258,13 +283,18 @@ export function PdfView({
             {/* Header: normal inline when not fullscreen; slide-down overlay on top-edge hover */}
             <div
                 className={cn(
-                    "flex items-center justify-between px-4 transition-all duration-200 border-b-transparent",
+                    "flex items-center justify-between px-4 transition-all duration-300 border-b-transparent",
                     anyExpanded
                         ? cn(
                             "absolute top-0 left-0 right-0 h-16 z-20 shadow-lg bg-background/85",
                             showHeader ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-full pointer-events-none"
                         )
-                        : "h-[4.5rem] pb-2 shrink-0 border-b dark:bg-zinc-905 bg-background"
+                        : isMobile
+                            ? cn(
+                                "absolute top-0 left-0 right-0 h-16 z-20 shadow-lg bg-background/85",
+                                isHeaderVisible ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-12 pointer-events-none"
+                            )
+                            : "h-[4.5rem] pb-2 shrink-0 border-b dark:bg-zinc-905 bg-background"
                 )}
                 onMouseLeave={() => anyExpanded && setShowHeader(false)}
             >
@@ -352,6 +382,12 @@ export function PdfView({
                     ref={contentRef}
                     className="flex-1 min-h-0 relative"
                     style={{ touchAction: 'pan-x pan-y pinch-zoom' }}
+                    onClick={() => {
+                        if (isMobile) {
+                            setIsHeaderVisible(v => !v)
+                            if (!isHeaderVisible) resetAutoHide()
+                        }
+                    }}
                 >
                     {!url ? (
                         <div className="flex items-center justify-center h-full text-muted-foreground">

@@ -43,7 +43,13 @@ export function NotesPanel({ documentId, title, className, onOpenAsTab, onClose,
     const [mentionFilter, setMentionFilter] = useState<string | null>(null);
     const [selectedIndex, setSelectedIndex] = useState(0);
 
-    const fetchMessages = async () => {
+    const scrollToBottom = React.useCallback(() => {
+        if (scrollRef.current) {
+            scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        }
+    }, []);
+
+    const fetchMessages = React.useCallback(async () => {
         setIsLoading(true);
         try {
             const query = documentId ? `?documentId=${documentId}` : '';
@@ -61,7 +67,7 @@ export function NotesPanel({ documentId, title, className, onOpenAsTab, onClose,
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [documentId, scrollToBottom]);
 
     useEffect(() => {
         fetchMessages();
@@ -84,13 +90,7 @@ export function NotesPanel({ documentId, title, className, onOpenAsTab, onClose,
         return () => window.removeEventListener('add-note-content', handleAddContent);
     }, [documentId]);
 
-    const scrollToBottom = () => {
-        if (scrollRef.current) {
-            scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-        }
-    };
-
-    const handleSendMessage = async (e?: React.FormEvent, content?: string, type: 'text' | 'audio' = 'text') => {
+    const handleSendMessage = React.useCallback(async (e?: React.FormEvent, content?: string, type: 'text' | 'audio' = 'text') => {
         if (e) e.preventDefault();
         const msgContent = content || newMessage;
         if (!msgContent.trim()) return;
@@ -123,9 +123,9 @@ export function NotesPanel({ documentId, title, className, onOpenAsTab, onClose,
         } catch (error) {
             console.error('Error sending message', error);
         }
-    };
+    }, [newMessage, documentId, scrollToBottom]);
 
-    const startRecording = async () => {
+    const startRecording = React.useCallback(async () => {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             const mediaRecorder = new MediaRecorder(stream);
@@ -153,16 +153,16 @@ export function NotesPanel({ documentId, title, className, onOpenAsTab, onClose,
         } catch (error) {
             console.error('Failed to start recording', error);
         }
-    };
+    }, [handleSendMessage]);
 
-    const stopRecording = () => {
+    const stopRecording = React.useCallback(() => {
         if (recorder) {
             recorder.stop();
             setRecorder(null);
             setIsRecording(false);
             if (timerRef.current) clearInterval(timerRef.current);
         }
-    };
+    }, [recorder]);
 
     const formatTime = (seconds: number) => {
         const mins = Math.floor(seconds / 60);
@@ -170,16 +170,16 @@ export function NotesPanel({ documentId, title, className, onOpenAsTab, onClose,
         return `${mins}:${secs.toString().padStart(2, '0')}`;
     };
 
-    const handleCopy = (content: string) => {
+    const handleCopy = React.useCallback((content: string) => {
         navigator.clipboard.writeText(content);
-    };
+    }, []);
 
-    const handleStartEdit = (msg: Message) => {
+    const handleStartEdit = React.useCallback((msg: Message) => {
         setEditingId(msg.id);
         setEditContent(msg.content);
-    };
+    }, []);
 
-    const handleSaveEdit = async (msg: Message) => {
+    const handleSaveEdit = React.useCallback(async (msg: Message) => {
         if (!editContent.trim() || editContent === msg.content) {
             setEditingId(null);
             return;
@@ -201,9 +201,9 @@ export function NotesPanel({ documentId, title, className, onOpenAsTab, onClose,
         } catch (error) {
             console.error('Error updating message', error);
         }
-    };
+    }, [editContent]);
 
-    const handleDelete = async (id: string) => {
+    const handleDelete = React.useCallback(async (id: string) => {
         // Optimistic delete
         setMessages(prev => prev.filter(m => m.id !== id));
 
@@ -217,13 +217,15 @@ export function NotesPanel({ documentId, title, className, onOpenAsTab, onClose,
         } catch (error) {
             console.error('Error deleting message', error);
         }
-    };
+    }, []);
 
-    const filteredDocs = documents.filter(doc =>
-        doc.title.toLowerCase().includes(mentionFilter?.toLowerCase() || '')
-    ).slice(0, 5);
+    const filteredDocs = React.useMemo(() => {
+        return documents.filter(doc =>
+            doc.title?.toLowerCase().includes(mentionFilter?.toLowerCase() || '')
+        ).slice(0, 5);
+    }, [documents, mentionFilter]);
 
-    const handleSelectMention = (doc: Document) => {
+    const handleSelectMention = React.useCallback((doc: Document) => {
         const input = inputRef.current;
         if (!input) return;
 
@@ -244,7 +246,7 @@ export function NotesPanel({ documentId, title, className, onOpenAsTab, onClose,
                 input.setSelectionRange(newPos, newPos);
             }, 0);
         }
-    };
+    }, [newMessage]);
 
     const renderContent = (content: string) => {
         // Regex to find [@DocName](docId)

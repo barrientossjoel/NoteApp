@@ -10,7 +10,7 @@ import type { Document, LayoutNode, WorkspaceState } from '../../../../core/type
 import { Dashboard } from '../../dashboard/dashboard'
 import { CalendarView } from '../../calendar/calendar-view'
 import { TrashView } from '../../trash/trash-view'
-import { Workspace, closeTab, findFirstPaneId } from '../../../components/layout/workspace'
+import { Workspace } from '../../../components/layout/workspace'
 import {
   Group as PanelGroup,
   Panel,
@@ -18,7 +18,7 @@ import {
 } from 'react-resizable-panels'
 import { cn } from '../../../lib/utils/utils'
 import { SearchCommand } from '../../../components/search/search-command'
-import { splitNode, addTabToPane, updateTab, findLayoutNode } from '../../../lib/utils/layout-utils'
+import { splitNode, addTabToPane, updateTab, findLayoutNode, pinTab, closeTab, findFirstPaneId } from '../../../lib/utils/layout-utils'
 import { CanvasView } from '../../canvas/canvas-view'
 import { Button } from '../../../components/ui/button'
 import { PanelLeft } from 'lucide-react'
@@ -88,18 +88,19 @@ export default function NotesApp() {
     }
   }, [isLoading, documents, currentView])
 
-  if (isLoading) {
-    return <div className="flex items-center justify-center h-screen text-muted-foreground">Loading workspace...</div>
-  }
-
-  if (error) {
-    return <div className="flex items-center justify-center h-screen text-destructive">Error: {error.message}</div>
-  }
-
   // Find active document (for sidebar highlights, maybe not enough for layout)
   // const activeDocument = documents.find(d => d.id === currentView)
 
   // Actions
+  useEffect(() => {
+    const handleCreateSub = (e: any) => {
+      const { parentId } = (e as CustomEvent).detail
+      handleCreateDocument(parentId, 'text')
+    }
+    window.addEventListener('create-sub-document', handleCreateSub)
+    return () => window.removeEventListener('create-sub-document', handleCreateSub)
+  }, [layout])
+
   const handleCreateDocument = async (parentId?: string | null, type: 'text' | 'canvas' = 'text') => {
     try {
       const newDoc = await createDocument({ parentId, type });
@@ -205,6 +206,16 @@ export default function NotesApp() {
   }
 
   const handleMoveDocument = async (id: string, newParentId: string | null) => {
+    if (id === newParentId) return; // Prevent moving into itself
+
+    // Prevent moving into a descendant (circular dependency)
+    let current = newParentId;
+    while (current) {
+      if (current === id) return; // Cycle detected
+      const parent = documents.find(d => d.id === current);
+      current = parent ? parent.parentId : null;
+    }
+
     // Optimistic update
     const previousDocuments = [...documents];
     setDocuments((prev: Document[]) => prev.map(d => d.id === id ? { ...d, parentId: newParentId } : d));
@@ -218,13 +229,13 @@ export default function NotesApp() {
     }
   }
 
-  const handleNavigate = (view: SidebarView, inPane?: boolean) => {
+  const handleNavigate = (view: SidebarView, inPane?: boolean, isPreview: boolean = true) => {
     setCurrentView(view)
 
     if (inPane && view !== "dashboard" && view !== "calendar" && view !== "trash") {
       setLayout(prev => splitNode(prev, activePaneId, 'horizontal', view))
     } else {
-      updateLayoutWithDoc(view)
+      updateLayoutWithDoc(view, isPreview)
     }
 
     // Update the layout with the view (could be docId, 'dashboard', 'calendar', or 'trash')
@@ -233,59 +244,31 @@ export default function NotesApp() {
     }
   }
 
-  const updateLayoutWithDoc = (docId: string) => {
+  const updateLayoutWithDoc = (docId: string, isPreview: boolean = true) => {
     setLayout(prev => {
       if (prev.type === 'dashboard') {
         return {
           ...prev,
           type: 'pane',
           tabs: [docId],
-          activeTabId: docId
+          activeTabId: docId,
+          previewTabId: isPreview ? docId : undefined
         }
       }
-      // Update the "active" pane or first pane found
-      return updateActivePane(prev, activePaneId, docId)
+
+      const paneIdToUpdate = activePaneId || findLayoutNode(prev, '')?.id || '';
+      return addTabToPane(prev, paneIdToUpdate, docId, true, isPreview);
     })
   }
 
-  function updateActivePane(node: LayoutNode, activeId: string | null, docId: string): LayoutNode {
-    let updated = false;
 
-    const traverse = (n: LayoutNode): LayoutNode => {
-      if (n.id === activeId || (n.type === 'pane' && !activeId)) {
-        updated = true;
-        const tabs = n.tabs || []
-        const newTabs = tabs.includes(docId) ? tabs : [...tabs, docId]
-        return { ...n, type: 'pane', tabs: newTabs, activeTabId: docId }
-      }
-      if (n.children) {
-        return { ...n, children: n.children.map(traverse) }
-      }
-      return n
-    }
 
-    let result = traverse(node)
+  if (isLoading) {
+    return <div className="flex items-center justify-center h-screen text-muted-foreground">Loading workspace...</div>
+  }
 
-    if (!updated) {
-      // Fallback: apply to first pane found
-      const updateFirstPane = (n: LayoutNode): LayoutNode => {
-        if (n.type === 'pane') {
-          updated = true;
-          const tabs = n.tabs || []
-          const newTabs = tabs.includes(docId) ? tabs : [...tabs, docId]
-          return { ...n, tabs: newTabs, activeTabId: docId }
-        }
-        if (n.children && n.children.length > 0) {
-          const newChildren = [...n.children];
-          newChildren[0] = updateFirstPane(newChildren[0]);
-          return { ...n, children: newChildren }
-        }
-        return n
-      }
-      result = updateFirstPane(result)
-    }
-
-    return result
+  if (error) {
+    return <div className="flex items-center justify-center h-screen text-destructive">Error: {error.message}</div>
   }
 
   return (
@@ -333,6 +316,12 @@ export default function NotesApp() {
               onUploadedPdf={handleUploadedPdf}
               onCloseMobile={() => setShowSidebar(false)}
               onOpenSettings={() => setIsSettingsOpen(true)}
+              onDoubleClickDocument={(id) => {
+                const paneId = activePaneId || findFirstPaneId(layout) || '';
+                if (paneId) {
+                  setLayout(prev => pinTab(prev, paneId, id, true));
+                }
+              }}
             />
           </div>
           <main className="flex-1 overflow-hidden bg-background flex flex-col relative">
@@ -379,7 +368,7 @@ export default function NotesApp() {
                       setIsSearchOpen(true)
                       if (isMobile) setShowSidebar(false)
                     } else {
-                      handleNavigate(view)
+                      handleNavigate(view, false, true)
                     }
                   }}
                   onOpenSidebar={() => setShowSidebar(true)}
@@ -388,6 +377,13 @@ export default function NotesApp() {
                     setIsSettingsOpen(true)
                     if (isMobile) setShowSidebar(false)
                   }}
+                  onPinTab={(id: string, pinned: boolean) => {
+                    if (activePane?.id) {
+                      const newLayout = pinTab(layout, activePane.id, id, pinned)
+                      setLayout(newLayout)
+                    }
+                  }}
+                  previewTabId={activePane?.type === 'pane' ? activePane.previewTabId : null}
                 />
               )
             })()}

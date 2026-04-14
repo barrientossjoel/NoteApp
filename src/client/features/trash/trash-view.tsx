@@ -24,7 +24,7 @@ export function TrashView({
   const [items, setItems] = useState<Document[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
-  const fetchTrash = async () => {
+  const fetchTrash = React.useCallback(async () => {
     try {
       setIsLoading(true)
       const data = await getTrashItems()
@@ -34,13 +34,13 @@ export function TrashView({
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
     fetchTrash()
   }, [])
 
-  const handleRestore = async (id: string) => {
+  const handleRestore = React.useCallback(async (id: string) => {
     try {
       await restoreDocument(id)
       setItems(prev => prev.filter(i => i.id !== id))
@@ -50,9 +50,9 @@ export function TrashView({
     } catch (e) {
       console.error("Failed to restore", e)
     }
-  }
+  }, [refreshDocuments])
 
-  const handleDeletePermanent = async (id: string) => {
+  const handleDeletePermanent = React.useCallback(async (id: string) => {
     if (!confirm("Are you sure you want to permanently delete this document?")) return
     try {
       await permanentDeleteDocument(id)
@@ -60,9 +60,9 @@ export function TrashView({
     } catch (e) {
       console.error("Failed to delete permanently", e)
     }
-  }
+  }, [])
 
-  const handleEmptyTrash = async () => {
+  const handleEmptyTrash = React.useCallback(async () => {
     if (!confirm("Are you sure you want to empty the trash? This action cannot be undone.")) return
     try {
       await emptyTrash()
@@ -70,7 +70,7 @@ export function TrashView({
     } catch (e) {
       console.error("Failed to empty trash", e)
     }
-  }
+  }, [])
 
   if (isLoading) {
     return <div className="flex items-center justify-center h-full text-muted-foreground">Loading trash...</div>

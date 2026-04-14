@@ -5,7 +5,7 @@
  */
 import { sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/libsql';
-import { createClient } from '@libsql/client/web';
+import { createClient } from '@libsql/client';
 import * as schema from './schema.js';
 
 let _db: any = null;

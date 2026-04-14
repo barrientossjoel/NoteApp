@@ -1,5 +1,5 @@
-import { useState, useRef } from 'react'
-import { Plus, Search, Calendar, Trash2, LayoutDashboard, FileText, BookOpen, Upload, Loader2, X, MoreHorizontal, Pencil, Link2 } from 'lucide-react'
+import { useState, useRef, useEffect } from 'react'
+import { Plus, Search, Calendar, Trash2, LayoutDashboard, FileText, BookOpen, Upload, Loader2, X, MoreHorizontal, Pencil, Link2, ChevronDown, ChevronRight } from 'lucide-react'
 import { upload } from '@vercel/blob/client'
 import { Button } from "../../components/ui/button"
 import { Input } from "../../components/ui/input"
@@ -39,6 +39,7 @@ interface SidebarProps {
   onUploadedPdf: (docId: string) => void
   onCloseMobile?: () => void
   onOpenSettings?: () => void
+  onDoubleClickDocument?: (id: string) => void
 }
 
 export function Sidebar({
@@ -60,13 +61,30 @@ export function Sidebar({
   onUploadedPdf,
   onCloseMobile,
   onOpenSettings,
+  onDoubleClickDocument
 }: SidebarProps) {
   const { t } = useLanguage()
   const [searchQuery, setSearchQuery] = useState('')
   const [isUploading, setIsUploading] = useState(false)
+  const [isLibraryExpanded, setIsLibraryExpanded] = useState(true)
+  const [isDocumentsExpanded, setIsDocumentsExpanded] = useState(true)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const [renameNode, setRenameNode] = useState<Document | null>(null)
+
+  // F2 Shortcut
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'F2') {
+        const activeDoc = documents.find(d => d.id === currentView)
+        if (activeDoc) {
+          setRenameNode(activeDoc)
+        }
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [currentView, documents])
 
   const handleRename = (newName: string) => {
     if (!renameNode) return
@@ -210,9 +228,13 @@ export function Sidebar({
         const pdfDocs = documents.filter(d => d.type === 'pdf')
         return (
           <div className="px-2 pt-3 pb-1">
-            <div className="flex items-center justify-between px-2 mb-1">
+            <div
+              className="flex items-center justify-between px-2 mb-1 cursor-pointer hover:bg-muted/30 rounded py-1 transition-colors"
+              onClick={() => setIsLibraryExpanded(!isLibraryExpanded)}
+            >
               <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
-                <BookOpen className="h-3 w-3" />
+                {isLibraryExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                <BookOpen className="h-3 w-3 ml-1" />
                 {t('library')}
               </h2>
               <button
@@ -238,54 +260,61 @@ export function Sidebar({
               />
             </div>
 
-            {pdfDocs.length === 0 ? (
-              <p className="text-xs text-muted-foreground/60 px-2 py-1">
-                {t('noFilesYet')}
-              </p>
-            ) : (
-              <div className="space-y-0.5">
-                {pdfDocs.map(doc => (
-                  <div key={doc.id} className="group relative flex items-center w-full">
-                    <Button
-                      variant={currentView === doc.id ? 'secondary' : 'ghost'}
-                      size="sm"
-                      className="w-full justify-start px-2 h-8 font-normal pr-8"
-                      onClick={() => setCurrentView(doc.id)}
-                    >
-                      <BookOpen className="h-3.5 w-3.5 mr-2 text-muted-foreground shrink-0" />
-                      <span className="truncate flex-1 text-left text-xs">{doc.title || t('untitledDocument')}</span>
-                    </Button>
-                    <div className="absolute right-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 flex items-center shrink-0">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" className="h-6 w-6 p-0 hover:bg-accent text-muted-foreground hover:text-foreground" onClick={(e) => e.stopPropagation()}>
-                            <MoreHorizontal className="h-3.5 w-3.5" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="start">
-                          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setRenameNode(doc); }}>
-                            <Pencil className="mr-2 h-4 w-4" />
-                            {t('rename')}
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onDeleteDocument(doc.id); }} className="text-destructive">
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            {t('deleteOption')}
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+            {isLibraryExpanded && (
+              pdfDocs.length === 0 ? (
+                <p className="text-xs text-muted-foreground/60 px-2 py-1">
+                  {t('noFilesYet')}
+                </p>
+              ) : (
+                <div className="space-y-0.5">
+                  {pdfDocs.map(doc => (
+                    <div key={doc.id} className="group relative flex items-center w-full">
+                      <Button
+                        variant={currentView === doc.id ? 'secondary' : 'ghost'}
+                        size="sm"
+                        className="w-full justify-start px-2 h-8 font-normal pr-8"
+                        onClick={() => setCurrentView(doc.id)}
+                        onDoubleClick={() => onDoubleClickDocument?.(doc.id)}
+                      >
+                        <BookOpen className="h-3.5 w-3.5 mr-2 text-muted-foreground shrink-0" />
+                        <span className="truncate flex-1 text-left text-xs">{doc.title || t('untitledDocument')}</span>
+                      </Button>
+                      <div className="absolute right-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 flex items-center shrink-0">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" className="h-6 w-6 p-0 hover:bg-accent text-muted-foreground hover:text-foreground" onClick={(e) => e.stopPropagation()}>
+                              <MoreHorizontal className="h-3.5 w-3.5" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="start">
+                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setRenameNode(doc); }}>
+                              <Pencil className="mr-2 h-4 w-4" />
+                              {t('rename')}
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onDeleteDocument(doc.id); }} className="text-destructive">
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              {t('deleteOption')}
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )
             )}
           </div>
         )
       })()}
 
-      <div className="flex items-center justify-between px-4 my-2">
-        <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-          {t('documentsHeader')}
+      <div
+        className="flex items-center justify-between px-4 my-2 cursor-pointer hover:bg-muted/30 rounded py-1 transition-colors mx-2"
+        onClick={() => setIsDocumentsExpanded(!isDocumentsExpanded)}
+      >
+        <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+          {isDocumentsExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+          <span className="ml-1">{t('documentsHeader')}</span>
         </h2>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -308,15 +337,18 @@ export function Sidebar({
 
       <ScrollArea className="flex-1">
         <div className="p-2 pt-0 flex flex-col min-h-full">
-          <SidebarTree
-            documents={filteredDocuments}
-            activeDocumentId={currentView}
-            onSelectDocument={setCurrentView}
-            onCreateDocument={onCreateDocument}
-            onDeleteDocument={onDeleteDocument}
-            onMoveDocument={onMoveDocument}
-            onUpdateDocument={onUpdateDocument}
-          />
+          {isDocumentsExpanded && (
+            <SidebarTree
+              documents={filteredDocuments}
+              activeDocumentId={currentView}
+              onSelectDocument={setCurrentView}
+              onCreateDocument={onCreateDocument}
+              onDeleteDocument={onDeleteDocument}
+              onMoveDocument={onMoveDocument}
+              onUpdateDocument={onUpdateDocument}
+              onDoubleClickDocument={onDoubleClickDocument}
+            />
+          )}
 
 
           {documents.some(d => d.isFavorite) && (

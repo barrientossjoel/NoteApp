@@ -17,9 +17,17 @@ const ALLOWED_TYPES = [
     'application/epub+zip',
     'application/x-mobipocket-ebook',
     'application/vnd.amazon.ebook',
+    'image/jpeg',
+    'image/png',
+    'image/gif',
+    'image/webp',
+    'image/bmp',
+    'image/x-png',
+    'image/tiff',
+    'image/svg+xml',
 ];
 
-const ALLOWED_EXTENSIONS = ['.pdf', '.epub', '.mobi', '.azw', '.azw3'];
+const ALLOWED_EXTENSIONS = ['.pdf', '.epub', '.mobi', '.azw', '.azw3', '.jpg', '.jpeg', '.png', '.gif', '.webp'];
 const MAX_CLOUDINARY_SIZE = 4 * 1024 * 1024; // 4 MB
 
 // Vercel Blob Client Upload Endpoint
@@ -67,7 +75,15 @@ uploadsRouter.post('/', async (c) => {
         }
 
         const timestamp = Date.now();
-        const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+        let safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+        if (safeName === 'image' || safeName === 'blob' || !safeName.includes('.')) {
+            // Normalize Linux-specific MIME types to standard extensions
+            const normalizedType = file.type.replace('image/x-', 'image/')
+            const extMatch = normalizedType.match(/\/([a-zA-Z0-9]+)$/)
+            if (extMatch) {
+                safeName = safeName.replace(/\.[^.]+$/, '') + '.' + extMatch[1];
+            }
+        }
 
         // Fallback to Vercel Blob for large files (>4MB) to avoid Cloudinary free tier limitations
         if (file.size > MAX_CLOUDINARY_SIZE) {
@@ -96,12 +112,21 @@ uploadsRouter.post('/', async (c) => {
         const arrayBuffer = await file.arrayBuffer();
         const buffer = Buffer.from(arrayBuffer);
 
+        const isImage = file.type ? file.type.startsWith('image/') : false;
+
+        let finalName = safeName;
+        if (isImage && !finalName.includes('.')) {
+            const typeExt = file.type.split('/')[1];
+            if (typeExt) finalName += '.' + typeExt;
+        }
+
         // Upload to Cloudinary
         return new Promise<Response>((resolve) => {
             const uploadStream = cloudinary.uploader.upload_stream(
                 {
-                    resource_type: 'raw',
-                    public_id: `noteapp/uploads/${timestamp}_${safeName}`,
+                    resource_type: isImage ? 'image' : 'raw',
+                    public_id: `noteapp/uploads/${timestamp}_${finalName}`,
+                    format: isImage ? finalName.split('.').pop() : undefined
                 },
                 (error, result) => {
                     if (error || !result) {

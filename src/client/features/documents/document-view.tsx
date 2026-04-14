@@ -5,7 +5,7 @@ import { useMediaQuery } from '../../hooks/useMediaQuery'
 import { useAutoSave } from '../../hooks/useAutoSave'
 import { Button } from "../../components/ui/button"
 import { Input } from "../../components/ui/input"
-import { ChevronLeft, Loader2, Eye, Pencil, Star, Tag, Columns, Rows, MoreVertical, Check, Plus, PanelLeft, PanelTop, MessageSquare, Link2 } from 'lucide-react'
+import { ChevronLeft, Loader2, Eye, Pencil, Star, Tag, Columns, Rows, MoreVertical, Check, Plus, PanelLeft, PanelTop, MessageSquare, Link2, ChevronDown, ChevronRight, Frame, FileText } from 'lucide-react'
 import type { Document } from '../../../core/types/notes'
 import { cn } from '../../lib/utils/utils'
 import {
@@ -46,6 +46,15 @@ interface DocumentViewProps {
     onNavigate?: (id: string) => void
     hideBorder?: boolean
 }
+
+import React from 'react'
+
+import { buildChildrenMap, getLongestTitle, tryParseTags, type SnapPosition, SNAP_STORAGE_KEY } from './lib/subdocs-utils'
+import { SubdocsPanel } from './components/subdocs-panel'
+
+
+
+
 
 export function DocumentView({
     document,
@@ -90,16 +99,40 @@ export function DocumentView({
 
     const editorRef = useRef<EditorRef>(null)
 
-    // Helper to parse tags
-    function tryParseTags(tags: string | undefined | null): string[] {
-        if (!tags) return [];
-        try {
-            const parsed = JSON.parse(tags);
-            return Array.isArray(parsed) ? parsed : [];
-        } catch {
-            return tags.split(',').filter(Boolean);
-        }
+    // Subdocuments panel state (lifted here so it controls layout)
+    const [subdocsSnap, setSubdocsSnap] = useState<SnapPosition>(() => {
+        try { return (localStorage.getItem(SNAP_STORAGE_KEY) as SnapPosition) || 'right' } catch { return 'right' }
+    })
+    const [subdocsCollapsed, setSubdocsCollapsed] = useState(false)
+    const persistSubdocsSnap = React.useCallback((s: SnapPosition) => {
+        setSubdocsSnap(s)
+        try { localStorage.setItem(SNAP_STORAGE_KEY, s) } catch { }
+    }, [])
+
+    const subdocsChildrenMap = useMemo(() => buildChildrenMap(documents), [documents])
+    const hasSubdocs = (subdocsChildrenMap.get(document.id) || []).length > 0
+    const subdocsPanelWidth = useMemo(() => {
+        const longest = getLongestTitle(subdocsChildrenMap, document.id)
+        return Math.max(160, longest + 20)
+    }, [subdocsChildrenMap, document.id])
+
+    const renderSubdocs = (targetSnap: SnapPosition) => {
+        if (!hasSubdocs || subdocsSnap !== targetSnap) return null
+        return (
+            <SubdocsPanel
+                documents={documents}
+                parentId={document.id}
+                onOpenDocument={onOpenDocument}
+                snap={subdocsSnap}
+                onSnapChange={persistSubdocsSnap}
+                panelWidth={subdocsPanelWidth}
+                collapsed={subdocsCollapsed}
+                onCollapsedChange={setSubdocsCollapsed}
+            />
+        )
     }
+
+    // Helper tryParseTags is now imported/declared globally.
 
     const { isSaving, lastSaved } = useAutoSave(document.id, content, title);
 
@@ -113,15 +146,23 @@ export function DocumentView({
                 updatedAt: new Date() // Optimistic update
             })
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [lastSaved])
-
-
     // Sync state when document prop changes
     useEffect(() => {
         setTitle(document.title || '')
         setContent(document.content || '')
         setTags(tryParseTags(document.tags))
-    }, [document.id])
+
+        if (document.content === undefined && document.id) {
+            import('../../actions/actions').then(({ getDocument }) => {
+                getDocument(document.id).then(fullDoc => {
+                    setContent(fullDoc.content || '');
+                    onUpdateDocument({ ...document, content: fullDoc.content || '' });
+                }).catch(console.error);
+            });
+        }
+    }, [document.id, document.title, document.content, document.tags])
 
     // Calculate breadcrumbs
     const breadcrumbs = useMemo(() => {
@@ -161,15 +202,23 @@ export function DocumentView({
     }, [breadcrumbs, forwardPath, documents]);
 
 
-    const toggleFavorite = () => {
+    const updateTags = React.useCallback((newTags: string[]) => {
+        const tagsString = JSON.stringify(newTags);
+        onUpdateDocument({ ...document, tags: tagsString });
+        import('../../actions/actions').then(({ updateDocument: updateDocApi }) => {
+            updateDocApi(document.id, { tags: tagsString });
+        });
+    }, [document, onUpdateDocument])
+
+    const toggleFavorite = React.useCallback(() => {
         const newStatus = !document.isFavorite;
         onUpdateDocument({ ...document, isFavorite: newStatus });
         import('../../actions/actions').then(({ updateDocument: updateDocApi }) => {
             updateDocApi(document.id, { isFavorite: newStatus });
         });
-    };
+    }, [document, onUpdateDocument]);
 
-    const handleAddTag = () => {
+    const handleAddTag = React.useCallback(() => {
         if (!tagInput.trim()) return;
         if (tags.includes(tagInput.trim())) {
             setTagInput('');
@@ -179,23 +228,15 @@ export function DocumentView({
         setTags(newTags);
         setTagInput('');
         updateTags(newTags);
-    }
+    }, [tagInput, tags, updateTags]);
 
-    const removeTag = (tagToRemove: string) => {
+    const removeTag = React.useCallback((tagToRemove: string) => {
         const newTags = tags.filter(t => t !== tagToRemove);
         setTags(newTags);
         updateTags(newTags);
-    }
+    }, [tags, updateTags]);
 
-    const updateTags = (newTags: string[]) => {
-        const tagsString = JSON.stringify(newTags);
-        onUpdateDocument({ ...document, tags: tagsString });
-        import('../../actions/actions').then(({ updateDocument: updateDocApi }) => {
-            updateDocApi(document.id, { tags: tagsString });
-        });
-    }
-
-    const handleCommandSelect = (value: string) => {
+    const handleCommandSelect = React.useCallback((value: string) => {
         if (!editorRef.current?.editor) return
         const editor = editorRef.current.editor
 
@@ -205,49 +246,45 @@ export function DocumentView({
             to: commandMenu.triggerIndex + 1 + (commandMenu.query?.length || 0)
         }
 
-        // Apply command
-        if (value === '# ') {
-            editor.chain().focus().deleteRange(range).setHeading({ level: 1 }).run()
-        } else if (value === '## ') {
-            editor.chain().focus().deleteRange(range).setHeading({ level: 2 }).run()
-        } else if (value === '### ') {
-            editor.chain().focus().deleteRange(range).setHeading({ level: 3 }).run()
-        } else if (value === '- ') {
-            editor.chain().focus().deleteRange(range).toggleBulletList().run()
-        } else if (value === '1. ') {
-            editor.chain().focus().deleteRange(range).toggleOrderedList().run()
-        } else if (value === '- [ ] ') {
-            editor.chain().focus().deleteRange(range).toggleTaskList().run()
-        } else if (value === '> ') {
-            editor.chain().focus().deleteRange(range).toggleBlockquote().run()
-        } else if (value.startsWith('```')) {
-            editor.chain().focus().deleteRange(range).toggleCodeBlock().run()
-        } else if (value === 'image') {
-            const url = window.prompt('Enter image URL')
-            if (url) {
-                editor.chain().focus().deleteRange(range).setImage({ src: url }).run()
-            } else {
-                // Clean up the slash command if cancelled
-                editor.chain().focus().deleteRange(range).run()
-            }
-        } else if (value === 'audio') {
-            const url = window.prompt('Enter audio URL')
-            if (url) {
+        // Base command chain (shared across all actions)
+        const chain = editor.chain().focus().deleteRange(range)
+
+        // Action Dispatch Map (Strategy Pattern)
+        const actions: Record<string, () => void> = {
+            '# ': () => chain.setHeading({ level: 1 }).run(),
+            '## ': () => chain.setHeading({ level: 2 }).run(),
+            '### ': () => chain.setHeading({ level: 3 }).run(),
+            '- ': () => chain.toggleBulletList().run(),
+            '1. ': () => chain.toggleOrderedList().run(),
+            '- [ ] ': () => chain.toggleTaskList().run(),
+            '> ': () => chain.toggleBlockquote().run(),
+            'image': () => {
+                const url = window.prompt('Enter image URL')
+                url ? chain.setImage({ src: url }).run() : chain.run()
+            },
+            'audio': () => {
+                const url = window.prompt('Enter audio URL')
                 // @ts-ignore
-                editor.chain().focus().deleteRange(range).insertContent({ type: 'audio', attrs: { src: url } }).run()
-            } else {
-                editor.chain().focus().deleteRange(range).run()
+                url ? chain.insertContent({ type: 'audio', attrs: { src: url } }).run() : chain.run()
+            },
+            'table': () => {
+                // @ts-ignore
+                chain.insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
             }
-        } else if (value === 'table') {
-            // @ts-ignore
-            editor.chain().focus().deleteRange(range).insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
+        }
+
+        // Execute action based on matched value or fallback to dynamic ones
+        if (value in actions) {
+            actions[value]()
+        } else if (value.startsWith('```')) {
+            chain.toggleCodeBlock().run()
         } else {
-            // Mentions or links
-            editor.chain().focus().deleteRange(range).insertContent(value).run()
+            // Mentions, links, or plain content
+            chain.insertContent(value).run()
         }
 
         setCommandMenu(prev => ({ ...prev, isOpen: false }))
-    }
+    }, [commandMenu.query?.length, commandMenu.triggerIndex])
 
 
 
@@ -522,8 +559,12 @@ export function DocumentView({
                 </div>
             )}
 
-            {/* Content Area and Notes Panel */}
-            <div className="flex-1 flex overflow-hidden relative">
+            {/* Content Area — flex row: [left panel?] [scroll area] [right panel?] [notes?] */}
+            <div className="flex-1 flex overflow-hidden">
+                {/* Unified Subdocs Renderer */}
+                {renderSubdocs('left')}
+
+                {/* Main scrollable content */}
                 <div className="flex-1 overflow-auto relative">
                     <div className="max-w-3xl mx-auto py-8 px-4 lg:px-8 min-h-full pb-[50vh]">
                         <div className="space-y-6">
@@ -532,7 +573,6 @@ export function DocumentView({
                                     value={title}
                                     onChange={(e) => {
                                         setTitle(e.target.value);
-                                        // Auto-save handles the backend save, but we optimistically update parent immediately so breadcrumbs update
                                         onUpdateDocument({ ...document, title: e.target.value });
                                     }}
                                     className="text-4xl font-bold border-none bg-transparent px-0 h-auto focus-visible:ring-0 focus-visible:ring-offset-0 ring-0 focus:ring-0 outline-none shadow-none placeholder:text-muted-foreground/30 w-full"
@@ -541,6 +581,9 @@ export function DocumentView({
                             ) : (
                                 <h1 className="text-4xl font-bold min-h-[1.2em]">{title || t('untitledDocument')}</h1>
                             )}
+
+                            {renderSubdocs('center')}
+
                             <Editor
                                 ref={editorRef}
                                 content={content}
@@ -559,7 +602,7 @@ export function DocumentView({
                                 }}
                                 onKeyDown={(e) => {
                                     if (commandMenu.isOpen && (e.key === 'Enter' || e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'Escape')) {
-                                        return true // Prevent Tiptap from handling these keys
+                                        return true
                                     }
                                 }}
                             />
@@ -576,6 +619,8 @@ export function DocumentView({
                         onClose={() => setCommandMenu(prev => ({ ...prev, isOpen: false }))}
                     />
                 </div>
+
+                {renderSubdocs('right')}
 
                 {/* Local Notes Panel */}
                 {localShowNotes && (

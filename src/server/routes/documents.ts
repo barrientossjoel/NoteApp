@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { db } from '../db/index.js';
 import { documents } from '../db/schema.js';
-import { eq, and, isNull } from 'drizzle-orm';
+import { eq, and, isNull, asc, desc } from 'drizzle-orm';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import { requireAuth, type Env } from '../middleware/auth.js';
@@ -27,7 +27,21 @@ documentsRouter.get('/', requireAuth, async (c) => {
     const user = c.get('user');
 
     const allDocs = await db
-        .select()
+        .select({
+            id: documents.id,
+            userId: documents.userId,
+            title: documents.title,
+            parentId: documents.parentId,
+            status: documents.status,
+            isExpanded: documents.isExpanded,
+            isFavorite: documents.isFavorite,
+            tags: documents.tags,
+            order: documents.order,
+            type: documents.type,
+            scrollPosition: documents.scrollPosition,
+            createdAt: documents.createdAt,
+            updatedAt: documents.updatedAt,
+        })
         .from(documents)
         .where(
             and(
@@ -35,7 +49,7 @@ documentsRouter.get('/', requireAuth, async (c) => {
                 eq(documents.status, status as any)
             )
         )
-        .orderBy(documents.order, documents.updatedAt);
+        .orderBy(asc(documents.order), desc(documents.updatedAt));
 
     return c.json(allDocs);
 });

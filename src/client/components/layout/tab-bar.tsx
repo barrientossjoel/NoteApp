@@ -11,13 +11,15 @@ interface TabBarProps {
     paneId: string
     tabs: string[]
     activeTabId: string | null
+    previewTabId?: string | null
     documents: Document[]
     onSelectTab: (id: string) => void
+    onPinTab?: (id: string) => void
     onCloseTab: (id: string) => void
     onMoveTab: (tabId: string, sourcePaneId: string, targetPaneId: string, index?: number) => void
 }
 
-export function TabBar({ paneId, tabs, activeTabId, documents, onSelectTab, onCloseTab, onMoveTab }: TabBarProps) {
+export function TabBar({ paneId, tabs, activeTabId, previewTabId, documents, onSelectTab, onPinTab, onCloseTab, onMoveTab }: TabBarProps) {
     const handleDragStart = (e: React.DragEvent, tabId: string) => {
         e.dataTransfer.setData('tabId', tabId)
         e.dataTransfer.setData('sourcePaneId', paneId)
@@ -45,33 +47,28 @@ export function TabBar({ paneId, tabs, activeTabId, documents, onSelectTab, onCl
         return null;
     }
 
+    // Deduplicate tabs to prevent React key collision warnings and rendering issues
+    const uniqueTabs = Array.from(new Set(tabs))
+
     return (
         <div
             className="flex items-center bg-background border-b overflow-x-auto no-scrollbar min-h-[36px]"
             onDragOver={handleDragOver}
             onDrop={(e) => handleDrop(e)}
         >
-            {tabs.map((tabId, index) => {
+            {uniqueTabs.map((tabId, index) => {
                 const doc = documents.find(d => d.id === tabId)
                 const isActive = tabId === activeTabId
 
-                let title = doc?.title || "Untitled"
-                let Icon = FileText
-
-                if (doc?.type === 'canvas') {
-                    Icon = Frame
+                const SYSTEM_TABS: Record<string, { title: string, icon: React.ElementType }> = {
+                    'dashboard': { title: 'Dashboard', icon: LayoutDashboard },
+                    'calendar': { title: 'Calendar', icon: Calendar },
+                    'trash': { title: 'Trash', icon: Trash2 },
                 }
 
-                if (tabId === 'dashboard') {
-                    title = "Dashboard"
-                    Icon = LayoutDashboard
-                } else if (tabId === 'calendar') {
-                    title = "Calendar"
-                    Icon = Calendar
-                } else if (tabId === 'trash') {
-                    title = "Trash"
-                    Icon = Trash2
-                }
+                const systemTab = SYSTEM_TABS[tabId]
+                const title = systemTab ? systemTab.title : (doc?.title || "Untitled")
+                const Icon = systemTab ? systemTab.icon : (doc?.type === 'canvas' ? Frame : FileText)
 
                 return (
                     <div
@@ -86,9 +83,14 @@ export function TabBar({ paneId, tabs, activeTabId, documents, onSelectTab, onCl
                             e.stopPropagation()
                             handleDrop(e, index)
                         }}
+                        onDoubleClick={(e) => {
+                            e.stopPropagation()
+                            onPinTab?.(tabId)
+                        }}
                         className={cn(
                             "group flex items-center gap-2 px-2 py-1.5 text-xs max-w-[180px] border-r border-border cursor-pointer select-none transition-colors min-w-[100px] relative",
-                            isActive ? "bg-muted/30 font-medium border-b-[1.5px] border-b-muted-foreground/40" : "bg-muted/10 font-normal hover:bg-muted/20"
+                            isActive ? "bg-muted/30 font-medium border-b-[1.5px] border-b-muted-foreground/40" : "bg-muted/10 font-normal hover:bg-muted/20",
+                            tabId === previewTabId && "italic"
                         )}
                         onClick={(e) => {
                             e.stopPropagation()

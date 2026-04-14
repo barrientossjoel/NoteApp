@@ -15,12 +15,15 @@ import { TrashView } from '../../features/trash/trash-view'
 import type { Document as NoteDocument, LayoutNode } from '../../../core/types/notes'
 import { cn } from '../../lib/utils/utils'
 import { TabBar } from './tab-bar'
-import { updateTab, splitNode, addTabToPane, findLayoutNode, swapPaneTabs, replaceTabInPane } from '../../lib/utils/layout-utils'
+import { updateTab, splitNode, addTabToPane, findLayoutNode, swapPaneTabs, replaceTabInPane, pinTab } from '../../lib/utils/layout-utils'
 import { CanvasView } from '../../features/canvas/canvas-view'
 import { NotesPanel } from '../../features/notes/components/notes-panel'
 import { PdfView } from '../../features/pdf/pdf-view'
 import { Button } from '../../components/ui/button'
-import { PanelRight } from 'lucide-react'
+import { PanelRight, Menu, Plus, Copy, Search, Calendar, Settings } from 'lucide-react'
+import { MobileNav } from './mobile-nav'
+import { selectTabInPane, removeTabFromPane, getGlobalTabs, closeTab, removeNode, findFirstPaneId } from '../../lib/utils/layout-utils'
+import { ErrorBoundary } from '../../components/error-boundary'
 
 interface WorkspaceProps {
     layout: LayoutNode
@@ -461,8 +464,10 @@ export function Workspace({
                             paneId={node.id}
                             tabs={node.tabs}
                             activeTabId={activeTabId || null}
+                            previewTabId={node.previewTabId}
                             documents={documents}
                             onSelectTab={(id) => handleSelectTab(node.id, id)}
+                            onPinTab={(id: string) => onUpdateLayout(pinTab(layout, node.id, id, true))}
                             onCloseTab={(id) => handleCloseTab(node.id, id)}
                             onMoveTab={handleMoveTab}
                         />
@@ -472,7 +477,7 @@ export function Workspace({
                         {activeTabId === 'calendar' ? (
                             <CalendarView
                                 documents={documents}
-                                onOpenDocument={(docId) => onUpdateLayout(addTabToPane(layout, node.id, docId, false))}
+                                onOpenDocument={(docId) => onUpdateLayout(addTabToPane(layout, node.id, docId, false, true))}
                                 showSidebar={showSidebar}
                                 onToggleSidebar={toggleSidebar}
                                 showTabs={node.showTabs !== false}
@@ -499,74 +504,81 @@ export function Workspace({
                                 showTabs={node.showTabs !== false}
                                 onToggleTabs={() => handleToggleTabs(node.id)}
                             />
-                        ) : doc?.type === 'canvas' ? (
-                            <CanvasView
-                                document={doc}
-                                documents={documents}
-                                onUpdateDocument={onUpdateDocument}
-                                showSidebar={showSidebar}
-                                onToggleSidebar={toggleSidebar}
-                                showTabs={node.showTabs !== false}
-                                onToggleTabs={() => handleToggleTabs(node.id)}
-                                onOpenDocument={(docId) => onUpdateLayout(addTabToPane(layout, node.id, docId, true))}
-                            />
-                        ) : doc?.type === 'pdf' ? (
-                            <PdfView
-                                document={doc}
-                                documents={documents}
-                                showSidebar={showSidebar}
-                                onToggleSidebar={toggleSidebar}
-                                showTabs={node.showTabs !== false}
-                                onToggleTabs={() => handleToggleTabs(node.id)}
-                                isActivePane={isActive}
-                                onOpenDocument={(docId) => {
-                                    onUpdateLayout(addTabToPane(layoutRef.current, node.id, docId, true))
-                                }}
-                            />
                         ) : (
-                            <DocumentView
-                                document={doc}
-                                documents={documents}
-                                onUpdateDocument={onUpdateDocument}
-                                onOpenDocument={(docId) => {
-                                    onUpdateLayout(addTabToPane(layoutRef.current, node.id, docId, true))
-                                }}
-                                onReplaceDocument={(newDocId) => {
-                                    const oldDocId = node.activeTabId
-                                    if (oldDocId && oldDocId !== newDocId) {
-                                        const currentForwardKey = `${node.id}:${oldDocId}`
-                                        const currentForward = forwardPaths[currentForwardKey] || []
-                                        const newForwardKey = `${node.id}:${newDocId}`
+                            <ErrorBoundary resetKey={activeTabId ?? undefined}>
+                                {doc?.type === 'canvas' ? (
+                                    <CanvasView
+                                        key={doc.id}
+                                        document={doc}
+                                        documents={documents}
+                                        onUpdateDocument={onUpdateDocument}
+                                        showSidebar={showSidebar}
+                                        onToggleSidebar={toggleSidebar}
+                                        showTabs={node.showTabs !== false}
+                                        onToggleTabs={() => handleToggleTabs(node.id)}
+                                        onOpenDocument={(docId) => onUpdateLayout(addTabToPane(layout, node.id, docId, true, true))}
+                                    />
+                                ) : doc?.type === 'pdf' ? (
+                                    <PdfView
+                                        key={doc.id}
+                                        document={doc}
+                                        documents={documents}
+                                        showSidebar={showSidebar}
+                                        onToggleSidebar={toggleSidebar}
+                                        showTabs={node.showTabs !== false}
+                                        onToggleTabs={() => handleToggleTabs(node.id)}
+                                        isActivePane={isActive}
+                                        onOpenDocument={(docId) => {
+                                            onUpdateLayout(addTabToPane(layoutRef.current, node.id, docId, true, true))
+                                        }}
+                                    />
+                                ) : (
+                                    <DocumentView
+                                        key={doc.id}
+                                        document={doc}
+                                        documents={documents}
+                                        onUpdateDocument={onUpdateDocument}
+                                        onOpenDocument={(docId) => {
+                                            onUpdateLayout(addTabToPane(layoutRef.current, node.id, docId, true, true))
+                                        }}
+                                        onReplaceDocument={(newDocId) => {
+                                            const oldDocId = node.activeTabId
+                                            if (oldDocId && oldDocId !== newDocId) {
+                                                const currentForwardKey = `${node.id}:${oldDocId}`
+                                                const currentForward = forwardPaths[currentForwardKey] || []
+                                                const newForwardKey = `${node.id}:${newDocId}`
 
-                                        setForwardPaths(prev => {
-                                            // Is this a forward move? (clicking something in the forward path)
-                                            if (currentForward.includes(newDocId)) {
-                                                // Take everything AFTER newDocId in the forward path
-                                                const idx = currentForward.indexOf(newDocId)
-                                                return {
-                                                    ...prev,
-                                                    [newForwardKey]: currentForward.slice(idx + 1)
-                                                }
-                                            } else {
-                                                // Backward move: add oldDocId to forward path of newDocId
-                                                return {
-                                                    ...prev,
-                                                    [newForwardKey]: [oldDocId, ...currentForward]
-                                                }
+                                                setForwardPaths(prev => {
+                                                    // Is this a forward move? (clicking something in the forward path)
+                                                    if (currentForward.includes(newDocId)) {
+                                                        // Take everything AFTER newDocId in the forward path
+                                                        const idx = currentForward.indexOf(newDocId)
+                                                        return {
+                                                            ...prev,
+                                                            [newForwardKey]: currentForward.slice(idx + 1)
+                                                        }
+                                                    } else {
+                                                        // Backward move: add oldDocId to forward path of newDocId
+                                                        return {
+                                                            ...prev,
+                                                            [newForwardKey]: [oldDocId, ...currentForward]
+                                                        }
+                                                    }
+                                                })
+                                                onUpdateLayout(replaceTabInPane(layout, node.id, oldDocId, newDocId))
                                             }
-                                        })
-                                        onUpdateLayout(replaceTabInPane(layout, node.id, oldDocId, newDocId))
-                                    }
-                                }}
-                                forwardPath={forwardPaths[`${node.id}:${node.activeTabId}`]}
-                                onClose={() => handleClosePane(node.id)}
-                                onSplit={(direction) => handleSplitPane(node.id, direction)}
-                                showSidebar={showSidebar}
-                                onToggleSidebar={toggleSidebar}
-                                showTabs={node.showTabs !== false} // default true
-                                onToggleTabs={() => handleToggleTabs(node.id)}
-                                hideBorder={isOnlyPane}
-                            />
+                                        }}
+                                        forwardPath={forwardPaths[`${node.id}:${node.activeTabId}`]}
+                                        onClose={() => handleClosePane(node.id)}
+                                        onSplit={(direction) => handleSplitPane(node.id, direction)}
+                                        showSidebar={showSidebar}
+                                        onToggleSidebar={toggleSidebar}
+                                        showTabs={node.showTabs !== false} // default true
+                                        onToggleTabs={() => handleToggleTabs(node.id)}
+                                        hideBorder={isOnlyPane}
+                                    />
+                                )}
+                            </ErrorBoundary>
                         )}
                     </div>
                 </div>
@@ -857,54 +869,6 @@ function toggleNodeTabs(node: LayoutNode, paneId: string): LayoutNode {
 }
 
 
-
-export function closeTab(node: LayoutNode, paneId: string, tabId: string): LayoutNode {
-    if (node.id === paneId && node.tabs) {
-        const newTabs = node.tabs.filter(t => t !== tabId)
-        if (newTabs.length === 0) {
-            // If no tabs left, switch to dashboard or close pane?
-            // Let's switch to dashboard state to keep pane open but empty
-            return { ...node, tabs: [], activeTabId: null }
-        }
-
-        let newActiveId = node.activeTabId
-        if (node.activeTabId === tabId) {
-            newActiveId = newTabs[newTabs.length - 1] // Select last
-        }
-        return { ...node, tabs: newTabs, activeTabId: newActiveId }
-    }
-    if (node.children) {
-        // If child becomes null/dashboard because of closeTab logic? No, closeTab just updates state
-        return { ...node, children: node.children.map(c => closeTab(c, paneId, tabId)) }
-    }
-    return node
-}
-
-
-function removeNode(node: LayoutNode, id: string): LayoutNode | null {
-    if (node.id === id) return null
-    if (node.children) {
-        const newChildren = node.children
-            .map(child => removeNode(child, id))
-            .filter((n): n is LayoutNode => n !== null)
-
-        if (newChildren.length === 1 && node.id !== 'root') {
-            return newChildren[0]
-        }
-        return { ...node, children: newChildren }
-    }
-    return node
-}
-
-export function findFirstPaneId(node: LayoutNode): string | null {
-    if (node.type === 'pane' || node.type === 'dashboard') {
-        return node.id
-    }
-    if (node.children && node.children.length > 0) {
-        return findFirstPaneId(node.children[0])
-    }
-    return null
-}
 
 /**
  * Deep-updates the `size` field on any layout node whose id appears in sizeMap.

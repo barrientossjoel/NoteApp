@@ -1,5 +1,5 @@
 import React from 'react'
-import { Plus, Menu, LayoutDashboard, Search, Calendar, Settings, Copy, X, FileText, Frame, Trash2 } from 'lucide-react'
+import { Plus, Menu, LayoutDashboard, Search, Calendar, Settings, Copy, X, FileText, Frame, Trash2, MoreVertical } from 'lucide-react'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../ui/dropdown-menu"
 import { Button } from "../ui/button"
 import { cn } from "../../lib/utils/utils"
@@ -15,6 +15,8 @@ interface MobileNavProps {
     onOpenSidebar: () => void
     onCreateDocument: (type: 'text' | 'canvas') => void
     onOpenSettings: () => void
+    onPinTab: (id: string, pinned: boolean) => void
+    previewTabId?: string | null
 }
 
 export function MobileNav({
@@ -26,18 +28,15 @@ export function MobileNav({
     onNavigate,
     onOpenSidebar,
     onCreateDocument,
-    onOpenSettings
+    onOpenSettings,
+    onPinTab,
+    previewTabId
 }: MobileNavProps) {
     const [isMobileModalOpen, setIsMobileModalOpen] = React.useState(false)
 
-    // Detemine if we are currently inside a document or canvas
-    const isInsideDocument = React.useMemo(() => {
-        return documents.some(d => d.id === currentView && (d.type === 'text' || d.type === 'canvas' || d.type === 'pdf' || d.type === 'epub'));
-    }, [documents, currentView]);
-
     return (
         <>
-            <div className="fixed bottom-0 left-0 right-0 z-[110] bg-background border-t border-border flex items-center justify-around h-16 px-2 pb-safe pointer-events-auto">
+            <div className="fixed bottom-0 left-0 right-0 z-[1000] bg-background/95 backdrop-blur-md border-t border-border flex items-center justify-around h-16 px-2 pb-safe pointer-events-auto shadow-[0_-4px_20px_-4px_rgba(0,0,0,0.1)]">
                 <Button
                     variant="ghost"
                     size="icon"
@@ -61,9 +60,7 @@ export function MobileNav({
                     <span className="text-[10px] font-semibold">Search</span>
                 </Button>
 
-
-
-                {/* TABS BUTTON - To the right of + */}
+                {/* TABS BUTTON */}
                 <Button
                     variant="ghost"
                     size="icon"
@@ -102,32 +99,30 @@ export function MobileNav({
             </div>
 
             {/* Floating Action Button (FAB) */}
-            {!isInsideDocument && (
-                <div className="fixed right-4 bottom-20 z-[120]">
-                    <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                            <Button
-                                size="icon"
-                                className="h-14 w-14 rounded-full shadow-2xl bg-primary hover:bg-primary/90 transition-transform active:scale-95 border-2 border-primary/20"
-                            >
-                                <Plus className="h-6 w-6 text-primary-foreground" />
-                            </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" sideOffset={12} className="w-56 p-2 rounded-xl border border-border/50 shadow-2xl bg-card/95 backdrop-blur-md">
-                            <DropdownMenuItem className="py-3 px-4 rounded-lg cursor-pointer" onClick={() => onCreateDocument('text')}>
-                                <FileText className="mr-3 h-5 w-5 opacity-70" />
-                                <span className="font-medium text-base">Nuevo documento</span>
-                            </DropdownMenuItem>
-                            <DropdownMenuItem className="py-3 px-4 rounded-lg cursor-pointer" onClick={() => onCreateDocument('canvas')}>
-                                <Frame className="mr-3 h-5 w-5 opacity-70" />
-                                <span className="font-medium text-base">Nuevo canvas</span>
-                            </DropdownMenuItem>
-                        </DropdownMenuContent>
-                    </DropdownMenu>
-                </div>
-            )}
+            <div className="fixed right-4 bottom-20 z-[120]">
+                <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <Button
+                            size="icon"
+                            className="h-14 w-14 rounded-full shadow-2xl bg-primary hover:bg-primary/90 transition-transform active:scale-95 border-2 border-primary/20"
+                        >
+                            <Plus className="h-6 w-6 text-primary-foreground" />
+                        </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" sideOffset={12} className="w-56 p-2 rounded-xl border border-border/50 shadow-2xl bg-card/95 backdrop-blur-md">
+                        <DropdownMenuItem className="py-3 px-4 rounded-lg cursor-pointer" onClick={() => onCreateDocument('text')}>
+                            <FileText className="mr-3 h-5 w-5 opacity-70" />
+                            <span className="font-medium text-base">Nuevo documento</span>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem className="py-3 px-4 rounded-lg cursor-pointer" onClick={() => onCreateDocument('canvas')}>
+                            <Frame className="mr-3 h-5 w-5 opacity-70" />
+                            <span className="font-medium text-base">Nuevo canvas</span>
+                        </DropdownMenuItem>
+                    </DropdownMenuContent>
+                </DropdownMenu>
+            </div>
 
-            {/* Mobile Tabs Modal / Fullscreen View */}
+            {/* Mobile Tabs Modal */}
             {isMobileModalOpen && (
                 <div className="fixed inset-0 z-[200] bg-background flex flex-col animate-in fade-in zoom-in-95 duration-200">
                     <div className="flex items-center justify-between p-4 border-b bg-muted/30">
@@ -144,21 +139,10 @@ export function MobileNav({
                             if (!title) title = "Untitled"
 
                             let Icon = FileText
-
-                            if (doc?.type === 'canvas') {
-                                Icon = Frame
-                            }
-
-                            if (tabId === 'dashboard') {
-                                title = "Dashboard"
-                                Icon = LayoutDashboard
-                            } else if (tabId === 'calendar') {
-                                title = "Calendar"
-                                Icon = Calendar
-                            } else if (tabId === 'trash') {
-                                title = "Trash"
-                                Icon = Trash2
-                            }
+                            if (doc?.type === 'canvas') Icon = Frame
+                            if (tabId === 'dashboard') { title = "Dashboard"; Icon = LayoutDashboard }
+                            else if (tabId === 'calendar') { title = "Calendar"; Icon = Calendar }
+                            else if (tabId === 'trash') { title = "Trash"; Icon = Trash2 }
 
                             return (
                                 <div
@@ -178,16 +162,30 @@ export function MobileNav({
                                         </div>
                                         <span className="text-sm font-medium text-left line-clamp-2 w-full text-foreground/90">{title}</span>
                                     </div>
-                                    <button
-                                        className="absolute top-2 right-2 h-7 w-7 bg-background/80 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-destructive hover:text-destructive-foreground transition-colors border shadow-sm z-10"
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            onCloseTab(tabId);
-                                            if (tabs.length === 1) setIsMobileModalOpen(false);
-                                        }}
-                                    >
-                                        <X className="h-4 w-4" />
-                                    </button>
+                                    <div className="absolute top-2 right-2 z-20">
+                                        <DropdownMenu>
+                                            <DropdownMenuTrigger asChild>
+                                                <Button variant="ghost" size="icon" className="h-7 w-7 rounded-full bg-background/80 backdrop-blur-sm border shadow-sm p-0">
+                                                    <MoreVertical className="h-4 w-4" />
+                                                </Button>
+                                            </DropdownMenuTrigger>
+                                            <DropdownMenuContent align="end">
+                                                <DropdownMenuItem onClick={(e) => {
+                                                    e.stopPropagation()
+                                                    onPinTab(tabId, tabId !== previewTabId)
+                                                }}>
+                                                    {tabId === previewTabId ? 'Pin Tab' : 'Unpin Tab'}
+                                                </DropdownMenuItem>
+                                                <DropdownMenuItem className="text-destructive" onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    onCloseTab(tabId);
+                                                    if (tabs.length === 1) setIsMobileModalOpen(false);
+                                                }}>
+                                                    Close Tab
+                                                </DropdownMenuItem>
+                                            </DropdownMenuContent>
+                                        </DropdownMenu>
+                                    </div>
                                 </div>
                             )
                         })}

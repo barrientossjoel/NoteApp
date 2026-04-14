@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import React, { useState } from 'react'
 import { ChevronRight, ChevronDown, FileText, Plus, MoreHorizontal, Trash, Folder, LayoutDashboard, Frame } from 'lucide-react'
 import { cn } from '../../lib/utils/utils'
 import { Button } from '../../components/ui/button'
@@ -25,16 +25,24 @@ interface SidebarTreeProps {
     onDeleteDocument: (id: string) => void
     onMoveDocument?: (id: string, newParentId: string | null) => void
     onUpdateDocument: (doc: Document) => void
+    onDoubleClickDocument?: (id: string) => void
 }
 
-interface TreeNodeProps extends Omit<SidebarTreeProps, 'documents'> {
-    node: Document
+interface TreeNodeProps extends Omit<SidebarTreeProps, 'documents' | 'activeDocumentId'> {
+    node: Document & { children?: Document[] }
     level: number
     index: number
+    isActive: boolean
+    activeDocumentId?: string // keep it to pass down recursion, but don't use it directly for active state
     onInitiateRename: (node: Document) => void
+    onDoubleClickDocument?: (id: string) => void
 }
 
-function TreeNode({ node, level, index, activeDocumentId, onSelectDocument, onCreateDocument, onDeleteDocument, onMoveDocument, onUpdateDocument, onInitiateRename }: TreeNodeProps) {
+const MemoizedTreeNode = React.memo(function TreeNode({
+    node, level, index, isActive, activeDocumentId,
+    onSelectDocument, onCreateDocument, onDeleteDocument,
+    onMoveDocument, onUpdateDocument, onInitiateRename, onDoubleClickDocument
+}: TreeNodeProps) {
     const [isExpanded, setIsExpanded] = useState(node.isExpanded ?? false)
     const hasChildren = node.children && node.children.length > 0
 
@@ -55,11 +63,12 @@ function TreeNode({ node, level, index, activeDocumentId, onSelectDocument, onCr
                     <div
                         className={cn(
                             "group relative flex items-center gap-1 py-0.5 pl-2 pr-12 rounded-none hover:bg-muted/30 cursor-pointer transition-colors min-h-[28px] w-full overflow-hidden",
-                            activeDocumentId === node.id && "bg-muted text-foreground font-medium",
+                            isActive && "bg-muted text-foreground font-medium",
                             snapshot.isDragging && "opacity-50"
                         )}
                         style={{ paddingLeft: `${level * 12 + 8}px` }}
                         onClick={() => onSelectDocument(node.id)}
+                        onDoubleClick={() => onDoubleClickDocument?.(node.id)}
                     >
                         <div
                             role="button"
@@ -141,11 +150,12 @@ function TreeNode({ node, level, index, activeDocumentId, onSelectDocument, onCr
                                     className="flex flex-col w-full"
                                 >
                                     {node.children && node.children.map((child, childIndex) => (
-                                        <TreeNode
+                                        <MemoizedTreeNode
                                             key={child.id}
-                                            node={child}
+                                            node={child as Document & { children?: Document[] }}
                                             level={level + 1}
                                             index={childIndex}
+                                            isActive={activeDocumentId === child.id}
                                             activeDocumentId={activeDocumentId}
                                             onSelectDocument={onSelectDocument}
                                             onCreateDocument={onCreateDocument}
@@ -153,6 +163,7 @@ function TreeNode({ node, level, index, activeDocumentId, onSelectDocument, onCr
                                             onMoveDocument={onMoveDocument}
                                             onUpdateDocument={onUpdateDocument}
                                             onInitiateRename={onInitiateRename}
+                                            onDoubleClickDocument={onDoubleClickDocument}
                                         />
                                     ))}
                                     {provided.placeholder}
@@ -164,15 +175,15 @@ function TreeNode({ node, level, index, activeDocumentId, onSelectDocument, onCr
             )}
         </Draggable>
     )
-}
+})
 
-export function SidebarTree({ documents, activeDocumentId, onSelectDocument, onCreateDocument, onDeleteDocument, onMoveDocument, onUpdateDocument }: SidebarTreeProps) {
+export function SidebarTree({ documents, activeDocumentId, onSelectDocument, onCreateDocument, onDeleteDocument, onMoveDocument, onUpdateDocument, onDoubleClickDocument }: SidebarTreeProps) {
     // Build tree
-    const buildTree = (docs: Document[]) => {
+    const tree = React.useMemo(() => {
         const docMap = new Map<string, Document & { children: Document[] }>()
         const roots: Document[] = []
-        docs.forEach(doc => docMap.set(doc.id, { ...doc, children: [] }))
-        docs.forEach(doc => {
+        documents.forEach(doc => docMap.set(doc.id, { ...doc, children: [] }))
+        documents.forEach(doc => {
             const node = docMap.get(doc.id)!
             if (doc.parentId && docMap.has(doc.parentId)) {
                 docMap.get(doc.parentId)!.children.push(node)
@@ -180,10 +191,13 @@ export function SidebarTree({ documents, activeDocumentId, onSelectDocument, onC
                 roots.push(node)
             }
         })
+        // Sort alphabetically or logically
+        roots.sort((a, b) => (a.title || '').localeCompare(b.title || ''))
+        roots.forEach(doc => {
+            if (doc.children && doc.children.length > 0) doc.children.sort((a, b) => (a.title || '').localeCompare(b.title || ''))
+        })
         return roots
-    }
-
-    const tree = buildTree(documents)
+    }, [documents])
 
     const onDragEnd = async (result: DropResult) => {
         const { destination, source, draggableId, combine } = result;
@@ -248,11 +262,12 @@ export function SidebarTree({ documents, activeDocumentId, onSelectDocument, onC
                         ref={provided.innerRef}
                     >
                         {tree.map((node, index) => (
-                            <TreeNode
+                            <MemoizedTreeNode
                                 key={node.id}
                                 node={node}
                                 level={0}
                                 index={index}
+                                isActive={activeDocumentId === node.id}
                                 activeDocumentId={activeDocumentId}
                                 onSelectDocument={onSelectDocument}
                                 onCreateDocument={onCreateDocument}
@@ -260,6 +275,7 @@ export function SidebarTree({ documents, activeDocumentId, onSelectDocument, onC
                                 onMoveDocument={onMoveDocument}
                                 onUpdateDocument={onUpdateDocument}
                                 onInitiateRename={setRenameNode}
+                                onDoubleClickDocument={onDoubleClickDocument}
                             />
                         ))}
                         {provided.placeholder}

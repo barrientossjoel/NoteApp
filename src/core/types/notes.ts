@@ -31,6 +31,7 @@ export interface LayoutNode {
   activeTabId?: string | null;
   size?: number; // percentage
   showTabs?: boolean;
+  previewTabId?: string | null;
 }
 
 export interface Message {
