@@ -11,6 +11,7 @@ import { useMediaQuery } from '../../hooks/useMediaQuery'
 import { DocumentView } from '../../features/documents/document-view'
 import { Dashboard } from '../../features/dashboard/dashboard'
 import { CalendarView } from '../../features/calendar/calendar-view'
+import { GraphView } from '../../features/graph/graph-view'
 import { TrashView } from '../../features/trash/trash-view'
 import type { Document as NoteDocument, LayoutNode } from '../../../core/types/notes'
 import { cn } from '../../lib/utils/utils'
@@ -478,6 +479,15 @@ export function Workspace({
                             <CalendarView
                                 documents={documents}
                                 onOpenDocument={(docId) => onUpdateLayout(addTabToPane(layout, node.id, docId, false, true))}
+                                showSidebar={showSidebar}
+                                onToggleSidebar={toggleSidebar}
+                                showTabs={node.showTabs !== false}
+                                onToggleTabs={() => handleToggleTabs(node.id)}
+                            />
+                        ) : activeTabId === 'graph' ? (
+                            <GraphView
+                                documents={documents}
+                                onNavigate={(docId) => onUpdateLayout(addTabToPane(layout, node.id, docId, true, true))}
                                 showSidebar={showSidebar}
                                 onToggleSidebar={toggleSidebar}
                                 showTabs={node.showTabs !== false}

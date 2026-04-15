@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Plus, Search, Calendar, Trash2, LayoutDashboard, FileText, BookOpen, Upload, Loader2, X, MoreHorizontal, Pencil, Link2, ChevronDown, ChevronRight } from 'lucide-react'
+import { Plus, Search, Calendar, Trash2, LayoutDashboard, FileText, BookOpen, Upload, Loader2, X, MoreHorizontal, Pencil, Link2, ChevronDown, ChevronRight, Network } from 'lucide-react'
 import { upload } from '@vercel/blob/client'
 import { Button } from "../../components/ui/button"
 import { Input } from "../../components/ui/input"
@@ -207,6 +207,15 @@ export function Sidebar({
           title="Calendar"
         >
           <Calendar className="h-3.5 w-3.5" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className={cn("h-7 w-7", currentView === "graph" && "text-primary")}
+          onClick={() => setCurrentView("graph")}
+          title="Graph View"
+        >
+          <Network className="h-3.5 w-3.5" />
         </Button>
 
         {onCloseMobile && (

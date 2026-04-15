@@ -289,7 +289,7 @@ export function DocumentView({
 
 
     return (
-        <div className={cn("flex flex-col h-full animate-in fade-in duration-300", hideBorder ? "bg-background" : "bg-muted/50")}>
+        <div className={cn("flex flex-col h-full animate-in fade-in duration-300", hideBorder ? "bg-muted/50" : "bg-background")}>
             {/* Header / Toolbar */}
             <div className="h-16 flex items-center justify-between px-4 bg-transparent sticky top-0 z-10">
                 <div className="flex items-center gap-2">

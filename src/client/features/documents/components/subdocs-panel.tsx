@@ -99,7 +99,7 @@ export const SubdocsPanel = React.memo(function SubdocsPanel({
 
             <div
                 className={cn(
-                    'flex flex-col bg-card select-none shrink-0 overflow-hidden transition-[width] duration-200',
+                    'flex flex-col bg-muted/30 select-none shrink-0 overflow-hidden transition-[width] duration-200',
                     !isCenter && 'h-full',
                     snap === 'left' && 'border-r border-border/40',
                     snap === 'right' && 'border-l border-border/40',
