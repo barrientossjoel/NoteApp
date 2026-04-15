@@ -1,5 +1,4 @@
-import React, { useMemo, useState, useEffect, useRef } from 'react'
-import ForceGraph2D from 'react-force-graph-2d'
+import React, { useMemo, useState, useEffect, useRef, lazy, Suspense } from 'react'
 import type { Document } from '../../../core/types/notes'
 import { Button } from '../../components/ui/button'
 import { PanelLeftClose, PanelRightClose, Settings as SettingsIcon, Trash2, ExternalLink, RotateCcw } from 'lucide-react'
@@ -8,6 +7,8 @@ import { GraphSettings, DEFAULT_GRAPH_SETTINGS } from './graph-types'
 import { GraphSettingsPanel } from './graph-settings-panel'
 import { useThemeColors } from '../../hooks/useThemeColors'
 import { computeGraphData } from './utils/compute-graph-data'
+
+const ForceGraph2D = lazy(() => import('react-force-graph-2d'))
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -287,27 +288,29 @@ export function GraphView({ documents, onNavigate, showSidebar, onToggleSidebar 
 
             {/* Graph canvas */}
             <div className="flex-1 overflow-hidden relative">
-                {canRenderGraph && (
-                    <ForceGraph2D
-                        ref={fgRef}
-                        width={dimensions.width}
-                        height={dimensions.height}
-                        graphData={graphDataProp}
-                        nodeLabel={settings.display.showLabels ? 'name' : ''}
-                        nodeColor={resolveNodeColor}
-                        nodeRelSize={6}
-                        linkColor={resolveLinkColor}
-                        linkWidth={resolveLinkWidth}
-                        linkDirectionalArrowLength={settings.display.showArrows ? 3.5 : 0}
-                        linkDirectionalArrowRelPos={1}
-                        d3VelocityDecay={0.7}
-                        onNodeClick={handleNodeClick}
-                        onNodeHover={setHoverNode}
-                        onNodeDragEnd={handleNodeDragEnd}
-                        onNodeRightClick={handleNodeRightClick}
-                        backgroundColor="transparent"
-                    />
-                )}
+                <Suspense fallback={<div className="flex items-center justify-center h-full text-muted-foreground text-sm">Loading graph...</div>}>
+                    {canRenderGraph && (
+                        <ForceGraph2D
+                            ref={fgRef}
+                            width={dimensions.width}
+                            height={dimensions.height}
+                            graphData={graphDataProp}
+                            nodeLabel={settings.display.showLabels ? 'name' : ''}
+                            nodeColor={resolveNodeColor}
+                            nodeRelSize={6}
+                            linkColor={resolveLinkColor}
+                            linkWidth={resolveLinkWidth}
+                            linkDirectionalArrowLength={settings.display.showArrows ? 3.5 : 0}
+                            linkDirectionalArrowRelPos={1}
+                            d3VelocityDecay={0.7}
+                            onNodeClick={handleNodeClick}
+                            onNodeHover={setHoverNode}
+                            onNodeDragEnd={handleNodeDragEnd}
+                            onNodeRightClick={handleNodeRightClick}
+                            backgroundColor="transparent"
+                        />
+                    )}
+                </Suspense>
             </div>
         </div>
     )
