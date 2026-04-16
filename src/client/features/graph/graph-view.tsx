@@ -1,7 +1,7 @@
-import React, { useMemo, useState, useEffect, useRef, lazy, Suspense } from 'react'
+import React, { useMemo, useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react'
 import type { Document } from '../../../core/types/notes'
 import { Button } from '../../components/ui/button'
-import { PanelLeftClose, PanelRightClose, Settings as SettingsIcon, Trash2, ExternalLink, RotateCcw } from 'lucide-react'
+import { PanelLeftClose, PanelRightClose, Settings as SettingsIcon, Trash2, ExternalLink, RotateCcw, ZoomIn, ZoomOut } from 'lucide-react'
 import { cn } from '../../lib/utils/utils'
 import { GraphSettings, DEFAULT_GRAPH_SETTINGS } from './graph-types'
 import { GraphSettingsPanel } from './graph-settings-panel'
@@ -69,6 +69,7 @@ export function GraphView({ documents, onNavigate, showSidebar, onToggleSidebar 
     const [hoverNode, setHoverNode] = useState<any>(null)
     const [rightClickNode, setRightClickNode] = useState<any>(null)
     const [contextMenuPos, setContextMenuPos] = useState({ x: 0, y: 0 })
+    const [zoomLevel, setZoomLevel] = useState(1)
 
     // Persist settings on change
     useEffect(() => { saveSettings(settings) }, [settings])
@@ -98,7 +99,7 @@ export function GraphView({ documents, onNavigate, showSidebar, onToggleSidebar 
         try {
             const { repelForce, linkDistance, centerForce } = settings.forces
             applyForce(fg.d3Force('charge'), 'strength', -repelForce * 10)
-            applyForce(fg.d3Force('charge'), 'distanceMax', linkDistance * 5)
+            applyForce(fg.d3Force('charge'), 'distanceMax', 200)
             applyForce(fg.d3Force('link'), 'distance', linkDistance)
             applyForce(fg.d3Force('center'), 'strength', centerForce)
             fg.d3ReheatSimulation?.()
@@ -106,6 +107,7 @@ export function GraphView({ documents, onNavigate, showSidebar, onToggleSidebar 
             console.error('Force configuration error', e)
         }
     }, [settings.forces])
+
 
     // Keyboard pan/zoom
     useEffect(() => {
@@ -157,17 +159,26 @@ export function GraphView({ documents, onNavigate, showSidebar, onToggleSidebar 
         return () => window.removeEventListener('click', close)
     }, [])
 
-    // ─── Derived State ────────────────────────────────────────────────────
+    // Stable content key — only recomputes graphData when document IDs/count actually change,
+    // not on every parent re-render that produces a new array reference.
+    const docsKey = useMemo(
+        () => documents.map(d => d.id).join(','),
+        [documents]
+    )
 
     const graphData = useMemo(
-        () => computeGraphData(documents, settings, themeColors),
-        [documents, settings, themeColors]
+        () => computeGraphData(documents, settings),
+        // Only structural settings (filters/groups) should trigger a graph rebuild.
+        // Changing forces or display values must NOT restart the simulation.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [docsKey, settings.filters, settings.groups]
     )
 
     const graphDataProp = useMemo(
         () => ({ nodes: graphData.nodes, links: graphData.validLinks }),
         [graphData]
     )
+
 
     const neighbors = useMemo(() => {
         if (!hoverNode) return new Set<string>()
@@ -186,12 +197,41 @@ export function GraphView({ documents, onNavigate, showSidebar, onToggleSidebar 
         if (node?.id) onNavigate(node.id)
     }
 
-    const handleNodeDragEnd = (node: any) => {
-        const isOrphan = !graphData.validLinks.some((l: any) => linkTouchesNode(l, node.id))
-        if (!isOrphan) return
-        node.fx = node.x
-        node.fy = node.y
-    }
+    /** On each drag tick: free connected nodes, freeze everything else. */
+    const handleNodeDrag = useCallback((node: any) => {
+        const connected = new Set<string>(
+            graphDataProp.links
+                .filter((l: any) => linkTouchesNode(l, node.id))
+                .flatMap((l: any) => [resolveId(l.source), resolveId(l.target)])
+        )
+        connected.add(node.id)
+
+            ; (graphDataProp.nodes as any[]).forEach(n => {
+                if (connected.has(n.id)) {
+                    // Explicitly release connected nodes — they must be free to follow the drag
+                    if (n.__frozenByDrag) { n.fx = undefined; n.fy = undefined; n.__frozenByDrag = false }
+                } else {
+                    // Freeze non-connected nodes at their current positions
+                    n.fx = n.x; n.fy = n.y; n.__frozenByDrag = true
+                }
+            })
+    }, [graphDataProp])
+
+    /** On drag end: pin orphans, release frozen nodes after simulation cools. */
+    const handleNodeDragEnd = useCallback((node: any) => {
+        const allNodes = graphDataProp.nodes as any[]
+
+        // Pin true orphans so they stay where dropped
+        const isOrphan = !graphDataProp.links.some((l: any) => linkTouchesNode(l, node.id))
+        if (isOrphan) { node.fx = node.x; node.fy = node.y; node.__frozenByDrag = false }
+
+        // Release drag-frozen nodes after the simulation has had time to cool
+        setTimeout(() => {
+            allNodes.forEach(n => {
+                if (n.__frozenByDrag) { n.fx = undefined; n.fy = undefined; n.__frozenByDrag = false }
+            })
+        }, 800)
+    }, [graphDataProp])
 
     const handleNodeRightClick = (node: any, event: MouseEvent) => {
         event.preventDefault()
@@ -199,30 +239,64 @@ export function GraphView({ documents, onNavigate, showSidebar, onToggleSidebar 
         setContextMenuPos({ x: event.clientX, y: event.clientY })
     }
 
-    // ─── Color resolvers ────────────────────────────────────────────────────
+    const handleNodeHover = useCallback((node: any) => {
+        setHoverNode(node)
+    }, [])
 
-    const resolveNodeColor = (node: any): string => {
+    const handleGraphZoom = useCallback((delta: number) => {
+        const fg = fgRef.current
+        if (!fg) return
+        const current = fg.zoom?.() ?? 1
+        const next = Math.min(Math.max(current * (1 + delta), 0.1), 20)
+        fg.zoom(next, 300)
+        setZoomLevel(next)
+    }, [])
+
+    // ─── Color resolvers (memoized to avoid unnecessary ForceGraph re-renders) ──
+
+    const resolveNodeColor = useCallback((node: any): string => {
         const isHovered = node.id === hoverNode?.id
         const isNeighbor = neighbors.has(node.id)
         const isDimmed = hoverNode && !isHovered && !isNeighbor
         return isDimmed ? 'rgba(100, 100, 100, 0.15)' : node.color
-    }
+    }, [hoverNode, neighbors])
 
-    const resolveLinkColor = (link: any): string => {
+    const resolveLinkColor = useCallback((link: any): string => {
         if (!hoverNode) return link.type === 'parent' ? 'rgba(150,150,150,0.4)' : 'rgba(150,150,150,0.2)'
         const touches = linkTouchesNode(link, hoverNode.id)
         return touches ? themeColors.primary : 'rgba(150,150,150,0.05)'
-    }
+    }, [hoverNode, themeColors.primary])
 
-    const resolveLinkWidth = (link: any): number => {
+    const resolveLinkWidth = useCallback((link: any): number => {
         const base = settings.display.linkThickness * (link.type === 'parent' ? 0.6 : 0.5)
         const isActive = hoverNode && linkTouchesNode(link, hoverNode.id)
         return isActive ? base * 3 : base
-    }
+    }, [hoverNode, settings.display.linkThickness])
+
+    /** Canvas renderer that draws node circle + label. Used when showLabelsAlways is on. */
+    const renderNodeWithLabel = useCallback((node: any, ctx: CanvasRenderingContext2D, globalScale: number) => {
+        const r = Math.sqrt(Math.max(0, node.val ?? 1)) * settings.display.nodeSize * 2
+        const color = resolveNodeColor(node)
+
+        // Draw circle
+        ctx.beginPath()
+        ctx.arc(node.x, node.y, r, 0, 2 * Math.PI)
+        ctx.fillStyle = color
+        ctx.fill()
+
+        // Draw label
+        const fontSize = Math.max(8, 12 / globalScale)
+        ctx.font = `${fontSize}px Sans-Serif`
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'top'
+        ctx.fillStyle = color
+        ctx.fillText(node.name, node.x, node.y + r + 2)
+    }, [resolveNodeColor, settings.display.nodeSize])
 
     // ─── Render ──────────────────────────────────────────────────────────────
 
     const canRenderGraph = typeof window !== 'undefined' && dimensions.width > 0 && dimensions.height > 0
+    const alwaysLabels = settings.display.showLabelsAlways
 
     return (
         <div className="h-full w-full flex flex-col bg-background relative" ref={containerRef}>
@@ -295,22 +369,53 @@ export function GraphView({ documents, onNavigate, showSidebar, onToggleSidebar 
                             width={dimensions.width}
                             height={dimensions.height}
                             graphData={graphDataProp}
-                            nodeLabel={settings.display.showLabels ? 'name' : ''}
-                            nodeColor={resolveNodeColor}
-                            nodeRelSize={6}
+                            nodeLabel={alwaysLabels ? '' : (settings.display.showLabels ? 'name' : '')}
+                            nodeColor={alwaysLabels ? undefined : resolveNodeColor}
+                            nodeCanvasObject={alwaysLabels ? renderNodeWithLabel : undefined}
+                            nodeCanvasObjectMode={alwaysLabels ? () => 'replace' : undefined}
+                            nodeRelSize={settings.display.nodeSize * 4}
                             linkColor={resolveLinkColor}
                             linkWidth={resolveLinkWidth}
                             linkDirectionalArrowLength={settings.display.showArrows ? 3.5 : 0}
                             linkDirectionalArrowRelPos={1}
-                            d3VelocityDecay={0.7}
+                            d3VelocityDecay={0.4}
+                            d3AlphaDecay={0.05}
+                            cooldownTime={3000}
                             onNodeClick={handleNodeClick}
-                            onNodeHover={setHoverNode}
+                            onNodeHover={handleNodeHover}
+                            onNodeDrag={handleNodeDrag}
                             onNodeDragEnd={handleNodeDragEnd}
                             onNodeRightClick={handleNodeRightClick}
+                            onZoom={({ k }: { k: number }) => setZoomLevel(k)}
                             backgroundColor="transparent"
                         />
                     )}
                 </Suspense>
+            </div>
+
+            {/* Bottom zoom controls — same style as canvas view */}
+            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2">
+                <div className="flex items-center gap-1 bg-secondary rounded-full p-1 shadow-lg">
+                    <Button
+                        variant="ghost" size="icon"
+                        className="h-8 w-8 rounded-full hover:bg-background/50"
+                        onClick={() => handleGraphZoom(-0.3)}
+                        title="Zoom Out"
+                    >
+                        <ZoomOut className="h-4 w-4" />
+                    </Button>
+                    <span className="text-[10px] w-8 text-center font-mono opacity-50 select-none">
+                        {Math.round(zoomLevel * 100)}%
+                    </span>
+                    <Button
+                        variant="ghost" size="icon"
+                        className="h-8 w-8 rounded-full hover:bg-background/50"
+                        onClick={() => handleGraphZoom(0.3)}
+                        title="Zoom In"
+                    >
+                        <ZoomIn className="h-4 w-4" />
+                    </Button>
+                </div>
             </div>
         </div>
     )

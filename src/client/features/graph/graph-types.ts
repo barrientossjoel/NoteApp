@@ -13,6 +13,7 @@ export interface GraphSettings {
         nodeSize: number;
         linkThickness: number;
         showLabels: boolean;
+        showLabelsAlways: boolean;
     };
     forces: {
         centerForce: number;
@@ -44,10 +45,11 @@ export const DEFAULT_GRAPH_SETTINGS: GraphSettings = {
         nodeSize: 1,
         linkThickness: 1,
         showLabels: true,
+        showLabelsAlways: false,
     },
     forces: {
-        centerForce: 0.5,
-        repelForce: 30,
+        centerForce: 0.3,
+        repelForce: 15,
         linkForce: 1,
         linkDistance: 30,
     },

@@ -184,9 +184,14 @@ export function GraphSettingsPanel({ settings, onChange, onClose }: GraphSetting
                                 onCheckedChange={(v) => updateDisplay('showArrows', v)}
                             />
                             <ToggleItem
-                                label="Show labels"
+                                label="Show labels on hover"
                                 checked={settings.display.showLabels}
                                 onCheckedChange={(v) => updateDisplay('showLabels', v)}
+                            />
+                            <ToggleItem
+                                label="Show labels always"
+                                checked={settings.display.showLabelsAlways}
+                                onCheckedChange={(v) => updateDisplay('showLabelsAlways', v)}
                             />
 
                             <SliderItem
