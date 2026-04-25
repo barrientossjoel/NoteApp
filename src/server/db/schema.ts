@@ -42,3 +42,19 @@ export const messages = sqliteTable('messages', {
     documentId: text('document_id'), // Nullable for global notes
     createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
 });
+
+export const vaultShares = sqliteTable('vault_shares', {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    ownerId: text('owner_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    sharedWithEmail: text('shared_with_email').notNull(),
+    permission: text('permission', { enum: ['view', 'edit'] }).notNull().default('view'),
+    createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
+});
+
+export const documentShares = sqliteTable('document_shares', {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    documentId: text('document_id').notNull().references(() => documents.id, { onDelete: 'cascade' }),
+    sharedWithEmail: text('shared_with_email').notNull(),
+    permission: text('permission', { enum: ['view', 'edit'] }).notNull().default('view'),
+    createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
+});

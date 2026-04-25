@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState } from 'react'
-import { ChevronRight, ChevronDown, FileText, Plus, MoreHorizontal, Trash, Folder, LayoutDashboard, Frame } from 'lucide-react'
+import { ChevronRight, ChevronDown, FileText, Plus, MoreVertical, Trash, Folder, LayoutDashboard, Frame } from 'lucide-react'
 import { cn } from '../../lib/utils/utils'
 import { Button } from '../../components/ui/button'
 import {
@@ -11,6 +11,13 @@ import {
     DropdownMenuTrigger,
     DropdownMenuSeparator,
 } from '../../components/ui/dropdown-menu'
+import {
+    ContextMenu,
+    ContextMenuContent,
+    ContextMenuItem,
+    ContextMenuSeparator,
+    ContextMenuTrigger,
+} from '../../components/ui/context-menu'
 import type { Document } from '../../../core/types/notes'
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd'
 
@@ -60,86 +67,110 @@ const MemoizedTreeNode = React.memo(function TreeNode({
                     {...provided.dragHandleProps}
                     className="w-full overflow-hidden"
                 >
-                    <div
-                        className={cn(
-                            "group relative flex items-center gap-1 py-0.5 pl-2 pr-12 rounded-none hover:bg-muted/30 cursor-pointer transition-colors min-h-[28px] w-full overflow-hidden",
-                            isActive && "bg-muted text-foreground font-medium",
-                            snapshot.isDragging && "opacity-50"
-                        )}
-                        style={{ paddingLeft: `${level * 12 + 8}px` }}
-                        onClick={() => onSelectDocument(node.id)}
-                        onDoubleClick={() => onDoubleClickDocument?.(node.id)}
-                    >
-                        <div
-                            role="button"
-                            onClick={handleExpand}
-                            className={cn(
-                                "h-5 w-5 rounded-sm flex items-center justify-center hover:bg-accent transition-colors",
-                                !hasChildren && "opacity-0 hover:opacity-100"
-                            )}
-                        >
-                            {hasChildren || node.children ? (
-                                isExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />
-                            ) : (
-                                <div className="w-3.5 h-3.5" />
-                            )}
-                        </div>
-
-                        {hasChildren ? (
-                            <Folder className="h-4 w-4 text-muted-foreground mr-1" />
-                        ) : node.type === 'canvas' ? (
-                            <Frame className="h-4 w-4 text-muted-foreground mr-1" />
-                        ) : (
-                            <FileText className="h-4 w-4 text-muted-foreground mr-1" />
-                        )}
-
-                        <span className="truncate flex-1 text-sm min-w-0">
-                            {node.title || "Untitled"}
-                            {hasChildren && node.children && (
-                                <span className="text-[11px] text-muted-foreground/60 font-mono ml-1.5 tabular-nums">
-                                    ({node.children.length})
-                                </span>
-                            )}
-                        </span>
-
-                        <div className="absolute right-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 flex items-center shrink-0 pr-1">
-                            <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                    <Button variant="ghost" className="h-6 w-6 p-0 hover:bg-accent text-muted-foreground hover:text-foreground" onClick={(e) => e.stopPropagation()}>
-                                        <MoreHorizontal className="h-3.5 w-3.5" />
-                                    </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="start">
-                                    <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onCreateDocument(node.id, 'text'); }}>
-                                        <FileText className="mr-2 h-4 w-4" />
-                                        Add Child Page
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onCreateDocument(node.id, 'canvas'); }}>
-                                        <LayoutDashboard className="mr-2 h-4 w-4" />
-                                        Add Child Canvas
-                                    </DropdownMenuItem>
-                                    <DropdownMenuSeparator />
-                                    <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onInitiateRename(node); }}>
-                                        <Pencil className="mr-2 h-4 w-4" />
-                                        Rename
-                                    </DropdownMenuItem>
-                                    <DropdownMenuSeparator />
-                                    <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onDeleteDocument(node.id); }} className="text-destructive">
-                                        <Trash className="mr-2 h-4 w-4" />
-                                        Delete
-                                    </DropdownMenuItem>
-                                </DropdownMenuContent>
-                            </DropdownMenu>
-
-                            <Button
-                                variant="ghost"
-                                className="h-6 w-6 p-0 hover:bg-accent text-muted-foreground hover:text-foreground ml-0.5"
-                                onClick={(e) => { e.stopPropagation(); onCreateDocument(node.id); }}
+                    <ContextMenu>
+                        <ContextMenuTrigger asChild>
+                            <div
+                                className={cn(
+                                    "group relative flex items-center gap-1 py-0.5 pl-2 pr-12 rounded-none hover:bg-muted/30 cursor-pointer transition-colors min-h-[28px] w-full overflow-hidden",
+                                    isActive && "bg-muted text-foreground font-medium",
+                                    snapshot.isDragging && "opacity-50"
+                                )}
+                                style={{ paddingLeft: `${level * 12 + 8}px` }}
+                                onClick={() => onSelectDocument(node.id)}
+                                onDoubleClick={() => onDoubleClickDocument?.(node.id)}
                             >
-                                <Plus className="h-3.5 w-3.5" />
-                            </Button>
-                        </div>
-                    </div>
+                                <div
+                                    role="button"
+                                    onClick={handleExpand}
+                                    className={cn(
+                                        "h-5 w-5 rounded-sm flex items-center justify-center hover:bg-accent transition-colors",
+                                        !hasChildren && "opacity-0 hover:opacity-100"
+                                    )}
+                                >
+                                    {hasChildren || node.children ? (
+                                        isExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />
+                                    ) : (
+                                        <div className="w-3.5 h-3.5" />
+                                    )}
+                                </div>
+
+                                {hasChildren ? (
+                                    <Folder className="h-4 w-4 text-muted-foreground mr-1" />
+                                ) : node.type === 'canvas' ? (
+                                    <Frame className="h-4 w-4 text-muted-foreground mr-1" />
+                                ) : (
+                                    <FileText className="h-4 w-4 text-muted-foreground mr-1" />
+                                )}
+
+                                <span className="truncate flex-1 text-sm min-w-0" title={node.title || "Untitled"}>
+                                    {node.title || "Untitled"}
+                                    {hasChildren && node.children && (
+                                        <span className="text-[11px] text-muted-foreground/60 font-mono ml-1.5 tabular-nums">
+                                            ({node.children.length})
+                                        </span>
+                                    )}
+                                </span>
+
+                                <div className="absolute right-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 flex items-center shrink-0 pr-1">
+                                    <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                            <Button variant="ghost" className="h-6 w-6 p-0 hover:bg-accent text-muted-foreground hover:text-foreground" onClick={(e) => e.stopPropagation()}>
+                                                <MoreVertical className="h-3.5 w-3.5" />
+                                            </Button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent align="start">
+                                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onCreateDocument(node.id, 'text'); }}>
+                                                <FileText className="mr-2 h-4 w-4" />
+                                                Add Child Page
+                                            </DropdownMenuItem>
+                                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onCreateDocument(node.id, 'canvas'); }}>
+                                                <LayoutDashboard className="mr-2 h-4 w-4" />
+                                                Add Child Canvas
+                                            </DropdownMenuItem>
+                                            <DropdownMenuSeparator />
+                                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onInitiateRename(node); }}>
+                                                <Pencil className="mr-2 h-4 w-4" />
+                                                Rename
+                                            </DropdownMenuItem>
+                                            <DropdownMenuSeparator />
+                                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onDeleteDocument(node.id); }} className="text-destructive">
+                                                <Trash className="mr-2 h-4 w-4" />
+                                                Delete
+                                            </DropdownMenuItem>
+                                        </DropdownMenuContent>
+                                    </DropdownMenu>
+
+                                    <Button
+                                        variant="ghost"
+                                        className="h-6 w-6 p-0 hover:bg-accent text-muted-foreground hover:text-foreground ml-0.5"
+                                        onClick={(e) => { e.stopPropagation(); onCreateDocument(node.id); }}
+                                    >
+                                        <Plus className="h-3.5 w-3.5" />
+                                    </Button>
+                                </div>
+                            </div>
+                        </ContextMenuTrigger>
+                        <ContextMenuContent>
+                            <ContextMenuItem onClick={(e) => { e.stopPropagation(); onCreateDocument(node.id, 'text'); }}>
+                                <FileText className="mr-2 h-4 w-4" />
+                                Add Child Page
+                            </ContextMenuItem>
+                            <ContextMenuItem onClick={(e) => { e.stopPropagation(); onCreateDocument(node.id, 'canvas'); }}>
+                                <LayoutDashboard className="mr-2 h-4 w-4" />
+                                Add Child Canvas
+                            </ContextMenuItem>
+                            <ContextMenuSeparator />
+                            <ContextMenuItem onClick={(e) => { e.stopPropagation(); onInitiateRename(node); }}>
+                                <Pencil className="mr-2 h-4 w-4" />
+                                Rename
+                            </ContextMenuItem>
+                            <ContextMenuSeparator />
+                            <ContextMenuItem onClick={(e) => { e.stopPropagation(); onDeleteDocument(node.id); }} className="text-destructive">
+                                <Trash className="mr-2 h-4 w-4" />
+                                Delete
+                            </ContextMenuItem>
+                        </ContextMenuContent>
+                    </ContextMenu>
 
                     {isExpanded && (
                         <Droppable droppableId={node.id} type="DOCUMENT" isCombineEnabled>

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Plus, Search, Calendar, Trash2, LayoutDashboard, FileText, BookOpen, Upload, Loader2, X, MoreHorizontal, Pencil, Link2, ChevronDown, ChevronRight, Network } from 'lucide-react'
+import { Plus, Search, Calendar, Trash2, LayoutDashboard, FileText, BookOpen, Upload, Loader2, X, MoreVertical, Pencil, Link2, ChevronDown, ChevronRight, Network } from 'lucide-react'
 import { upload } from '@vercel/blob/client'
 import { Button } from "../../components/ui/button"
 import { Input } from "../../components/ui/input"
@@ -13,6 +13,13 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from "../ui/dropdown-menu"
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "../ui/context-menu"
 import { WorkspaceSwitcher } from './workspace-switcher'
 import { RenameDialog } from '../../components/ui/rename-dialog'
 import type { Document, WorkspaceRecord } from "../../../core/types/notes"
@@ -277,38 +284,53 @@ export function Sidebar({
               ) : (
                 <div className="space-y-0.5">
                   {pdfDocs.map(doc => (
-                    <div key={doc.id} className="group relative flex items-center w-full">
-                      <Button
-                        variant={currentView === doc.id ? 'secondary' : 'ghost'}
-                        size="sm"
-                        className="w-full justify-start px-2 h-8 font-normal pr-8"
-                        onClick={() => setCurrentView(doc.id)}
-                        onDoubleClick={() => onDoubleClickDocument?.(doc.id)}
-                      >
-                        <BookOpen className="h-3.5 w-3.5 mr-2 text-muted-foreground shrink-0" />
-                        <span className="truncate flex-1 text-left text-xs">{doc.title || t('untitledDocument')}</span>
-                      </Button>
-                      <div className="absolute right-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 flex items-center shrink-0">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" className="h-6 w-6 p-0 hover:bg-accent text-muted-foreground hover:text-foreground" onClick={(e) => e.stopPropagation()}>
-                              <MoreHorizontal className="h-3.5 w-3.5" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="start">
-                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setRenameNode(doc); }}>
-                              <Pencil className="mr-2 h-4 w-4" />
-                              {t('rename')}
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onDeleteDocument(doc.id); }} className="text-destructive">
-                              <Trash2 className="mr-2 h-4 w-4" />
-                              {t('deleteOption')}
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    </div>
+                    <ContextMenu key={doc.id}>
+                      <ContextMenuTrigger asChild>
+                        <div className="group relative flex items-center w-full">
+                          <Button
+                            variant={currentView === doc.id ? 'secondary' : 'ghost'}
+                            size="sm"
+                            className="w-full justify-start px-2 h-8 font-normal pr-8"
+                            onClick={() => setCurrentView(doc.id)}
+                            onDoubleClick={() => onDoubleClickDocument?.(doc.id)}
+                          >
+                            <BookOpen className="h-3.5 w-3.5 mr-2 text-muted-foreground shrink-0" />
+                            <span className="truncate flex-1 text-left text-xs min-w-0" title={doc.title || t('untitledDocument')}>{doc.title || t('untitledDocument')}</span>
+                          </Button>
+                          <div className="absolute right-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 flex items-center shrink-0">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" className="h-6 w-6 p-0 hover:bg-accent text-muted-foreground hover:text-foreground" onClick={(e) => e.stopPropagation()}>
+                                  <MoreVertical className="h-3.5 w-3.5" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="start">
+                                <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setRenameNode(doc); }}>
+                                  <Pencil className="mr-2 h-4 w-4" />
+                                  {t('rename')}
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onDeleteDocument(doc.id); }} className="text-destructive">
+                                  <Trash2 className="mr-2 h-4 w-4" />
+                                  {t('deleteOption')}
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                        </div>
+                      </ContextMenuTrigger>
+                      <ContextMenuContent>
+                        <ContextMenuItem onClick={(e) => { e.stopPropagation(); setRenameNode(doc); }}>
+                          <Pencil className="mr-2 h-4 w-4" />
+                          {t('rename')}
+                        </ContextMenuItem>
+                        <ContextMenuSeparator />
+                        <ContextMenuItem onClick={(e) => { e.stopPropagation(); onDeleteDocument(doc.id); }} className="text-destructive">
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          {t('deleteOption')}
+                        </ContextMenuItem>
+                      </ContextMenuContent>
+                    </ContextMenu>
                   ))}
                 </div>
               )
@@ -367,36 +389,51 @@ export function Sidebar({
               </h2>
               <div className="space-y-0.5">
                 {documents.filter(d => d.isFavorite).map(doc => (
-                  <div key={doc.id} className="group relative flex items-center w-full">
-                    <Button
-                      variant={currentView === doc.id ? "secondary" : "ghost"}
-                      size="sm"
-                      className="w-full justify-start px-2 h-8 font-normal pr-8"
-                      onClick={() => setCurrentView(doc.id)}
-                    >
-                      <span className="truncate flex-1 text-left">{doc.title || t('untitledDocument')}</span>
-                    </Button>
-                    <div className="absolute right-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 flex items-center shrink-0">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" className="h-6 w-6 p-0 hover:bg-accent text-muted-foreground hover:text-foreground" onClick={(e) => e.stopPropagation()}>
-                            <MoreHorizontal className="h-3.5 w-3.5" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="start">
-                          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setRenameNode(doc); }}>
-                            <Pencil className="mr-2 h-4 w-4" />
-                            {t('rename')}
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onDeleteDocument(doc.id); }} className="text-destructive">
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            {t('deleteOption')}
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  </div>
+                  <ContextMenu key={doc.id}>
+                    <ContextMenuTrigger asChild>
+                      <div className="group relative flex items-center w-full">
+                        <Button
+                          variant={currentView === doc.id ? "secondary" : "ghost"}
+                          size="sm"
+                          className="w-full justify-start px-2 h-8 font-normal pr-8"
+                          onClick={() => setCurrentView(doc.id)}
+                        >
+                          <span className="truncate flex-1 text-left min-w-0" title={doc.title || t('untitledDocument')}>{doc.title || t('untitledDocument')}</span>
+                        </Button>
+                        <div className="absolute right-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 flex items-center shrink-0">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" className="h-6 w-6 p-0 hover:bg-accent text-muted-foreground hover:text-foreground" onClick={(e) => e.stopPropagation()}>
+                                <MoreVertical className="h-3.5 w-3.5" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="start">
+                              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setRenameNode(doc); }}>
+                                <Pencil className="mr-2 h-4 w-4" />
+                                {t('rename')}
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onDeleteDocument(doc.id); }} className="text-destructive">
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                {t('deleteOption')}
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      </div>
+                    </ContextMenuTrigger>
+                    <ContextMenuContent>
+                      <ContextMenuItem onClick={(e) => { e.stopPropagation(); setRenameNode(doc); }}>
+                        <Pencil className="mr-2 h-4 w-4" />
+                        {t('rename')}
+                      </ContextMenuItem>
+                      <ContextMenuSeparator />
+                      <ContextMenuItem onClick={(e) => { e.stopPropagation(); onDeleteDocument(doc.id); }} className="text-destructive">
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        {t('deleteOption')}
+                      </ContextMenuItem>
+                    </ContextMenuContent>
+                  </ContextMenu>
                 ))}
               </div>
             </div>

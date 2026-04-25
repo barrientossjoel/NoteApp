@@ -11,6 +11,8 @@ import { ImportDocsDialog } from './import-docs-dialog'
 import { FormulaEngine, getColumnLetter } from './utils/formula-engine'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import * as Y from 'yjs'
+import { WebsocketProvider } from 'y-websocket'
 
 import {
     DropdownMenu,
@@ -30,6 +32,7 @@ import {
     BreadcrumbSeparator,
 } from "../../components/ui/breadcrumb"
 import { Editor } from '../../components/editor/editor'
+import { ShareDialog } from '../collaboration/share-dialog'
 
 interface CanvasNode {
     id: string
@@ -42,6 +45,8 @@ interface CanvasNode {
     shapeType?: 'rectangle' | 'circle'
     startNodeId?: string
     endNodeId?: string
+    isDynamicEnd?: boolean
+    startSide?: string
     startOffset?: { x: number, y: number }
     endOffset?: { x: number, y: number }
     points?: {
@@ -391,18 +396,21 @@ const MemoizedCanvasNode = React.memo(({ node, envRef, triggers }: any) => {
                 node.type === 'table' && "overflow-visible", // Allow '+' buttons to show
 
                 // Drag animation
-                "transition-transform transition-shadow duration-200 ease-out",
-                envRef.current.draggedNodeId === node.id && node.type !== 'arrow' ? "scale-[1.02] -rotate-2 shadow-[0_20px_50px_rgba(0,0,0,0.5)] z-[999]" : "scale-100 rotate-0"
+                "transition-transform transition-shadow duration-[150ms] ease-out origin-[50%_-50px]",
+                (!envRef.current.draggedNodeId || envRef.current.draggedNodeId !== node.id) ? "scale-100 rotate-0" : ""
             )}
             style={{
                 left: node.x,
                 top: node.y,
+                transform: (envRef.current.draggedNodeId === node.id && envRef.current.hasMoved && node.type !== 'arrow')
+                    ? `rotate(calc(var(--drag-vx, 0) * 0.6deg))`
+                    : undefined,
                 width: node.width,
                 height: node.height,
                 cursor: (node.type === 'note' || node.type === 'document' || node.type === 'shape' || node.type === 'image')
                     ? (envRef.current.draggedNodeId === node.id ? 'grabbing' : 'grab')
                     : 'default'
-            }}
+            } as React.CSSProperties}
             onMouseDown={(e) => {
                 if (node.type !== 'arrow') {
                     envRef.current.handleNodeMouseDown(e, node)
@@ -419,6 +427,57 @@ const MemoizedCanvasNode = React.memo(({ node, envRef, triggers }: any) => {
                 e.stopPropagation()
                 if (!e.shiftKey && envRef.current.selection.size <= 1) {
                     envRef.current.setSelection(new Set([node.id]))
+                }
+            }}
+            onMouseUp={(e) => {
+                if (envRef.current.isCreatingArrow && envRef.current.arrowStart && envRef.current.arrowStartNodeId && node.type !== 'arrow') {
+                    // Prevent default window handler from firing
+                    e.stopPropagation()
+                    e.preventDefault()
+
+                    const bestEnd = envRef.current.getBestDynamicEnd(
+                        envRef.current.arrowStart,
+                        envRef.current.arrowStartSide,
+                        node,
+                        envRef.current.nodes
+                    );
+
+                    const endPos = {
+                        x: node.x + (bestEnd.endSide === 'left' ? 0 : bestEnd.endSide === 'right' ? node.width : node.width / 2),
+                        y: node.y + (bestEnd.endSide === 'top' ? 0 : bestEnd.endSide === 'bottom' ? node.height : node.height / 2)
+                    };
+                    const controls = envRef.current.calculateBezierControls(envRef.current.arrowStart, endPos, envRef.current.arrowStartSide, bestEnd.endSide)
+
+                    const startNode = envRef.current.nodes.find((n: CanvasNode) => n.id === envRef.current.arrowStartNodeId);
+
+                    const newNode: CanvasNode = {
+                        id: Math.random().toString(36).substring(7),
+                        type: 'arrow',
+                        x: Math.min(envRef.current.arrowStart.x, endPos.x),
+                        y: Math.min(envRef.current.arrowStart.y, endPos.y),
+                        width: Math.max(1, Math.abs(endPos.x - envRef.current.arrowStart.x)),
+                        height: Math.max(1, Math.abs(endPos.y - envRef.current.arrowStart.y)),
+                        content: '',
+                        startNodeId: envRef.current.arrowStartNodeId,
+                        startSide: envRef.current.arrowStartSide,
+                        endNodeId: node.id,
+                        isDynamicEnd: true,
+                        startOffset: startNode ? { x: envRef.current.arrowStart.x - startNode.x, y: envRef.current.arrowStart.y - startNode.y } : undefined,
+                        endOffset: { x: endPos.x - node.x, y: endPos.y - node.y },
+                        points: {
+                            start: envRef.current.arrowStart,
+                            end: endPos,
+                            control: controls.cp1,
+                            control2: controls.cp2
+                        }
+                    }
+                    envRef.current.setNodes((prev: CanvasNode[]) => [...prev, newNode])
+                    envRef.current.setArrowStart(null)
+                    envRef.current.setArrowStartNodeId(null)
+                    envRef.current.setArrowStartSide(null)
+                    envRef.current.setArrowEndPreview(null)
+                    envRef.current.setIsCreatingArrow(false)
+                    envRef.current.setSelection(new Set([newNode.id]))
                 }
             }}
             onDoubleClick={(e) => {
@@ -1012,6 +1071,8 @@ const MemoizedCanvasNode = React.memo(({ node, envRef, triggers }: any) => {
                                     const endY = (e.clientY - rect.top - envRef.current.camera.y) / envRef.current.camera.zoom
 
                                     const controls = envRef.current.calculateBezierControls(envRef.current.arrowStart, { x: endX, y: endY }, envRef.current.arrowStartSide, anchor.side)
+                                    const startNode = envRef.current.nodes.find((n: CanvasNode) => n.id === envRef.current.arrowStartNodeId);
+
                                     const newNode: CanvasNode = {
                                         id: Math.random().toString(36).substring(7),
                                         type: 'arrow',
@@ -1021,7 +1082,11 @@ const MemoizedCanvasNode = React.memo(({ node, envRef, triggers }: any) => {
                                         height: Math.abs(endY - envRef.current.arrowStart.y),
                                         content: '',
                                         startNodeId: envRef.current.arrowStartNodeId,
+                                        startSide: envRef.current.arrowStartSide,
                                         endNodeId: node.id,
+                                        isDynamicEnd: false,
+                                        startOffset: startNode ? { x: envRef.current.arrowStart.x - startNode.x, y: envRef.current.arrowStart.y - startNode.y } : undefined,
+                                        endOffset: { x: endX - node.x, y: endY - node.y },
                                         points: {
                                             start: envRef.current.arrowStart,
                                             end: { x: endX, y: endY },
@@ -1076,17 +1141,82 @@ export function CanvasView({
     const isMobile = useMediaQuery('(max-width: 768px)')
 
     // Parse initial content
-    // Parse initial content
     const [nodes, setNodes] = useState<CanvasNode[]>(() => {
         try {
             const parsed = doc.content ? JSON.parse(doc.content) : []
-            if (Array.isArray(parsed)) return parsed
-            return parsed.nodes || []
-        } catch (e) {
-            console.error("Failed to parse canvas nodes", e)
+            return Array.isArray(parsed) ? parsed : (parsed.nodes || [])
+        } catch {
             return []
         }
     })
+
+    // Real-time synchronization
+    const [ydoc] = useState(() => new Y.Doc());
+    const [provider] = useState(() => {
+        if (!doc.id) return null;
+        return new WebsocketProvider(`ws://${window.location.hostname}:1234`, `canvas-${doc.id}`, ydoc);
+    });
+    const ymap = useRef(ydoc.getMap<any>('nodes')).current;
+
+    useEffect(() => {
+        return () => {
+            if (provider) {
+                provider.destroy();
+            }
+        };
+    }, [provider]);
+
+    useEffect(() => {
+        // Sync local changes to Yjs map
+        ydoc.transact(() => {
+            const currentIds = new Set(nodes.map(n => n.id));
+            nodes.forEach(n => {
+                const existing = ymap.get(n.id);
+                // Simple stringify comparison to avoid spamming Yjs with unchanged nodes
+                if (JSON.stringify(existing) !== JSON.stringify(n)) {
+                    ymap.set(n.id, n);
+                }
+            });
+            for (const key of Array.from(ymap.keys())) {
+                if (!currentIds.has(key)) {
+                    ymap.delete(key);
+                }
+            }
+        }, 'local');
+    }, [nodes, ydoc, ymap]);
+
+    useEffect(() => {
+        // Subscribe to remote changes
+        const observer = (event: Y.YMapEvent<any>, transaction: Y.Transaction) => {
+            if (transaction.origin === 'local') return;
+
+            setNodes(prev => {
+                const newNodesMap = new Map(prev.map(n => [n.id, n]));
+                event.changes.keys.forEach((change, key) => {
+                    if (change.action === 'add' || change.action === 'update') {
+                        newNodesMap.set(key, ymap.get(key));
+                    } else if (change.action === 'delete') {
+                        newNodesMap.delete(key);
+                    }
+                });
+                return Array.from(newNodesMap.values());
+            });
+        };
+
+        ymap.observe(observer);
+
+        const handleSync = (isSynced: boolean) => {
+            if (isSynced && ymap.size > 0 && nodes.length <= 1) {
+                setNodes(Array.from(ymap.values()));
+            }
+        };
+        provider?.on('sync', handleSync);
+
+        return () => {
+            ymap.unobserve(observer);
+            provider?.off('sync', handleSync);
+        };
+    }, [ymap, provider, nodes.length]);
 
     const [camera, setCamera] = useState<Camera>(() => {
         try {
@@ -1389,6 +1519,33 @@ export function CanvasView({
         }
     }
 
+    // Smooth inertia simulation loop for X-axis dragging tilt
+    useEffect(() => {
+        if (!draggedNodeId) return;
+        let frame: number;
+        const loop = () => {
+            if (wrapperRef.current) {
+                const currentV = parseFloat(wrapperRef.current.style.getPropertyValue('--drag-vx') || '0');
+                const targetV = parseFloat(wrapperRef.current.style.getPropertyValue('--drag-target-vx') || '0');
+
+                // Lerp current velocity towards target for "smooth" fluidity
+                const newV = currentV + (targetV - currentV) * 0.14;
+                wrapperRef.current.style.setProperty('--drag-vx', newV.toString());
+
+                // Decay the target velocity aggressively so when mouse stops, it relaxes
+                const newTargetV = targetV * 0.81;
+                if (Math.abs(newTargetV) < 0.1) {
+                    wrapperRef.current.style.setProperty('--drag-target-vx', '0');
+                } else {
+                    wrapperRef.current.style.setProperty('--drag-target-vx', newTargetV.toString());
+                }
+            }
+            frame = requestAnimationFrame(loop);
+        };
+        frame = requestAnimationFrame(loop);
+        return () => cancelAnimationFrame(frame);
+    }, [draggedNodeId])
+
     // Event Listeners for Keyboard commands
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
@@ -1643,6 +1800,39 @@ export function CanvasView({
                 if (score < bestCombo.score) {
                     bestCombo = { startSide: s1, endSide: s2, score };
                 }
+            }
+        }
+        return bestCombo;
+    }
+
+    const getBestDynamicEnd = (startPos: { x: number, y: number }, startSide: string | undefined, endNode: CanvasNode, allNodes: CanvasNode[]) => {
+        const sides = ['top', 'bottom', 'left', 'right'];
+        let bestCombo = { endSide: 'left', score: Infinity };
+
+        for (const s2 of sides) {
+            const endPos = {
+                x: endNode.x + (s2 === 'left' ? 0 : s2 === 'right' ? endNode.width : endNode.width / 2),
+                y: endNode.y + (s2 === 'top' ? 0 : s2 === 'bottom' ? endNode.height : endNode.height / 2)
+            };
+
+            const { cp1, cp2 } = calculateBezierControls(startPos, endPos, startSide, s2);
+
+            let intersections = 0;
+            if (isPathIntersectingNode(startPos, endPos, cp1, cp2, endNode)) intersections += 10;
+
+            for (const node of allNodes) {
+                if (node.id === endNode.id || node.type === 'arrow') continue;
+                if (isPathIntersectingNode(startPos, endPos, cp1, cp2, node)) intersections += 20;
+            }
+
+            const dx = endPos.x - startPos.x;
+            const dy = endPos.y - startPos.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+
+            const score = dist + intersections * 1000;
+
+            if (score < bestCombo.score) {
+                bestCombo = { endSide: s2, score };
             }
         }
         return bestCombo;
@@ -2234,6 +2424,16 @@ export function CanvasView({
             setArrowEndPreview({ x: mouseX, y: mouseY })
         } else if (draggedNodeId) {
             setHasMoved(true)
+            if (wrapperRef.current) {
+                // Set the *target* physical movement impulse directly using device movement delta
+                const targetV = parseFloat(wrapperRef.current.style.getPropertyValue('--drag-target-vx') || '0');
+                // The target inertia scales by the unscaled movement delta
+                const newTargetV = targetV + (e.movementX * 0.55);
+                // Clamp absolute target rotation to prevent extreme spinning
+                const clampedV = Math.max(-20, Math.min(20, newTargetV));
+                wrapperRef.current.style.setProperty('--drag-target-vx', clampedV.toString());
+            }
+
             const rect = containerRef.current?.getBoundingClientRect()
             if (!rect) return
 
@@ -2269,17 +2469,26 @@ export function CanvasView({
                                 const startNode = prev.find(node => node.id === n.startNodeId);
                                 const endNode = prev.find(node => node.id === n.endNodeId);
                                 if (startNode && endNode) {
-                                    const { startSide: s1, endSide: s2 } = getBestSides(startNode, endNode, prev);
+                                    let s1 = n.startSide || 'right';
+                                    let s2 = 'left';
+                                    let startPos = n.points.start;
+                                    let endPos = n.points.end;
 
-                                    // Update offsets to snap to new sides
-                                    const startPos = {
-                                        x: startNode.x + (s1 === 'left' ? 0 : s1 === 'right' ? startNode.width : startNode.width / 2),
-                                        y: startNode.y + (s1 === 'top' ? 0 : s1 === 'bottom' ? startNode.height : startNode.height / 2)
-                                    };
-                                    const endPos = {
-                                        x: endNode.x + (s2 === 'left' ? 0 : s2 === 'right' ? endNode.width : endNode.width / 2),
-                                        y: endNode.y + (s2 === 'top' ? 0 : s2 === 'bottom' ? endNode.height : endNode.height / 2)
-                                    };
+                                    if (n.isDynamicEnd) {
+                                        startPos = { x: startNode.x + (n.startOffset?.x || 0), y: startNode.y + (n.startOffset?.y || 0) };
+                                        const bestEnd = getBestDynamicEnd(startPos, s1, endNode, prev);
+                                        s2 = bestEnd.endSide;
+                                        endPos = {
+                                            x: endNode.x + (s2 === 'left' ? 0 : s2 === 'right' ? endNode.width : endNode.width / 2),
+                                            y: endNode.y + (s2 === 'top' ? 0 : s2 === 'bottom' ? endNode.height : endNode.height / 2)
+                                        };
+                                    } else {
+                                        // Static points preservation
+                                        s1 = n.startSide || (n.startOffset ? (Math.abs(n.startOffset.x) > Math.abs(n.startOffset.y) ? (n.startOffset.x > 0 ? 'right' : 'left') : (n.startOffset.y > 0 ? 'bottom' : 'top')) : 'right');
+                                        s2 = n.endOffset ? (Math.abs(n.endOffset.x) > Math.abs(n.endOffset.y) ? (n.endOffset.x > 0 ? 'right' : 'left') : (n.endOffset.y > 0 ? 'bottom' : 'top')) : 'left';
+                                        startPos = { x: startNode.x + (n.startOffset?.x || 0), y: startNode.y + (n.startOffset?.y || 0) };
+                                        endPos = { x: endNode.x + (n.endOffset?.x || 0), y: endNode.y + (n.endOffset?.y || 0) };
+                                    }
 
                                     newPoints.start = startPos;
                                     newPoints.end = endPos;
@@ -2287,7 +2496,6 @@ export function CanvasView({
                                     newPoints.control = cp1;
                                     newPoints.control2 = cp2;
 
-                                    // Update arrow internal state to keep the new snap
                                     n.startOffset = { x: startPos.x - startNode.x, y: startPos.y - startNode.y };
                                     n.endOffset = { x: endPos.x - endNode.x, y: endPos.y - endNode.y };
                                 }
@@ -2336,16 +2544,26 @@ export function CanvasView({
                                     const sNode = selection.has(startNode.id) ? { ...startNode, x: startNode.x + dx, y: startNode.y + dy } : startNode;
                                     const eNode = selection.has(endNode.id) ? { ...endNode, x: endNode.x + dx, y: endNode.y + dy } : endNode;
 
-                                    const { startSide: s1, endSide: s2 } = getBestSides(sNode, eNode, prev);
+                                    let s1 = n.startSide || 'right';
+                                    let s2 = 'left';
+                                    let startPos = n.points.start;
+                                    let endPos = n.points.end;
 
-                                    const startPos = {
-                                        x: sNode.x + (s1 === 'left' ? 0 : s1 === 'right' ? sNode.width : sNode.width / 2),
-                                        y: sNode.y + (s1 === 'top' ? 0 : s1 === 'bottom' ? sNode.height : sNode.height / 2)
-                                    };
-                                    const endPos = {
-                                        x: eNode.x + (s2 === 'left' ? 0 : s2 === 'right' ? eNode.width : eNode.width / 2),
-                                        y: eNode.y + (s2 === 'top' ? 0 : s2 === 'bottom' ? eNode.height : eNode.height / 2)
-                                    };
+                                    if (n.isDynamicEnd) {
+                                        startPos = { x: sNode.x + (n.startOffset?.x || 0), y: sNode.y + (n.startOffset?.y || 0) };
+                                        const bestEnd = getBestDynamicEnd(startPos, s1, eNode, prev);
+                                        s2 = bestEnd.endSide;
+                                        endPos = {
+                                            x: eNode.x + (s2 === 'left' ? 0 : s2 === 'right' ? eNode.width : eNode.width / 2),
+                                            y: eNode.y + (s2 === 'top' ? 0 : s2 === 'bottom' ? eNode.height : eNode.height / 2)
+                                        };
+                                    } else {
+                                        // Static points preservation
+                                        s1 = n.startSide || (n.startOffset ? (Math.abs(n.startOffset.x) > Math.abs(n.startOffset.y) ? (n.startOffset.x > 0 ? 'right' : 'left') : (n.startOffset.y > 0 ? 'bottom' : 'top')) : 'right');
+                                        s2 = n.endOffset ? (Math.abs(n.endOffset.x) > Math.abs(n.endOffset.y) ? (n.endOffset.x > 0 ? 'right' : 'left') : (n.endOffset.y > 0 ? 'bottom' : 'top')) : 'left';
+                                        startPos = { x: sNode.x + (n.startOffset?.x || 0), y: sNode.y + (n.startOffset?.y || 0) };
+                                        endPos = { x: eNode.x + (n.endOffset?.x || 0), y: eNode.y + (n.endOffset?.y || 0) };
+                                    }
 
                                     newPoints.start = startPos;
                                     newPoints.end = endPos;
@@ -2651,7 +2869,7 @@ export function CanvasView({
         getArrowMidpoint, setDraggedHandle, initiateEditImage, setResizingNodeId, setArrowStart,
         setArrowStartNodeId, setArrowStartSide, setIsCreatingArrow, setArrowEndPreview,
         handleImageUpload, isPanning, isSpacePressed, isCreatingArrow, arrowStart, arrowStartNodeId,
-        arrowStartSide, calculateBezierControls, resizingNodeId, nodes
+        arrowStartSide, calculateBezierControls, resizingNodeId, nodes, hasMoved, getBestDynamicEnd
     });
 
     return (
@@ -3007,6 +3225,8 @@ export function CanvasView({
                     </>
                 )}
 
+                <ShareDialog elementId={doc.id} elementType="canvas" />
+
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                         <Button variant="ghost" size="icon" className="h-9 w-9">
@@ -3115,7 +3335,7 @@ export function CanvasView({
             {
                 contextMenu && (
                     <div
-                        className="absolute z-[60] min-w-[200px] overflow-hidden rounded-md border border-border/30 bg-muted/20 backdrop-blur-sm p-1 text-popover-foreground shadow-md animate-in fade-in-0 zoom-in-95"
+                        className="absolute z-[60] min-w-[200px] overflow-hidden rounded-md border border-border/30 bg-black/10 backdrop-blur-md p-1 text-popover-foreground shadow-md animate-in fade-in-0 zoom-in-95"
                         style={{ left: contextMenu.x, top: contextMenu.y }}
                     >
                         <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground hidden sm:block">Canvas Actions</div>

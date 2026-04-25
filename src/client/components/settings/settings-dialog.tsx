@@ -18,6 +18,7 @@ import { useMediaQuery } from "../../hooks/useMediaQuery"
 import { useAuth } from "../../context/AuthContext"
 import { useLanguage } from "../../context/LanguageContext"
 import { Avatar, AvatarFallback, AvatarImage } from "../../components/ui/avatar"
+import { CollaborationSettings } from "./collaboration-settings"
 
 interface ShortcutItem {
     label: string
@@ -110,6 +111,7 @@ export function SettingsDialog({
                 { id: "account", label: t('account') },
                 { id: "appearance", label: t('appearance') },
                 { id: "shortcuts", label: t('shortcuts') },
+                { id: "collaboration", label: t('collaboration') as string },
             ]
         }
     ];
@@ -357,6 +359,11 @@ export function SettingsDialog({
                                         </div>
                                     </div>
                                 </div>
+                            )}
+
+                            {/* Collaboration Content */}
+                            {(!isSearching && activeTab === 'collaboration') && (
+                                <CollaborationSettings />
                             )}
 
                             {/* Search Results */}

@@ -15,6 +15,11 @@ import { TableRow } from '@tiptap/extension-table-row'
 import { TableCell } from '@tiptap/extension-table-cell'
 import { TableHeader } from '@tiptap/extension-table-header'
 
+import * as Y from 'yjs'
+import { WebsocketProvider } from 'y-websocket'
+import Collaboration from '@tiptap/extension-collaboration'
+import CollaborationCursor from '@tiptap/extension-collaboration-cursor'
+
 export interface EditorRef {
     editor: TipTapEditorInstance | null
 }
@@ -30,6 +35,7 @@ interface EditorProps {
     className?: string
     onKeyDown?: (e: KeyboardEvent) => boolean | void
     onLinkClick?: (href: string) => void
+    documentId?: string
 }
 
 /** Uploads an image File and inserts the resulting URL into the editor as an image node */
@@ -66,7 +72,8 @@ export const Editor = forwardRef<EditorRef, EditorProps>(({
     placeholder = 'Start writing...',
     className = '',
     onKeyDown,
-    onLinkClick
+    onLinkClick,
+    documentId
 }, ref) => {
     const wrapperRef = useRef<HTMLDivElement>(null)
     const [tableToolbar, setTableToolbar] = useState<{
@@ -75,9 +82,30 @@ export const Editor = forwardRef<EditorRef, EditorProps>(({
         table: { top: number; left: number };
     } | null>(null)
 
+    // Automatically assign a random cursor color
+    const cursorColor = useRef('#' + Math.floor(Math.random() * 16777215).toString(16)).current;
+
+    const [ydoc] = useState(() => new Y.Doc());
+    const [provider] = useState(() => {
+        if (!documentId) return null;
+        // Connect to the WebSocket room based on the document ID
+        // NoteApp backend is running the realtime server on port 1234
+        return new WebsocketProvider(`ws://${window.location.hostname}:1234`, `doc-${documentId}`, ydoc);
+    });
+
+    useEffect(() => {
+        return () => {
+            if (provider) {
+                provider.destroy();
+            }
+        };
+    }, [provider]);
+
     const editor = useEditor({
         extensions: [
             StarterKit.configure({
+                // @ts-ignore - Disable TipTap history when using Yjs CRDT
+                history: documentId ? false : undefined,
                 heading: {
                     levels: [1, 2, 3],
                 },
@@ -106,6 +134,18 @@ export const Editor = forwardRef<EditorRef, EditorProps>(({
             TableRow,
             TableHeader,
             TableCell,
+            ...(documentId && provider ? [
+                Collaboration.configure({
+                    document: ydoc,
+                }),
+                CollaborationCursor.configure({
+                    provider: provider,
+                    user: {
+                        name: 'Anonymous User',
+                        color: cursorColor,
+                    },
+                }),
+            ] : []),
         ],
         content: content,
         editable: editable,
@@ -292,13 +332,48 @@ export const Editor = forwardRef<EditorRef, EditorProps>(({
         editor: editor
     }))
 
+    // Reference to ensure we only load initial content once when connected to Yjs
+    const initialContentLoaded = useRef(false);
+
     // Update editor content when external content changes
+    // Only update content explicitly if NOT using Yjs real-time sync, to avoid overwriting Yjs state
     useEffect(() => {
         // @ts-ignore
-        if (editor && content !== editor.storage.markdown.getMarkdown()) {
+        if (!documentId && editor && content !== editor.storage.markdown.getMarkdown()) {
             editor.commands.setContent(content)
         }
-    }, [content, editor])
+    }, [content, editor, documentId])
+
+    // Load initial content into Yjs if the room is empty
+    useEffect(() => {
+        if (!editor || !documentId || !provider || !content || initialContentLoaded.current) return;
+
+        const populateFromDB = () => {
+            setTimeout(() => {
+                const currentText = editor.getText().trim();
+                if (currentText === '') {
+                    editor.commands.setContent(content);
+                }
+            }, 50); // slight delay to let Yjs collaboration plugin mount its default empty node
+            initialContentLoaded.current = true;
+        };
+
+        const handleSync = (isSynced: boolean) => {
+            if (isSynced && !initialContentLoaded.current) {
+                populateFromDB();
+            }
+        };
+
+        if (provider.synced) {
+            handleSync(true);
+        } else {
+            provider.on('sync', handleSync);
+        }
+
+        return () => {
+            provider.off('sync', handleSync);
+        };
+    }, [editor, documentId, provider, content]);
 
     // Update editable state
     useEffect(() => {
@@ -432,6 +507,32 @@ export const Editor = forwardRef<EditorRef, EditorProps>(({
                 }
                 .dark .tiptap blockquote {
                     border-left-color: #334155;
+                }
+                
+                /* Collaboration Cursor Styles */
+                .collaboration-cursor__caret {
+                    border-left: 1px solid #0d0d0d;
+                    border-right: 1px solid #0d0d0d;
+                    margin-left: -1px;
+                    margin-right: -1px;
+                    pointer-events: none;
+                    position: relative;
+                    word-break: normal;
+                }
+                
+                .collaboration-cursor__label {
+                    border-radius: 3px 3px 3px 0;
+                    color: #fff;
+                    font-size: 12px;
+                    font-style: normal;
+                    font-weight: 600;
+                    left: -1px;
+                    line-height: normal;
+                    padding: 0.1rem 0.3rem;
+                    position: absolute;
+                    top: -1.4em;
+                    user-select: none;
+                    white-space: nowrap;
                 }
                 .tiptap ul[data-type="taskList"] {
                     list-style: none;

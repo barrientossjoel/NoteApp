@@ -100,5 +100,16 @@ export const es = {
     keySpace: 'Espacio',
     keyDrag: 'Arrastre',
     keyDelete: 'Suprimir',
-    keyAlt: 'Alt'
+    keyAlt: 'Alt',
+
+    // Collaboration
+    collaboration: 'Colaboración',
+    vaultShares: 'Acceso al Vault',
+    vaultSharesDesc: 'Gestiona quién tiene acceso a todo tu espacio de trabajo.',
+    shareVault: 'Compartir Vault',
+    emailPlaceholder: 'usuario@ejemplo.com',
+    permissionView: 'Ver',
+    permissionEdit: 'Editar',
+    documentShares: 'Elementos Específicos',
+    documentSharesDesc: 'Elementos compartidos de forma individual.'
 };

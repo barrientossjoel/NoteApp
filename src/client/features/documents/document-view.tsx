@@ -28,6 +28,7 @@ import {
 import { Editor, EditorRef } from '../../components/editor/editor'
 import { NotesPanel } from '../notes/components/notes-panel'
 import { useLanguage } from '../../context/LanguageContext'
+import { ShareDialog } from '../collaboration/share-dialog'
 
 
 interface DocumentViewProps {
@@ -432,6 +433,8 @@ export function DocumentView({
                             >
                                 <MessageSquare className="h-4 w-4" />
                             </Button>
+
+                            <ShareDialog elementId={document.id} elementType={document.type === 'canvas' ? 'canvas' : 'document'} />
                         </>
                     )}
 
@@ -586,6 +589,7 @@ export function DocumentView({
 
                             <Editor
                                 ref={editorRef}
+                                documentId={document.id}
                                 content={content}
                                 placeholder={t('startWriting')}
                                 onChange={setContent}
