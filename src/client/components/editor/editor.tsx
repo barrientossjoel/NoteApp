@@ -88,9 +88,13 @@ export const Editor = forwardRef<EditorRef, EditorProps>(({
     const [ydoc] = useState(() => new Y.Doc());
     const [provider] = useState(() => {
         if (!documentId) return null;
+
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         // Connect to the WebSocket room based on the document ID
-        // NoteApp backend is running the realtime server on port 1234
-        return new WebsocketProvider(`ws://${window.location.hostname}:1234`, `doc-${documentId}`, ydoc);
+        // NoteApp backend is running the realtime server on port 1234 locally
+        // In production, we assume the load balancer routes :1234 or we just use the default port.
+        const port = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? ':1234' : ':1234';
+        return new WebsocketProvider(`${protocol}//${window.location.hostname}${port}`, `doc-${documentId}`, ydoc);
     });
 
     useEffect(() => {
@@ -348,31 +352,15 @@ export const Editor = forwardRef<EditorRef, EditorProps>(({
     useEffect(() => {
         if (!editor || !documentId || !provider || !content || initialContentLoaded.current) return;
 
-        const populateFromDB = () => {
-            setTimeout(() => {
-                const currentText = editor.getText().trim();
-                if (currentText === '') {
-                    editor.commands.setContent(content);
-                }
-            }, 50); // slight delay to let Yjs collaboration plugin mount its default empty node
-            initialContentLoaded.current = true;
-        };
-
         const handleSync = (isSynced: boolean) => {
-            if (isSynced && !initialContentLoaded.current) {
-                populateFromDB();
-            }
+            if (!isSynced || initialContentLoaded.current) return;
+
+            initialContentLoaded.current = true;
+            setTimeout(() => !editor.getText().trim() ? editor.commands.setContent(content) : null, 50);
         };
 
-        if (provider.synced) {
-            handleSync(true);
-        } else {
-            provider.on('sync', handleSync);
-        }
-
-        return () => {
-            provider.off('sync', handleSync);
-        };
+        provider.synced ? handleSync(true) : provider.on('sync', handleSync);
+        return () => provider.off('sync', handleSync);
     }, [editor, documentId, provider, content]);
 
     // Update editable state

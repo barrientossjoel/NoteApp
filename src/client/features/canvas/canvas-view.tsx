@@ -1154,7 +1154,9 @@ export function CanvasView({
     const [ydoc] = useState(() => new Y.Doc());
     const [provider] = useState(() => {
         if (!doc.id) return null;
-        return new WebsocketProvider(`ws://${window.location.hostname}:1234`, `canvas-${doc.id}`, ydoc);
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const port = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? ':1234' : ':1234';
+        return new WebsocketProvider(`${protocol}//${window.location.hostname}${port}`, `canvas-${doc.id}`, ydoc);
     });
     const ymap = useRef(ydoc.getMap<any>('nodes')).current;
 
