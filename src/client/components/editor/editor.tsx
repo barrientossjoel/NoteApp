@@ -16,7 +16,7 @@ import { TableCell } from '@tiptap/extension-table-cell'
 import { TableHeader } from '@tiptap/extension-table-header'
 
 import * as Y from 'yjs'
-import { WebsocketProvider } from 'y-websocket'
+import YPartyKitProvider from 'y-partykit/provider'
 import Collaboration from '@tiptap/extension-collaboration'
 import CollaborationCursor from '@tiptap/extension-collaboration-cursor'
 
@@ -88,13 +88,8 @@ export const Editor = forwardRef<EditorRef, EditorProps>(({
     const [ydoc] = useState(() => new Y.Doc());
     const [provider] = useState(() => {
         if (!documentId) return null;
-
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        // Connect to the WebSocket room based on the document ID
-        // NoteApp backend is running the realtime server on port 1234 locally
-        // In production, we assume the load balancer routes :1234 or we just use the default port.
-        const port = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? ':1234' : ':1234';
-        return new WebsocketProvider(`${protocol}//${window.location.hostname}${port}`, `doc-${documentId}`, ydoc);
+        const host = import.meta.env.VITE_PARTYKIT_HOST ?? window.location.hostname;
+        return new YPartyKitProvider(host, `doc-${documentId}`, ydoc);
     });
 
     useEffect(() => {
@@ -352,15 +347,32 @@ export const Editor = forwardRef<EditorRef, EditorProps>(({
     useEffect(() => {
         if (!editor || !documentId || !provider || !content || initialContentLoaded.current) return;
 
-        const handleSync = (isSynced: boolean) => {
-            if (!isSynced || initialContentLoaded.current) return;
-
+        const populateFromDB = () => {
+            if (initialContentLoaded.current) return;
             initialContentLoaded.current = true;
             setTimeout(() => !editor.getText().trim() ? editor.commands.setContent(content) : null, 50);
         };
 
-        provider.synced ? handleSync(true) : provider.on('sync', handleSync);
-        return () => provider.off('sync', handleSync);
+        const handleSync = (isSynced: boolean) => isSynced ? populateFromDB() : null;
+
+        if (provider.synced) {
+            handleSync(true);
+            return;
+        }
+
+        provider.on('sync', handleSync);
+
+        // Fallback: If WebSocket doesn't sync within 1 second (offline or production port blocked),
+        // we unblock the UI and inject the DB content locally
+        const fallbackTimer = setTimeout(() => {
+            console.warn('[NoteApp] Real-time sync timed out or offline. Falling back to local content.');
+            populateFromDB();
+        }, 1000);
+
+        return () => {
+            provider.off('sync', handleSync);
+            clearTimeout(fallbackTimer);
+        };
     }, [editor, documentId, provider, content]);
 
     // Update editable state
