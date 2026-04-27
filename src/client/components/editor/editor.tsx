@@ -337,64 +337,43 @@ export const Editor = forwardRef<EditorRef, EditorProps>(({
         editor: editor
     }))
 
-    // ─── Content seeding ──────────────────────────────────────────────────────
-    //
-    // NON-COLLABORATIVE mode: keep editor in sync with the `content` prop.
-    // This handles cases where no documentId is passed (e.g. embedded viewers).
-    useEffect(() => {
-        if (!editor || isCollaborative) return;
-        // @ts-ignore
-        const current = editor.storage.markdown?.getMarkdown() ?? '';
-        if (content !== current) editor.commands.setContent(content);
-    }, [content, editor, isCollaborative]);
+    // ─── Content loading ──────────────────────────────────────────────────────
+    // Simple, correct approach:
+    //   - Non-collaborative: sync content prop to editor whenever it changes
+    //   - Collaborative: seed the Yjs doc from DB content after sync, only if empty
+    //     The ref guards against re-seeding on subsequent content prop changes
+    //     (e.g. when onChange updates the parent state after the user types).
 
-    // COLLABORATIVE mode: seed an empty Yjs room from DB content exactly once.
-    //
-    // Two async events must BOTH complete before we can act:
-    //   A) PartyKit sync — room state arrives over the network
-    //   B) DB content  — arrives via the `content` prop from a parent API call
-    //
-    // We handle the race by re-running this effect whenever either changes.
-    // `seeded` is a ref (not state) so setting it never triggers extra renders.
     const seeded = useRef(false);
+
     useEffect(() => {
-        if (!editor || !isCollaborative || !provider) return;
-        if (seeded.current) return;
+        if (!editor) return;
 
-        const tryToSeed = () => {
+        // Non-collaborative: keep editor in sync with parent content
+        if (!isCollaborative || !provider) {
+            // @ts-ignore
+            const current = editor.storage.markdown?.getMarkdown() ?? '';
+            if (content !== current) editor.commands.setContent(content);
+            return;
+        }
+
+        // Collaborative: only seed once, and only after the Yjs room is confirmed empty
+        if (seeded.current || !content) return;
+
+        const seed = () => {
             if (seeded.current) return;
-
-            // If the Yjs room already has content (from a snapshot or another peer),
-            // we must NEVER overwrite it — accept the CRDT state as source of truth.
-            if (!editor.isEmpty) { seeded.current = true; return; }
-
-            // Room is empty. Wait until the DB content has loaded before seeding.
-            if (!content) return;
-
-            // Both conditions met: seed this room for the first time.
-            editor.commands.setContent(content);
             seeded.current = true;
+            if (editor.isEmpty) {
+                editor.commands.setContent(content);
+            }
         };
 
-        // If already synced, try immediately; otherwise wait for the sync event.
-        // The `sync` event fires with `isSynced: boolean` — only act when true.
-        if (provider.synced) {
-            tryToSeed();
-        } else {
-            const onSync = (isSynced: boolean) => {
-                if (isSynced) tryToSeed();
-            };
-            provider.on('sync', onSync);
-            return () => provider.off('sync', onSync);
-        }
-        // Re-run when `content` arrives from the API (in case sync already happened).
+        provider.synced ? seed() : provider.once?.('sync', seed) ?? provider.on('sync', () => seed());
     }, [editor, isCollaborative, provider, content]);
     // ──────────────────────────────────────────────────────────────────────────
 
     // Keep editable state in sync
-    useEffect(() => {
-        editor?.setEditable(editable);
-    }, [editable, editor]);
+    useEffect(() => { editor?.setEditable(editable); }, [editable, editor]);
 
     return (
         <div ref={wrapperRef} className="w-full tiptap-wrapper relative">
