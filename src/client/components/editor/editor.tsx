@@ -331,46 +331,49 @@ export const Editor = forwardRef<EditorRef, EditorProps>(({
         editor: editor
     }))
 
-    // Reference to ensure we only load initial content once when connected to Yjs
-    // Track whether we've seeded the Yjs room with the DB content
+    // Whether the Yjs room has been seeded from DB (once-only guard)
     const initialContentLoaded = useRef(false);
 
-    // Phase 1: Load DB content into the editor immediately (no waiting for Yjs).
-    // This ensures the document is ALWAYS visible without delay.
+    // Load initial content from DB into the editor.
+    // Without collaboration: sync whenever DB content changes.
+    // With collaboration: only touch content once, AFTER Yjs has synced, and only if
+    // the room is truly empty (no remote peers have written to it yet).
     useEffect(() => {
         if (!editor) return;
-        // Without collaboration, just sync content changes normally
-        if (!documentId) {
+
+        // Non-collaborative mode: keep editor in sync with external content
+        if (!documentId || !provider) {
             // @ts-ignore
             if (content !== editor.storage.markdown?.getMarkdown()) {
                 editor.commands.setContent(content);
             }
             return;
         }
-        // With collaboration: seed the Yjs doc once if it's still empty.
-        // When Yjs later syncs remote state, the CRDT merges it on top automatically.
-        if (!initialContentLoaded.current && content && editor.isEmpty) {
-            editor.commands.setContent(content);
+
+        // Collaborative mode: wait for Yjs sync before deciding anything.
+        // This is the ONLY correct approach — calling setContent before sync
+        // creates conflicting Yjs operations that break real-time propagation.
+        if (initialContentLoaded.current) return;
+
+        const seedIfEmpty = () => {
+            if (initialContentLoaded.current) return;
             initialContentLoaded.current = true;
-        }
-    }, [content, editor, documentId]);
 
-    // Phase 2: Handle real-time Yjs sync from PartyKit.
-    // When a remote update arrives, TipTap applies it automatically via the Collaboration
-    // extension. We only need to ensure the `onChange` callback fires so the parent state
-    // and auto-save stay in sync with the collaborative document.
-    useEffect(() => {
-        if (!editor || !provider) return;
-
-        const handleSync = () => {
-            // If remote peers had content and the CRDT state is now non-empty,
-            // mark as loaded so we don't accidentally overwrite with stale DB content.
-            if (!editor.isEmpty) initialContentLoaded.current = true;
+            // Only seed if the room is actually empty (first-ever connection, no snapshot).
+            // If other peers already wrote content, we must NOT overwrite it.
+            if (editor.isEmpty && content) {
+                editor.commands.setContent(content);
+            }
         };
 
-        provider.on('sync', handleSync);
-        return () => provider.off('sync', handleSync);
-    }, [editor, provider]);
+        if (provider.synced) {
+            seedIfEmpty();
+        } else {
+            const onSync = () => { seedIfEmpty(); provider.off('sync', onSync); };
+            provider.on('sync', onSync);
+            return () => provider.off('sync', onSync);
+        }
+    }, [editor, documentId, provider, content]);
 
     // Update editable state
     useEffect(() => {
