@@ -350,20 +350,24 @@ export const Editor = forwardRef<EditorRef, EditorProps>(({
             return;
         }
 
-        // Collaborative mode: wait for Yjs sync before deciding anything.
-        // This is the ONLY correct approach — calling setContent before sync
-        // creates conflicting Yjs operations that break real-time propagation.
         if (initialContentLoaded.current) return;
 
         const seedIfEmpty = () => {
             if (initialContentLoaded.current) return;
-            initialContentLoaded.current = true;
 
-            // Only seed if the room is actually empty (first-ever connection, no snapshot).
-            // If other peers already wrote content, we must NOT overwrite it.
-            if (editor.isEmpty && content) {
-                editor.commands.setContent(content);
+            if (!editor.isEmpty) {
+                // PartyKit snapshot has content — accept it as source of truth
+                initialContentLoaded.current = true;
+                return;
             }
+
+            if (content) {
+                // Room is empty but DB has content — seed this room for the first time
+                editor.commands.setContent(content);
+                initialContentLoaded.current = true;
+            }
+            // If both are empty (content not loaded from API yet), do nothing.
+            // The effect will re-run once `content` arrives and try again.
         };
 
         if (provider.synced) {
@@ -374,6 +378,7 @@ export const Editor = forwardRef<EditorRef, EditorProps>(({
             return () => provider.off('sync', onSync);
         }
     }, [editor, documentId, provider, content]);
+
 
     // Update editable state
     useEffect(() => {
