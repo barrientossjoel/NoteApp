@@ -100,6 +100,11 @@ export const Editor = forwardRef<EditorRef, EditorProps>(({
     useEffect(() => () => provider?.destroy(), [provider]);
     // ─────────────────────────────────────────────────────────────────────────
 
+    // Keep a ref to `onChange` so the TipTap onUpdate closure always calls the
+    // LATEST version — TipTap's useEditor captures callbacks at creation time.
+    const onChangeRef = useRef(onChange);
+    useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
+
     const editor = useEditor({
         extensions: [
             StarterKit.configure({
@@ -146,9 +151,13 @@ export const Editor = forwardRef<EditorRef, EditorProps>(({
         content: isCollaborative ? undefined : content,
         editable: editable,
         onUpdate: ({ editor }) => {
-            // @ts-ignore - TipTap storage types can be tricky
-            const markdown = editor.storage.markdown.getMarkdown()
-            onChange(markdown)
+            try {
+                // @ts-ignore
+                const markdown = editor.storage.markdown.getMarkdown();
+                onChangeRef.current(markdown);
+            } catch (err) {
+                console.error('[Editor] onUpdate failed:', err);
+            }
 
             // Detect slash/mention update
             const { selection } = editor.state
