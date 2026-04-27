@@ -146,9 +146,9 @@ export const Editor = forwardRef<EditorRef, EditorProps>(({
                 }),
             ] : []),
         ],
-        // When Collaboration is active, Yjs controls the document — passing `content`
-        // here would create a conflicting empty-doc Yjs operation on every mount.
-        content: isCollaborative ? undefined : content,
+        // `content` is always passed so TipTap renders it immediately.
+        // The Collaboration extension merges Yjs remote state on top of it when it syncs.
+        content: content,
         editable: editable,
         onUpdate: ({ editor }) => {
             try {
@@ -337,19 +337,21 @@ export const Editor = forwardRef<EditorRef, EditorProps>(({
         editor: editor
     }))
 
-    // ─── Content loading ──────────────────────────────────────────────────────
-    // Simple, correct approach:
-    //   - Non-collaborative: sync content prop to editor whenever it changes
-    //   - Collaborative: seed the Yjs doc from DB content after sync, only if empty
-    //     The ref guards against re-seeding on subsequent content prop changes
-    //     (e.g. when onChange updates the parent state after the user types).
+    // ─── Content management ────────────────────────────────────────────────────
+    //
+    // Non-collaborative: sync `content` prop to the editor at every change.
+    // Collaborative: on first load, if the Yjs room is empty, seed from DB.
+    //   The `content` prop is passed to useEditor as the initial value, but
+    //   when the component mounts with content='' (document data not yet fetched),
+    //   TipTap initialises with an empty doc. We call setContent() once the DB
+    //   data arrives AND the Yjs room confirms it has no prior state.
 
     const seeded = useRef(false);
 
     useEffect(() => {
         if (!editor) return;
 
-        // Non-collaborative: keep editor in sync with parent content
+        // Non-collaborative: always keep the editor in sync with the prop
         if (!isCollaborative || !provider) {
             // @ts-ignore
             const current = editor.storage.markdown?.getMarkdown() ?? '';
@@ -357,23 +359,33 @@ export const Editor = forwardRef<EditorRef, EditorProps>(({
             return;
         }
 
-        // Collaborative: only seed once, and only after the Yjs room is confirmed empty
-        if (seeded.current || !content) return;
+        // Collaborative path — run once per document (seeded guard)
+        if (seeded.current) return;
+        if (!content) return; // Wait until the API has returned real content
 
-        const seed = () => {
+        const attemptSeed = () => {
             if (seeded.current) return;
-            seeded.current = true;
+            // Accept Yjs state as authoritative if the room already has content
+            // (snapshot from another peer or a previous session).
             if (editor.isEmpty) {
                 editor.commands.setContent(content);
             }
+            // Mark as done AFTER the isEmpty check so we never set it prematurely
+            seeded.current = true;
         };
 
-        provider.synced ? seed() : provider.once?.('sync', seed) ?? provider.on('sync', () => seed());
+        if (provider.synced) {
+            attemptSeed();
+        } else {
+            provider.on('sync', attemptSeed);
+            return () => provider.off('sync', attemptSeed);
+        }
     }, [editor, isCollaborative, provider, content]);
     // ──────────────────────────────────────────────────────────────────────────
 
     // Keep editable state in sync
     useEffect(() => { editor?.setEditable(editable); }, [editable, editor]);
+
 
     return (
         <div ref={wrapperRef} className="w-full tiptap-wrapper relative">
