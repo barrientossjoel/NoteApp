@@ -588,6 +588,7 @@ export function DocumentView({
                             {renderSubdocs('center')}
 
                             <Editor
+                                key={document.id}
                                 ref={editorRef}
                                 documentId={document.id}
                                 content={content}
