@@ -331,53 +331,58 @@ export const Editor = forwardRef<EditorRef, EditorProps>(({
         editor: editor
     }))
 
-    // Whether the Yjs room has been seeded from DB (once-only guard)
-    const initialContentLoaded = useRef(false);
+    // ─── Collaboration content seeding ────────────────────────────────────────
+    // Two independent async events must BOTH complete before we can seed:
+    //   1. PartyKit sync  (network)
+    //   2. DB content via `content` prop (API call)
+    //
+    // Strategy:
+    //   • Track sync status with React STATE (not a ref) so that when it flips
+    //     to true, the seeding effect automatically re-runs.
+    //   • Once the seeding effect sees both conditions met, it seeds once and
+    //     records that in a ref (seeded.current) to prevent any future overwrites.
 
-    // Load initial content from DB into the editor.
-    // Without collaboration: sync whenever DB content changes.
-    // With collaboration: only touch content once, AFTER Yjs has synced, and only if
-    // the room is truly empty (no remote peers have written to it yet).
+    const [providerSynced, setProviderSynced] = useState(() =>
+        provider ? provider.synced : false
+    );
+    const seeded = useRef(false);
+
+    // Effect 1: Watch for the Yjs sync event and flip state when ready.
     useEffect(() => {
-        if (!editor) return;
+        if (!provider) return;
+        if (provider.synced) { setProviderSynced(true); return; }
 
-        // Non-collaborative mode: keep editor in sync with external content
-        if (!documentId || !provider) {
-            // @ts-ignore
-            if (content !== editor.storage.markdown?.getMarkdown()) {
-                editor.commands.setContent(content);
-            }
-            return;
+        const onSync = () => setProviderSynced(true);
+        provider.on('sync', onSync);
+        return () => provider.off('sync', onSync);
+    }, [provider]);
+
+    // Effect 2: Non-collaborative mode — keep editor in sync with external content.
+    useEffect(() => {
+        if (!editor || (documentId && provider)) return;
+        // @ts-ignore
+        if (content !== editor.storage.markdown?.getMarkdown()) {
+            editor.commands.setContent(content);
         }
+    }, [content, editor, documentId, provider]);
 
-        if (initialContentLoaded.current) return;
+    // Effect 3: Seed content into an empty Yjs room once BOTH conditions are met.
+    useEffect(() => {
+        if (!editor || !documentId || !provider) return;
+        if (!providerSynced) return;  // Wait for PartyKit
+        if (seeded.current) return;   // Already handled
 
-        const seedIfEmpty = () => {
-            if (initialContentLoaded.current) return;
+        // Room has content from PartyKit snapshot → accept it, never overwrite
+        if (!editor.isEmpty) { seeded.current = true; return; }
 
-            if (!editor.isEmpty) {
-                // PartyKit snapshot has content — accept it as source of truth
-                initialContentLoaded.current = true;
-                return;
-            }
+        // Room is empty but DB content not yet loaded → wait for next render
+        if (!content) return;
 
-            if (content) {
-                // Room is empty but DB has content — seed this room for the first time
-                editor.commands.setContent(content);
-                initialContentLoaded.current = true;
-            }
-            // If both are empty (content not loaded from API yet), do nothing.
-            // The effect will re-run once `content` arrives and try again.
-        };
-
-        if (provider.synced) {
-            seedIfEmpty();
-        } else {
-            const onSync = () => { seedIfEmpty(); provider.off('sync', onSync); };
-            provider.on('sync', onSync);
-            return () => provider.off('sync', onSync);
-        }
-    }, [editor, documentId, provider, content]);
+        // Room is empty AND we have DB content → seed this room for the first time
+        editor.commands.setContent(content);
+        seeded.current = true;
+    }, [editor, documentId, provider, providerSynced, content]);
+    // ──────────────────────────────────────────────────────────────────────────
 
 
     // Update editable state
