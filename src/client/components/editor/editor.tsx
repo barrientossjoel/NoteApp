@@ -91,7 +91,12 @@ export const Editor = forwardRef<EditorRef, EditorProps>(({
     const [ydoc] = useState(() => new Y.Doc());
     const [provider] = useState(() => {
         if (!isCollaborative) return null;
-        const host = import.meta.env.DEV ? 'localhost:1234' : (import.meta.env.VITE_PARTYKIT_HOST ?? window.location.hostname);
+        let host = import.meta.env.DEV ? 'localhost:1234' : (import.meta.env.VITE_PARTYKIT_HOST ?? window.location.hostname);
+        
+        // Sanitize host: remove http:// or https:// if present
+        host = host.replace(/^https?:\/\//, '');
+        
+        console.log(`[Editor] Connecting to Yjs at ${host} (Room: doc-${documentId})`);
         return new YPartyKitProvider(host, `doc-${documentId}`, ydoc);
     });
 
@@ -366,23 +371,30 @@ export const Editor = forwardRef<EditorRef, EditorProps>(({
 
         const attemptSeed = () => {
             if (seeded.current) return;
-            // Accept Yjs state as authoritative if the room already has content
-            // (snapshot from another peer or a previous session).
-            const currentMarkdown = editor.storage.markdown?.getMarkdown()?.trim() || '';
-            const isReallyEmpty = currentMarkdown === '';
             
-            if (isReallyEmpty && content !== '') {
+            const currentMarkdown = editor.storage.markdown?.getMarkdown()?.trim() || '';
+            const isReallyEmpty = currentMarkdown === '' || currentMarkdown === '\n';
+            
+            console.log(`[Editor] Attempting seed. Room empty: ${isReallyEmpty}, DB has content: ${!!content}`);
+            
+            if (isReallyEmpty && content && content !== '') {
+                console.log('[Editor] Seeding TipTap with DB content');
                 editor.commands.setContent(content);
             }
-            // Mark as done AFTER the isEmpty check so we never set it prematurely
             seeded.current = true;
         };
 
         if (provider.synced) {
+            console.log('[Editor] Provider already synced, seeding...');
             attemptSeed();
         } else {
-            provider.on('sync', attemptSeed);
-            return () => provider.off('sync', attemptSeed);
+            console.log('[Editor] Waiting for provider sync...');
+            const onSync = () => {
+                console.log('[Editor] Provider synced!');
+                attemptSeed();
+            };
+            provider.on('sync', onSync);
+            return () => provider.off('sync', onSync);
         }
     }, [editor, isCollaborative, provider, content]);
     // ──────────────────────────────────────────────────────────────────────────

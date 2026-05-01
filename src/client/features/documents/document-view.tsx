@@ -595,30 +595,34 @@ export function DocumentView({
 
                             {renderSubdocs('center')}
 
-                            <Editor
-                                key={document.id}
-                                ref={editorRef}
-                                documentId={document.id}
-                                content={content}
-                                placeholder={t('startWriting')}
-                                onChange={setContent}
-                                editable={isEditing}
-                                onLinkClick={(href) => onOpenDocument?.(href)}
-                                onCommandTrigger={(position, query, triggerIndex, type) => {
-                                    setCommandMenu({ isOpen: true, position, query, triggerIndex, type })
-                                }}
-                                onCommandUpdate={(query) => {
-                                    setCommandMenu(prev => ({ ...prev, query }))
-                                }}
-                                onCommandClose={() => {
-                                    setCommandMenu(prev => ({ ...prev, isOpen: false }))
-                                }}
-                                onKeyDown={(e) => {
-                                    if (commandMenu.isOpen && (e.key === 'Enter' || e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'Escape')) {
-                                        return true
-                                    }
-                                }}
-                            />
+                            {content === null ? (
+                                <div className="text-muted-foreground animate-pulse py-4 text-sm font-medium">{t('loading')}...</div>
+                            ) : (
+                                <Editor
+                                    key={document.id}
+                                    ref={editorRef}
+                                    documentId={document.id}
+                                    content={content}
+                                    placeholder={t('startWriting')}
+                                    onChange={setContent}
+                                    editable={isEditing}
+                                    onLinkClick={(href) => onOpenDocument?.(href)}
+                                    onCommandTrigger={(position, query, triggerIndex, type) => {
+                                        setCommandMenu({ isOpen: true, position, query, triggerIndex, type })
+                                    }}
+                                    onCommandUpdate={(query) => {
+                                        setCommandMenu(prev => ({ ...prev, query }))
+                                    }}
+                                    onCommandClose={() => {
+                                        setCommandMenu(prev => ({ ...prev, isOpen: false }))
+                                    }}
+                                    onKeyDown={(e) => {
+                                        if (commandMenu.isOpen && (e.key === 'Enter' || e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'Escape')) {
+                                            return true
+                                        }
+                                    }}
+                                />
+                            )}
                         </div>
                     </div>
 
