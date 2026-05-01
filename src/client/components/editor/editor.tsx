@@ -96,8 +96,8 @@ export const Editor = forwardRef<EditorRef, EditorProps>(({
         // Sanitize host: remove http:// or https:// if present
         host = host.replace(/^https?:\/\//, '');
         
-        console.log(`[Editor] Connecting to Yjs at ${host} (Room: doc-${documentId})`);
-        return new YPartyKitProvider(host, `doc-${documentId}`, ydoc);
+        console.log(`[Editor] Connecting to Yjs at ${host} (Room: note-${documentId})`);
+        return new YPartyKitProvider(host, `note-${documentId}`, ydoc);
     });
 
     // Destroy the provider when this editor instance unmounts (key={documentId} ensures
