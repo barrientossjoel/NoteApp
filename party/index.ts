@@ -12,10 +12,12 @@ import { onConnect } from 'y-partykit';
 export default class NoteAppServer implements Party.Server {
     constructor(readonly room: Party.Room) { }
 
-    onConnect(connection: Party.Connection, ctx: Party.ConnectionContext) {
+    async onConnect(connection: Party.Connection, ctx: Party.ConnectionContext) {
         console.log(`[PartyKit] Client connected to room: ${this.room.id}`);
         try {
-            return onConnect(connection, this.room);
+            // WIPE the corrupted storage to fix 'Unexpected end of array' crash
+            await this.room.storage.deleteAll();
+            return onConnect(connection, this.room, { persist: false });
         } catch (err) {
             console.error(`[PartyKit] y-partykit onConnect error:`, err);
         }
