@@ -3,19 +3,31 @@ import { updateDocument } from '../actions/actions';
 
 /**
  * Debounced auto-save hook.
- * Skips the very first render to prevent overwriting DB content with an empty
- * string before the document data has loaded from the API.
- * Every subsequent content/title change is saved after `delay` ms of inactivity.
+ *
+ * - `content === null`  → content is not yet loaded from the API; skip entirely.
+ * - First render per document is always skipped to avoid saving before data arrives.
+ * - The isMounted guard resets every time `documentId` changes so switching
+ *   documents never accidentally saves the transient empty-string state.
  */
-export function useAutoSave(documentId: string, content: string, title: string, delay = 1500) {
+export function useAutoSave(documentId: string, content: string | null, title: string, delay = 1500) {
     const [isSaving, setIsSaving] = useState(false);
     const [lastSaved, setLastSaved] = useState<Date | null>(null);
-    const isMounted = useRef(false); // skip the initial render
+    const isMounted = useRef(false);
+
+    // Reset the guard whenever the active document changes.
+    // Without this, switching documents reuses the `true` value from the
+    // previous document and fires a save immediately with stale/empty content.
+    useEffect(() => {
+        isMounted.current = false;
+    }, [documentId]);
 
     useEffect(() => {
+        // Content not yet loaded — never save null to the database.
+        if (content === null) return;
+
         if (!isMounted.current) {
             isMounted.current = true;
-            return; // Skip the very first render — content might not be loaded yet
+            return; // Skip the very first render per document
         }
 
         const handler = setTimeout(async () => {

@@ -76,7 +76,8 @@ export function DocumentView({
     const { t } = useLanguage()
     // State for local changes
     const [title, setTitle] = useState(document.title || '')
-    const [content, setContent] = useState(document.content || '')
+    // null = content not yet loaded from API (prevents autosave from firing with '')
+    const [content, setContent] = useState<string | null>(document.content ?? null)
     const [isEditing, setIsEditing] = useState(true)
     const [localShowNotes, setLocalShowNotes] = useState(false)
     const [tags, setTags] = useState<string[]>(tryParseTags(document.tags))
@@ -149,19 +150,26 @@ export function DocumentView({
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [lastSaved])
-    // Sync state when document prop changes
+    // Sync state when document prop changes (e.g. user opens a different document).
+    // content is set to null first so useAutoSave does not fire during the load window.
     useEffect(() => {
         setTitle(document.title || '')
-        setContent(document.content || '')
         setTags(tryParseTags(document.tags))
 
-        if (document.content === undefined && document.id) {
-            import('../../actions/actions').then(({ getDocument }) => {
-                getDocument(document.id).then(fullDoc => {
-                    setContent(fullDoc.content || '');
-                    onUpdateDocument({ ...document, content: fullDoc.content || '' });
-                }).catch(console.error);
-            });
+        if (document.content !== undefined && document.content !== null) {
+            // Content already available (e.g. from cache / prefetch)
+            setContent(document.content || '');
+        } else {
+            // Reset to null while we fetch — prevents autosave from saving ''
+            setContent(null);
+            if (document.id) {
+                import('../../actions/actions').then(({ getDocument }) => {
+                    getDocument(document.id).then(fullDoc => {
+                        setContent(fullDoc.content || '');
+                        onUpdateDocument({ ...document, content: fullDoc.content || '' });
+                    }).catch(console.error);
+                });
+            }
         }
     }, [document.id, document.title, document.content, document.tags])
 

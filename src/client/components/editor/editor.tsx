@@ -25,7 +25,7 @@ export interface EditorRef {
 }
 
 interface EditorProps {
-    content: string
+    content: string | null
     onChange: (markdown: string) => void
     onCommandTrigger?: (position: { top: number; left: number }, query: string, triggerIndex: number, type: 'slash' | 'mention') => void
     onCommandUpdate?: (query: string) => void
@@ -91,7 +91,7 @@ export const Editor = forwardRef<EditorRef, EditorProps>(({
     const [ydoc] = useState(() => new Y.Doc());
     const [provider] = useState(() => {
         if (!isCollaborative) return null;
-        const host = import.meta.env.VITE_PARTYKIT_HOST ?? window.location.hostname;
+        const host = import.meta.env.DEV ? 'localhost:1234' : (import.meta.env.VITE_PARTYKIT_HOST ?? window.location.hostname);
         return new YPartyKitProvider(host, `doc-${documentId}`, ydoc);
     });
 
@@ -146,9 +146,9 @@ export const Editor = forwardRef<EditorRef, EditorProps>(({
                 }),
             ] : []),
         ],
-        // `content` is always passed so TipTap renders it immediately.
-        // The Collaboration extension merges Yjs remote state on top of it when it syncs.
-        content: content,
+        // Pass content as the initial value. `null` means data is not yet loaded;
+        // pass undefined so TipTap starts with an empty doc (Yjs will populate it).
+        content: content ?? undefined,
         editable: editable,
         onUpdate: ({ editor }) => {
             try {
@@ -353,6 +353,7 @@ export const Editor = forwardRef<EditorRef, EditorProps>(({
 
         // Non-collaborative: always keep the editor in sync with the prop
         if (!isCollaborative || !provider) {
+            if (content === null) return; // still loading — do nothing
             // @ts-ignore
             const current = editor.storage.markdown?.getMarkdown() ?? '';
             if (content !== current) editor.commands.setContent(content);
@@ -361,7 +362,7 @@ export const Editor = forwardRef<EditorRef, EditorProps>(({
 
         // Collaborative path — run once per document (seeded guard)
         if (seeded.current) return;
-        if (!content) return; // Wait until the API has returned real content
+        if (content === null || content === undefined) return; // Wait until the API has returned real content
 
         const attemptSeed = () => {
             if (seeded.current) return;

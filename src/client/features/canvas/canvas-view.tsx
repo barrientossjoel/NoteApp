@@ -1154,7 +1154,7 @@ export function CanvasView({
     const [ydoc] = useState(() => new Y.Doc());
     const [provider] = useState(() => {
         if (!doc.id) return null;
-        const host = import.meta.env.VITE_PARTYKIT_HOST ?? window.location.hostname;
+        const host = import.meta.env.DEV ? 'localhost:1234' : (import.meta.env.VITE_PARTYKIT_HOST ?? window.location.hostname);
         return new YPartyKitProvider(host, `canvas-${doc.id}`, ydoc);
     });
     const ymap = useRef(ydoc.getMap<any>('nodes')).current;
