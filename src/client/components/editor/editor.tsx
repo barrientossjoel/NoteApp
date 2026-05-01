@@ -102,7 +102,15 @@ export const Editor = forwardRef<EditorRef, EditorProps>(({
 
     // Destroy the provider when this editor instance unmounts (key={documentId} ensures
     // a fresh instance per document, so we never reuse a stale provider).
-    useEffect(() => () => provider?.destroy(), [provider]);
+    useEffect(() => {
+        return () => {
+            if (provider) {
+                console.log(`[Editor] Destroying provider for Room: doc-${documentId}`);
+                provider.destroy();
+                ydoc.destroy();
+            }
+        };
+    }, [provider, ydoc, documentId]);
     // ─────────────────────────────────────────────────────────────────────────
 
     // Keep a ref to `onChange` so the TipTap onUpdate closure always calls the
@@ -372,6 +380,7 @@ export const Editor = forwardRef<EditorRef, EditorProps>(({
         const attemptSeed = () => {
             if (seeded.current) return;
             
+            // @ts-ignore
             const currentMarkdown = editor.storage.markdown?.getMarkdown()?.trim() || '';
             const isReallyEmpty = currentMarkdown === '' || currentMarkdown === '\n';
             
