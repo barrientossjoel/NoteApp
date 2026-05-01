@@ -1,25 +1,16 @@
 import type * as Party from 'partykit/server';
-import { onConnect } from 'y-partykit';
 
-/**
- * NoteApp PartyKit Server
- *
- * Handles real-time Yjs CRDT synchronization for all document and canvas rooms.
- * Each room ID maps to one collaborative session:
- *  - "doc-{id}"    → Text document collaboration
- *  - "canvas-{id}" → Canvas collaboration
- */
 export default class NoteAppServer implements Party.Server {
     constructor(readonly room: Party.Room) { }
 
-    async onConnect(connection: Party.Connection, ctx: Party.ConnectionContext) {
-        console.log(`[PartyKit] Client connected to room: ${this.room.id}`);
-        try {
-            // WIPE the corrupted storage to fix 'Unexpected end of array' crash
-            await this.room.storage.deleteAll();
-            return onConnect(connection, this.room, { persist: false });
-        } catch (err) {
-            console.error(`[PartyKit] y-partykit onConnect error:`, err);
-        }
+    onConnect(connection: Party.Connection, ctx: Party.ConnectionContext) {
+        // Send a manual Yjs Sync Step 1 message so the client finishes "connecting"
+        // Protocol: [messageType(0=Sync), messageSyncType(0=Step1), stateVectorLength(1), stateVector(0)]
+        connection.send(new Uint8Array([0, 0, 1, 0]));
+    }
+
+    onMessage(message: string | ArrayBuffer, sender: Party.Connection) {
+        // Echo all Yjs binary updates and awareness messages to other connected clients
+        this.room.broadcast(message, [sender.id]);
     }
 }
