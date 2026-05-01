@@ -16,7 +16,8 @@ const translations = {
         noAccount: "Don't have an account?",
         signup: "Sign up",
         loginFailed: "Login failed",
-        error: "An error occurred during login"
+        error: "An error occurred during login",
+        loginSuccess: "Login successful! Redirecting..."
     },
     es: {
         back: "Volver",
@@ -28,7 +29,8 @@ const translations = {
         noAccount: "¿No tienes una cuenta?",
         signup: "Regístrate",
         loginFailed: "No se pudo iniciar sesión",
-        error: "Ocurrió un error al iniciar sesión"
+        error: "Ocurrió un error al iniciar sesión",
+        loginSuccess: "¡Inicio de sesión exitoso! Redirigiendo..."
     }
 };
 
@@ -45,10 +47,12 @@ export default function Login() {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
+    const [success, setSuccess] = useState('');
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
+        setSuccess('');
 
         try {
             const res = await fetch('/api/auth/login', {
@@ -62,7 +66,12 @@ export default function Login() {
             if (!res.ok) {
                 setError(data.error || t.loginFailed);
             } else {
-                setUser(data.user);
+                setSuccess(t.loginSuccess || "Login successful!");
+                setTimeout(() => {
+                    setUser(data.user);
+                    window.history.pushState({}, '', '/');
+                    window.dispatchEvent(new PopStateEvent('popstate'));
+                }, 1500);
             }
         } catch (err) {
             setError(t.error);
@@ -96,6 +105,7 @@ export default function Login() {
 
                 <h2 className="text-xl font-medium mb-6 text-center text-foreground">{t.welcome}</h2>
                 {error && <p className="mb-4 text-sm text-red-500 text-center bg-red-500/10 py-2 rounded-md border border-red-500/20">{error}</p>}
+                {success && <p className="mb-4 text-sm text-green-500 text-center bg-green-500/10 py-2 rounded-md border border-green-500/20">{success}</p>}
 
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <div className="space-y-2">

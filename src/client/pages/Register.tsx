@@ -17,7 +17,8 @@ const translations = {
         haveAccount: "Already have an account?",
         login: "Log in",
         regFailed: "Registration failed",
-        error: "An error occurred during registration"
+        error: "An error occurred during registration",
+        regSuccess: "Registration successful! Redirecting..."
     },
     es: {
         back: "Volver",
@@ -30,7 +31,8 @@ const translations = {
         haveAccount: "¿Ya tienes una cuenta?",
         login: "Iniciar Sesión",
         regFailed: "Error al registrarse",
-        error: "Ocurrió un error al registrarse"
+        error: "Ocurrió un error al registrarse",
+        regSuccess: "¡Registro exitoso! Redirigiendo..."
     }
 };
 
@@ -48,10 +50,12 @@ export default function Register() {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
+    const [success, setSuccess] = useState('');
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
+        setSuccess('');
 
         try {
             const res = await fetch('/api/auth/register', {
@@ -65,7 +69,12 @@ export default function Register() {
             if (!res.ok) {
                 setError(data.error || t.regFailed);
             } else {
-                setUser(data.user);
+                setSuccess(t.regSuccess || "Registration successful!");
+                setTimeout(() => {
+                    setUser(data.user);
+                    window.history.pushState({}, '', '/');
+                    window.dispatchEvent(new PopStateEvent('popstate'));
+                }, 1500);
             }
         } catch (err) {
             setError(t.error);
@@ -99,6 +108,7 @@ export default function Register() {
 
                 <h2 className="text-xl font-medium mb-6 text-center text-foreground">{t.title}</h2>
                 {error && <p className="mb-4 text-sm text-red-500 text-center bg-red-500/10 py-2 rounded-md border border-red-500/20">{error}</p>}
+                {success && <p className="mb-4 text-sm text-green-500 text-center bg-green-500/10 py-2 rounded-md border border-green-500/20">{success}</p>}
 
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <div className="space-y-2">
