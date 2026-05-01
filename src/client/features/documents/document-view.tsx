@@ -488,14 +488,7 @@ export function DocumentView({
                                     {document.isFavorite && <Check className="h-4 w-4 ml-auto" />}
                                 </div>
                                 <DropdownMenuSeparator />
-                                <div className="flex items-center justify-between px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground rounded-sm cursor-pointer" onClick={() => {
-                                    navigator.clipboard.writeText(`${window.location.origin}/${document.id}`);
-                                }}>
-                                    <div className="flex items-center gap-2">
-                                        <Link2 className="h-4 w-4 text-muted-foreground" />
-                                        <span>{t('share')}</span>
-                                    </div>
-                                </div>
+
 
                                 {onSplit && !isMobile && (
                                     <>

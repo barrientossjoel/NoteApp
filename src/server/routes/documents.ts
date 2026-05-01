@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
-import { db } from '../db/index.js';
-import { documents } from '../db/schema.js';
-import { eq, and, isNull, asc, desc } from 'drizzle-orm';
+import { db, getDb } from '../db/index.js';
+import { documents, documentShares, vaultShares } from '../db/schema.js';
+import { eq, and, or, isNull, asc, desc } from 'drizzle-orm';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import { requireAuth, type Env } from '../middleware/auth.js';
@@ -25,7 +25,9 @@ const documentSchema = z.object({
 documentsRouter.get('/', requireAuth, async (c) => {
     const status = c.req.query('status') || 'active';
     const user = c.get('user');
+    const db = getDb();
 
+    // Documents owned by user OR shared with user's email
     const allDocs = await db
         .select({
             id: documents.id,
@@ -43,12 +45,19 @@ documentsRouter.get('/', requireAuth, async (c) => {
             updatedAt: documents.updatedAt,
         })
         .from(documents)
+        .leftJoin(documentShares, eq(documents.id, documentShares.documentId))
+        .leftJoin(vaultShares, eq(documents.userId, vaultShares.ownerId))
         .where(
             and(
-                eq(documents.userId, user.id),
-                eq(documents.status, status as any)
+                eq(documents.status, status as any),
+                or(
+                    eq(documents.userId, user.id),
+                    eq(documentShares.sharedWithEmail, user.email),
+                    eq(vaultShares.sharedWithEmail, user.email)
+                )
             )
         )
+        .groupBy(documents.id) // Avoid duplicates if shared multiple ways
         .orderBy(asc(documents.order), desc(documents.updatedAt));
 
     return c.json(allDocs);
@@ -177,8 +186,29 @@ documentsRouter.delete('/trash/empty', requireAuth, async (c) => {
 documentsRouter.get('/:id', requireAuth, async (c) => {
     const id = c.req.param('id');
     const user = c.get('user');
-    const doc = await db.select().from(documents).where(and(eq(documents.id, id), eq(documents.userId, user.id))).get();
+    const db = getDb();
+    
+    const doc = await db
+        .select({
+            doc: documents,
+            docShare: documentShares,
+            vaultShare: vaultShares
+        })
+        .from(documents)
+        .leftJoin(documentShares, eq(documents.id, documentShares.documentId))
+        .leftJoin(vaultShares, eq(documents.userId, vaultShares.ownerId))
+        .where(
+            and(
+                eq(documents.id, id),
+                or(
+                    eq(documents.userId, user.id),
+                    eq(documentShares.sharedWithEmail, user.email),
+                    eq(vaultShares.sharedWithEmail, user.email)
+                )
+            )
+        )
+        .get();
 
     if (!doc) return c.json({ error: 'Not found' }, 404);
-    return c.json(doc);
+    return c.json(doc.doc);
 });

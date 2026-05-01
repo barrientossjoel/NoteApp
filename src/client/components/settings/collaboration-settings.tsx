@@ -1,30 +1,56 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useLanguage } from '../../context/LanguageContext';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
-import { Share2, Trash2 } from 'lucide-react';
+import { Share2, Trash2, Loader2 } from 'lucide-react';
 import { Avatar, AvatarFallback } from '../ui/avatar';
-
-// Mock data, eventually fetched from API
-const mockVaultShares = [
-    { id: '1', email: 'collaborator@example.com', permission: 'edit' }
-];
+import { getVaultShares, createVaultShare, deleteVaultShare } from '../../actions/actions';
 
 export function CollaborationSettings() {
     const { t } = useLanguage();
-    const [email, setEmail] = React.useState('');
-    const [permission, setPermission] = React.useState('view');
-    const [shares, setShares] = React.useState(mockVaultShares);
+    const [email, setEmail] = useState('');
+    const [permission, setPermission] = useState('view');
+    const [shares, setShares] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [sharing, setSharing] = useState(false);
 
-    const handleShare = () => {
-        if (!email) return;
-        setShares([...shares, { id: Date.now().toString(), email, permission }]);
-        setEmail('');
+    useEffect(() => {
+        fetchShares();
+    }, []);
+
+    const fetchShares = async () => {
+        try {
+            const data = await getVaultShares();
+            setShares(data);
+        } catch (error) {
+            console.error('Error fetching vault shares:', error);
+        } finally {
+            setLoading(false);
+        }
     };
 
-    const handleRemove = (id: string) => {
-        setShares(shares.filter(s => s.id !== id));
+    const handleShare = async () => {
+        if (!email) return;
+        setSharing(true);
+        try {
+            await createVaultShare({ email, permission: permission as 'view' | 'edit' });
+            setEmail('');
+            fetchShares();
+        } catch (error) {
+            console.error('Error sharing vault:', error);
+        } finally {
+            setSharing(false);
+        }
+    };
+
+    const handleRemove = async (id: string) => {
+        try {
+            await deleteVaultShare(id);
+            fetchShares();
+        } catch (error) {
+            console.error('Error removing vault share:', error);
+        }
     };
 
     return (
@@ -45,6 +71,7 @@ export function CollaborationSettings() {
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         className="flex-1"
+                        type="email"
                     />
                     <Select value={permission} onValueChange={setPermission}>
                         <SelectTrigger className="w-[120px]">
@@ -55,34 +82,41 @@ export function CollaborationSettings() {
                             <SelectItem value="edit">{t('permissionEdit')}</SelectItem>
                         </SelectContent>
                     </Select>
-                    <Button onClick={handleShare}>{t('shareVault')}</Button>
+                    <Button onClick={handleShare} disabled={sharing || !email}>
+                        {sharing ? <Loader2 className="h-4 w-4 animate-spin" /> : t('shareVault')}
+                    </Button>
                 </div>
 
                 {/* List Shares */}
                 <div className="space-y-2">
-                    {shares.length === 0 && (
+                    {loading ? (
+                        <div className="flex justify-center p-8">
+                            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                        </div>
+                    ) : shares.length === 0 ? (
                         <div className="text-center p-6 border rounded-lg bg-card text-muted-foreground text-sm">
-                            No active shares.
+                            {t('noResultsFound')}
                         </div>
+                    ) : (
+                        shares.map(share => (
+                            <div key={share.id} className="flex items-center justify-between p-3 rounded-lg border border-border bg-card">
+                                <div className="flex items-center gap-3">
+                                    <Avatar className="h-8 w-8">
+                                        <AvatarFallback>{share.sharedWithEmail.substring(0, 2).toUpperCase()}</AvatarFallback>
+                                    </Avatar>
+                                    <span className="text-sm font-medium">{share.sharedWithEmail}</span>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    <span className="text-xs text-muted-foreground uppercase bg-muted px-2 py-1 rounded-md">
+                                        {share.permission === 'edit' ? t('permissionEdit') : t('permissionView')}
+                                    </span>
+                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => handleRemove(share.id)}>
+                                        <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                </div>
+                            </div>
+                        ))
                     )}
-                    {shares.map(share => (
-                        <div key={share.id} className="flex items-center justify-between p-3 rounded-lg border border-border bg-card">
-                            <div className="flex items-center gap-3">
-                                <Avatar className="h-8 w-8">
-                                    <AvatarFallback>{share.email.substring(0, 2).toUpperCase()}</AvatarFallback>
-                                </Avatar>
-                                <span className="text-sm font-medium">{share.email}</span>
-                            </div>
-                            <div className="flex items-center gap-3">
-                                <span className="text-xs text-muted-foreground uppercase bg-muted px-2 py-1 rounded-md">
-                                    {share.permission === 'edit' ? t('permissionEdit') : t('permissionView')}
-                                </span>
-                                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => handleRemove(share.id)}>
-                                    <Trash2 className="h-4 w-4" />
-                                </Button>
-                            </div>
-                        </div>
-                    ))}
                 </div>
             </div>
         </div>

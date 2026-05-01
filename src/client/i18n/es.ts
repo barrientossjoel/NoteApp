@@ -111,5 +111,9 @@ export const es = {
     permissionView: 'Ver',
     permissionEdit: 'Editar',
     documentShares: 'Elementos Específicos',
-    documentSharesDesc: 'Elementos compartidos de forma individual.'
+    documentSharesDesc: 'Elementos compartidos de forma individual.',
+    copyLink: 'Copiar enlace',
+    linkCopied: 'Enlace copiado',
+    remove: 'Eliminar',
+    loading: 'Cargando'
 };

@@ -111,5 +111,9 @@ export const en = {
     permissionView: 'View',
     permissionEdit: 'Edit',
     documentShares: 'Specific Shares',
-    documentSharesDesc: 'Items shared individually.'
+    documentSharesDesc: 'Items shared individually.',
+    copyLink: 'Copy link',
+    linkCopied: 'Link copied',
+    remove: 'Remove',
+    loading: 'Loading'
 };

@@ -66,3 +66,41 @@ export async function getTrashItems() {
         documents: docs,
     };
 }
+
+// SHARES
+
+export async function getDocumentShares(id: string) {
+    const res = await api.shares.document[':id'].$get({ param: { id } });
+    if (!res.ok) throw new Error('Failed to fetch document shares');
+    return await res.json();
+}
+
+export async function createDocumentShare(id: string, data: { email: string, permission: 'view' | 'edit' }) {
+    const res = await api.shares.document[':id'].$post({ param: { id }, json: data });
+    if (!res.ok) throw new Error('Failed to share document');
+    return await res.json();
+}
+
+export async function deleteDocumentShare(shareId: string) {
+    const res = await api.shares.document[':shareId'].$delete({ param: { shareId } });
+    if (!res.ok) throw new Error('Failed to remove share');
+    return await res.json();
+}
+
+export async function getVaultShares() {
+    const res = await api.shares.vault.$get();
+    if (!res.ok) throw new Error('Failed to fetch vault shares');
+    return await res.json();
+}
+
+export async function createVaultShare(data: { email: string, permission: 'view' | 'edit' }) {
+    const res = await api.shares.vault.$post({ json: data });
+    if (!res.ok) throw new Error('Failed to share vault');
+    return await res.json();
+}
+
+export async function deleteVaultShare(shareId: string) {
+    const res = await api.shares.vault[':shareId'].$delete({ param: { shareId } });
+    if (!res.ok) throw new Error('Failed to remove vault share');
+    return await res.json();
+}
