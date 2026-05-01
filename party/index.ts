@@ -15,7 +15,7 @@ export default class NoteAppServer implements Party.Server {
     onConnect(connection: Party.Connection, ctx: Party.ConnectionContext) {
         console.log(`[PartyKit] Client connected to room: ${this.room.id}`);
         try {
-            return onConnect(connection, this.room, { persist: true });
+            return onConnect(connection, this.room);
         } catch (err) {
             console.error(`[PartyKit] y-partykit onConnect error:`, err);
         }
