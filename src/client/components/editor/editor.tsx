@@ -368,7 +368,10 @@ export const Editor = forwardRef<EditorRef, EditorProps>(({
             if (seeded.current) return;
             // Accept Yjs state as authoritative if the room already has content
             // (snapshot from another peer or a previous session).
-            if (editor.isEmpty) {
+            const currentMarkdown = editor.storage.markdown?.getMarkdown()?.trim() || '';
+            const isReallyEmpty = currentMarkdown === '';
+            
+            if (isReallyEmpty && content !== '') {
                 editor.commands.setContent(content);
             }
             // Mark as done AFTER the isEmpty check so we never set it prematurely
