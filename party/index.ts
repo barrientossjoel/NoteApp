@@ -13,6 +13,11 @@ export default class NoteAppServer implements Party.Server {
     constructor(readonly room: Party.Room) { }
 
     onConnect(connection: Party.Connection, ctx: Party.ConnectionContext) {
-        return onConnect(connection, this.room, { persist: { mode: 'snapshot' } });
+        console.log(`[PartyKit] Client connected to room: ${this.room.id}`);
+        try {
+            return onConnect(connection, this.room, { persist: true });
+        } catch (err) {
+            console.error(`[PartyKit] y-partykit onConnect error:`, err);
+        }
     }
 }
