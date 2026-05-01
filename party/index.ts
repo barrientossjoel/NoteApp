@@ -7,6 +7,10 @@ export default class NoteAppServer implements Party.Server {
         // Send a manual Yjs Sync Step 1 message so the client finishes "connecting"
         // Protocol: [messageType(0=Sync), messageSyncType(0=Step1), stateVectorLength(1), stateVector(0)]
         connection.send(new Uint8Array([0, 0, 1, 0]));
+
+        // Send a manual Yjs Sync Step 2 message (empty update) to complete the handshake!
+        // Protocol: [messageType(0=Sync), messageSyncType(1=Step2), updateLength(2), emptyUpdate(0, 0)]
+        connection.send(new Uint8Array([0, 1, 2, 0, 0]));
     }
 
     onMessage(message: string | ArrayBuffer, sender: Party.Connection) {
