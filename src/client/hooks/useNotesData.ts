@@ -15,7 +15,15 @@ export function useNotesData() {
         // getTrashItems() // implementing trash later for docs
       ]);
 
-      setDocuments(fetchedDocuments);
+      setDocuments(prevDocs => {
+        return fetchedDocuments.map((fetchedDoc: Document) => {
+          const existingDoc = prevDocs.find(d => d.id === fetchedDoc.id);
+          if (existingDoc && existingDoc.content !== undefined) {
+            return { ...fetchedDoc, content: existingDoc.content };
+          }
+          return fetchedDoc;
+        });
+      });
       // setTrashItems(fetchedTrash);
     } catch (err) {
       setError(err instanceof Error ? err : new Error('Failed to fetch data'));
