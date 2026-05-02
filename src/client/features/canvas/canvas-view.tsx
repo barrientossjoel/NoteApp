@@ -12,6 +12,7 @@ import { FormulaEngine, getColumnLetter } from './utils/formula-engine'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import * as Y from 'yjs'
+import { WebsocketProvider } from 'y-websocket'
 import YPartyKitProvider from 'y-partykit/provider'
 
 import {
@@ -1154,7 +1155,11 @@ export function CanvasView({
     const [ydoc] = useState(() => new Y.Doc());
     const [provider] = useState(() => {
         if (!doc.id) return null;
-        const host = import.meta.env.DEV ? 'localhost:1234' : (import.meta.env.VITE_PARTYKIT_HOST ?? window.location.hostname);
+        let host = import.meta.env.DEV ? 'localhost:1234' : (import.meta.env.VITE_PARTYKIT_HOST ?? window.location.hostname);
+        host = host.replace(/^https?:\/\//, '');
+        if (import.meta.env.DEV) {
+            return new WebsocketProvider(`ws://${host}`, `board-${doc.id}`, ydoc);
+        }
         return new YPartyKitProvider(host, `board-${doc.id}`, ydoc);
     });
     const ymap = useRef(ydoc.getMap<any>('nodes')).current;

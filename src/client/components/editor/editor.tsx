@@ -16,6 +16,7 @@ import { TableCell } from '@tiptap/extension-table-cell'
 import { TableHeader } from '@tiptap/extension-table-header'
 
 import * as Y from 'yjs'
+import { WebsocketProvider } from 'y-websocket'
 import YPartyKitProvider from 'y-partykit/provider'
 import Collaboration from '@tiptap/extension-collaboration'
 import CollaborationCursor from '@tiptap/extension-collaboration-cursor'
@@ -97,6 +98,10 @@ export const Editor = forwardRef<EditorRef, EditorProps>(({
         host = host.replace(/^https?:\/\//, '');
         
         console.log(`[Editor] Connecting to Yjs at ${host} (Room: note-${documentId})`);
+        
+        if (import.meta.env.DEV) {
+            return new WebsocketProvider(`ws://${host}`, `note-${documentId}`, ydoc);
+        }
         return new YPartyKitProvider(host, `note-${documentId}`, ydoc);
     });
 
