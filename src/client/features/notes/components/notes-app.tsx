@@ -371,7 +371,7 @@ export default function NotesApp() {
                       handleNavigate(view, false, true)
                     }
                   }}
-                  onOpenSidebar={() => setShowSidebar(true)}
+                  onToggleSidebar={() => setShowSidebar(prev => !prev)}
                   onCreateDocument={(type) => handleCreateDocument(null, type)}
                   onOpenSettings={() => {
                     setIsSettingsOpen(true)

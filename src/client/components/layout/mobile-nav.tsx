@@ -12,7 +12,7 @@ interface MobileNavProps {
     onSelectTab: (id: string) => void
     onCloseTab: (id: string) => void
     onNavigate: (view: string) => void
-    onOpenSidebar: () => void
+    onToggleSidebar: () => void
     onCreateDocument: (type: 'text' | 'canvas') => void
     onOpenSettings: () => void
     onPinTab: (id: string, pinned: boolean) => void
@@ -26,13 +26,16 @@ export function MobileNav({
     onSelectTab,
     onCloseTab,
     onNavigate,
-    onOpenSidebar,
+    onToggleSidebar,
     onCreateDocument,
     onOpenSettings,
     onPinTab,
     previewTabId
 }: MobileNavProps) {
     const [isMobileModalOpen, setIsMobileModalOpen] = React.useState(false)
+
+    const currentDoc = documents.find(d => d.id === currentView)
+    const hideFab = currentDoc && (currentDoc.type === 'canvas' || currentDoc.type === 'pdf' || (currentDoc as any).type === 'ebook')
 
     return (
         <>
@@ -41,7 +44,7 @@ export function MobileNav({
                     variant="ghost"
                     size="icon"
                     className="flex flex-col items-center gap-1 min-w-[64px] text-muted-foreground transition-colors"
-                    onClick={onOpenSidebar}
+                    onClick={onToggleSidebar}
                 >
                     <Menu className="h-5 w-5" />
                     <span className="text-[10px] font-semibold">Menu</span>
@@ -99,28 +102,30 @@ export function MobileNav({
             </div>
 
             {/* Floating Action Button (FAB) */}
-            <div className="fixed right-4 bottom-20 z-[120]">
-                <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                        <Button
-                            size="icon"
-                            className="h-14 w-14 rounded-full shadow-2xl bg-primary hover:bg-primary/90 transition-transform active:scale-95 border-2 border-primary/20"
-                        >
-                            <Plus className="h-6 w-6 text-primary-foreground" />
-                        </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" sideOffset={12} className="w-56 p-2 rounded-xl border border-border/50 shadow-2xl bg-card/95 backdrop-blur-md">
-                        <DropdownMenuItem className="py-3 px-4 rounded-lg cursor-pointer" onClick={() => onCreateDocument('text')}>
-                            <FileText className="mr-3 h-5 w-5 opacity-70" />
-                            <span className="font-medium text-base">Nuevo documento</span>
-                        </DropdownMenuItem>
-                        <DropdownMenuItem className="py-3 px-4 rounded-lg cursor-pointer" onClick={() => onCreateDocument('canvas')}>
-                            <Frame className="mr-3 h-5 w-5 opacity-70" />
-                            <span className="font-medium text-base">Nuevo canvas</span>
-                        </DropdownMenuItem>
-                    </DropdownMenuContent>
-                </DropdownMenu>
-            </div>
+            {!hideFab && (
+                <div className="fixed right-4 bottom-20 z-[120]">
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <Button
+                                size="icon"
+                                className="h-14 w-14 rounded-full shadow-2xl bg-primary hover:bg-primary/90 transition-transform active:scale-95 border-2 border-primary/20"
+                            >
+                                <Plus className="h-6 w-6 text-primary-foreground" />
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" sideOffset={12} className="w-56 p-2 rounded-xl border border-border/50 shadow-2xl bg-card/95 backdrop-blur-md">
+                            <DropdownMenuItem className="py-3 px-4 rounded-lg cursor-pointer" onClick={() => onCreateDocument('text')}>
+                                <FileText className="mr-3 h-5 w-5 opacity-70" />
+                                <span className="font-medium text-base">Nuevo documento</span>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem className="py-3 px-4 rounded-lg cursor-pointer" onClick={() => onCreateDocument('canvas')}>
+                                <Frame className="mr-3 h-5 w-5 opacity-70" />
+                                <span className="font-medium text-base">Nuevo canvas</span>
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                </div>
+            )}
 
             {/* Mobile Tabs Modal */}
             {isMobileModalOpen && (

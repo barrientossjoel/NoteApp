@@ -3098,10 +3098,15 @@ export function CanvasView({
 
             {/* Toolbar (Pill Shape) - No Border */}
             <div className={cn(
-                "absolute left-1/2 -translate-x-1/2 flex items-center gap-1 p-1 bg-secondary rounded-full shadow-lg z-50 px-2 h-12 transition-all duration-300",
-                isMobile ? "bottom-20" : "bottom-6"
+                "absolute flex gap-1 p-1 bg-secondary shadow-lg z-50 transition-all duration-300 items-center",
+                isMobile 
+                    ? "left-4 top-1/2 -translate-y-1/2 flex-col rounded-3xl py-2 w-12" 
+                    : "bottom-6 left-1/2 -translate-x-1/2 flex-row rounded-full px-2 h-12"
             )}>
-                <div className="flex items-center gap-1 pr-2 border-r border-border/10 mr-1">
+                <div className={cn(
+                    "flex items-center gap-1",
+                    isMobile ? "flex-col pb-2 border-b border-border/10 mb-1" : "flex-row pr-2 border-r border-border/10 mr-1"
+                )}>
                     <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full opacity-50"><MousePointer2 className="h-4 w-4" /></Button>
                     {/* Removed Pan/Move Button as requested */}
                 </div>
@@ -3180,7 +3185,10 @@ export function CanvasView({
                     </DropdownMenuContent>
                 </DropdownMenu>
 
-                <div className="flex items-center gap-1 pl-2 border-l border-border/10 ml-1">
+                <div className={cn(
+                    "flex items-center gap-1",
+                    isMobile ? "flex-col pt-2 border-t border-border/10 mt-1" : "flex-row pl-2 border-l border-border/10 ml-1"
+                )}>
                     <Button
                         variant="ghost"
                         size="icon"
