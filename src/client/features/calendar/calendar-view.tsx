@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { DayPicker } from 'react-day-picker'
 import 'react-day-picker/dist/style.css'
-import { format } from 'date-fns'
+import { format, isSameDay } from 'date-fns'
 import { cn } from '../../lib/utils/utils'
 import type { Document as NoteDocument } from '../../../core/types/notes'
 import { Button } from '../../components/ui/button'
@@ -30,17 +30,14 @@ export function CalendarView({
 }: CalendarViewProps) {
   const [selected, setSelected] = useState<Date>(new Date())
 
-  const notesForDay = React.useMemo(() => documents.filter(doc => {
-    if (!selected) return false
-    const dateStr = doc.updatedAt || doc.createdAt || doc.date;
-    if (!dateStr) return false;
-    const date = new Date(dateStr)
-    return (
-      date.getDate() === selected.getDate() &&
-      date.getMonth() === selected.getMonth() &&
-      date.getFullYear() === selected.getFullYear()
-    )
-  }), [documents, selected])
+  const notesForDay = React.useMemo(() => {
+    if (!selected) return []
+    
+    return documents.filter(doc => {
+      const dateStr = doc.updatedAt || doc.createdAt || doc.date
+      return dateStr ? isSameDay(new Date(dateStr), selected) : false
+    })
+  }, [documents, selected])
 
   return (
     <div className="flex flex-col h-full bg-muted/50 animate-in fade-in duration-300">

@@ -193,18 +193,6 @@ export function WorkspaceSwitcher({
                         <span className="text-sm">New Workspace</span>
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            onOpenSettings?.();
-                            setOpen(false);
-                        }}
-                        className="gap-2 px-2 py-1.5 cursor-pointer lg:hidden"
-                    >
-                        <SettingsIcon className="h-4 w-4 text-muted-foreground" />
-                        <span className="text-sm">Settings</span>
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
                     <div className="px-2 py-1.5 flex flex-col gap-1 items-start">
                         <span className="text-xs text-muted-foreground font-medium truncate w-full">{user?.name}</span>
                         <span className="text-[10px] text-muted-foreground/70 truncate w-full">{user?.email}</span>
@@ -226,7 +214,7 @@ export function WorkspaceSwitcher({
                 type="button"
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8 text-muted-foreground hover:text-foreground hidden lg:flex"
+                className="h-8 w-8 text-muted-foreground hover:text-foreground flex shrink-0"
                 onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();

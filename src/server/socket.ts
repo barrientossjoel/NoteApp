@@ -36,5 +36,15 @@ export function startSocketServer() {
         setupWSConnection(ws, req);
     });
 
+    // Handle known y-protocols awareness crash when clients disconnect abruptly
+    process.on('uncaughtException', (err: any) => {
+        if (err?.message?.includes('awareness.meta.get(clientID).clock') || err?.message?.includes('awareness.meta.get')) {
+            console.warn('[WS] Ignored y-protocols awareness teardown error:', err.message);
+            return;
+        }
+        console.error('Uncaught Exception:', err);
+        process.exit(1);
+    });
+
     console.log('✅ WebSocket Server listening on ws://localhost:1234');
 }

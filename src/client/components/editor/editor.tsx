@@ -18,6 +18,7 @@ import { TableHeader } from '@tiptap/extension-table-header'
 import * as Y from 'yjs'
 import { WebsocketProvider } from 'y-websocket'
 import YPartyKitProvider from 'y-partykit/provider'
+import { IndexeddbPersistence } from 'y-indexeddb'
 import Collaboration from '@tiptap/extension-collaboration'
 import CollaborationCursor from '@tiptap/extension-collaboration-cursor'
 
@@ -63,6 +64,33 @@ function uploadImageFile(file: File, view: import('@tiptap/pm/view').EditorView)
         .catch(err => console.error('Image upload failed:', err))
 }
 
+const providerCache = new Map<string, { ydoc: Y.Doc, provider: any, idbProvider: IndexeddbPersistence, refCount: number, timeoutId?: ReturnType<typeof setTimeout> }>();
+
+function getOrCreateProvider(documentId: string | undefined | null) {
+    if (!documentId) return null;
+    let cached = providerCache.get(documentId);
+    if (!cached) {
+        const ydoc = new Y.Doc();
+        let host = import.meta.env.DEV ? `${window.location.hostname}:1234` : (import.meta.env.VITE_PARTYKIT_HOST ?? window.location.hostname);
+        
+        // Sanitize host: remove http:// or https:// if present
+        host = host.replace(/^https?:\/\//, '');
+        
+        console.log(`[Editor] Connecting to Yjs at ${host} (Room: note-${documentId})`);
+        
+        const provider = import.meta.env.DEV 
+            ? new WebsocketProvider(`ws://${host}`, `note-${documentId}`, ydoc)
+            : new YPartyKitProvider(host, `note-${documentId}`, ydoc);
+            
+        // Local-first persistence
+        const idbProvider = new IndexeddbPersistence(`note-${documentId}`, ydoc);
+            
+        cached = { ydoc, provider, idbProvider, refCount: 0 };
+        providerCache.set(documentId, cached);
+    }
+    return cached;
+}
+
 export const Editor = forwardRef<EditorRef, EditorProps>(({
     content,
     onChange,
@@ -89,33 +117,38 @@ export const Editor = forwardRef<EditorRef, EditorProps>(({
     // ── Yjs + PartyKit setup ──────────────────────────────────────────────────
     // These MUST be declared before useEditor to maintain stable hooks order.
     const isCollaborative = !!documentId;
-    const [ydoc] = useState(() => new Y.Doc());
-    const [provider] = useState(() => {
-        if (!isCollaborative) return null;
-        let host = import.meta.env.DEV ? 'localhost:1234' : (import.meta.env.VITE_PARTYKIT_HOST ?? window.location.hostname);
-        
-        // Sanitize host: remove http:// or https:// if present
-        host = host.replace(/^https?:\/\//, '');
-        
-        console.log(`[Editor] Connecting to Yjs at ${host} (Room: note-${documentId})`);
-        
-        if (import.meta.env.DEV) {
-            return new WebsocketProvider(`ws://${host}`, `note-${documentId}`, ydoc);
-        }
-        return new YPartyKitProvider(host, `note-${documentId}`, ydoc);
-    });
+    const [collaboration] = useState(() => isCollaborative ? getOrCreateProvider(documentId as string) : null);
 
     // Destroy the provider when this editor instance unmounts (key={documentId} ensures
     // a fresh instance per document, so we never reuse a stale provider).
     useEffect(() => {
+        if (!collaboration || !documentId) return;
+        
+        collaboration.refCount++;
+        if (collaboration.timeoutId) {
+            clearTimeout(collaboration.timeoutId);
+            collaboration.timeoutId = undefined;
+        }
+
         return () => {
-            if (provider) {
-                console.log(`[Editor] Destroying provider for Room: doc-${documentId}`);
-                provider.destroy();
-                ydoc.destroy();
+            collaboration.refCount--;
+            if (collaboration.refCount === 0) {
+                // Delay destruction to survive React 18 StrictMode unmount/remount
+                collaboration.timeoutId = setTimeout(() => {
+                    if (collaboration.refCount === 0) {
+                        console.log(`[Editor] Destroying provider for Room: doc-${documentId}`);
+                        collaboration.provider.destroy();
+                        collaboration.idbProvider.destroy();
+                        collaboration.ydoc.destroy();
+                        providerCache.delete(documentId);
+                    }
+                }, 250);
             }
         };
-    }, [provider, ydoc, documentId]);
+    }, [collaboration, documentId]);
+
+    const ydoc = collaboration?.ydoc as Y.Doc;
+    const provider = collaboration?.provider;
     // ─────────────────────────────────────────────────────────────────────────
 
     // Keep a ref to `onChange` so the TipTap onUpdate closure always calls the
@@ -385,6 +418,13 @@ export const Editor = forwardRef<EditorRef, EditorProps>(({
         const attemptSeed = () => {
             if (seeded.current) return;
             
+            // Wait for IndexedDB to finish loading local state before we decide to seed
+            if (!collaboration?.idbProvider.synced) {
+                console.log('[Editor] IDB not yet synced, deferring seed...');
+                setTimeout(attemptSeed, 50);
+                return;
+            }
+
             // @ts-ignore
             const currentMarkdown = editor.storage.markdown?.getMarkdown()?.trim() || '';
             const isReallyEmpty = currentMarkdown === '' || currentMarkdown === '\n';
@@ -400,12 +440,12 @@ export const Editor = forwardRef<EditorRef, EditorProps>(({
 
         if (provider.synced) {
             console.log('[Editor] Provider already synced, seeding...');
-            attemptSeed();
+            setTimeout(attemptSeed, 0);
         } else {
             console.log('[Editor] Waiting for provider sync...');
             const onSync = () => {
                 console.log('[Editor] Provider synced!');
-                attemptSeed();
+                setTimeout(attemptSeed, 0);
             };
             provider.on('sync', onSync);
             return () => provider.off('sync', onSync);

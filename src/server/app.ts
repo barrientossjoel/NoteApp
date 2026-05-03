@@ -1,11 +1,11 @@
 import { Hono } from 'hono';
-import { logger } from 'hono/logger';
 import { cors } from 'hono/cors';
 import { documentsRouter } from './routes/documents.js';
 import { messagesRouter } from './routes/messages.js';
 import { uploadsRouter } from './routes/uploads.js';
 import { authRouter } from './routes/auth.js';
 import { sharesRouter } from './routes/shares.js';
+import { globalErrorHandler } from './middleware/error-handler.js';
 
 const app = new Hono().basePath('/api');
 
@@ -13,14 +13,7 @@ const app = new Hono().basePath('/api');
 app.use('*', cors());
 
 // Error handling middleware
-app.onError((err, c) => {
-    console.error(`GLOBAL ERROR: ${err}`);
-    return c.json({
-        error: 'Internal Server Error',
-        message: err.message,
-        stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
-    }, 500);
-});
+app.onError(globalErrorHandler);
 
 // Routes
 app.route('/auth', authRouter);
