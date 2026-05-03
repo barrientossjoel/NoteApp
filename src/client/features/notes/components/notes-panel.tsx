@@ -326,7 +326,7 @@ export function NotesPanel({ documentId, title, className, onOpenAsTab, onClose,
     };
 
     return (
-        <div className={cn("flex flex-col h-full bg-[#1A1A1A] border-l border-border/30", className)}>
+        <div className={cn("flex flex-col h-full bg-black/10 backdrop-blur-md border-l border-border/30", className)}>
             <div className="flex items-center justify-between p-4 bg-muted/5 border-t border-border/40">
                 <div className="flex items-center gap-2">
                     {onClose && (
@@ -427,7 +427,7 @@ export function NotesPanel({ documentId, title, className, onOpenAsTab, onClose,
                 ))}
             </div>
 
-            <div className="p-3 bg-[#1A1A1A] border-t border-muted/5">
+            <div className="p-3 bg-transparent border-t border-muted/5">
                 {isRecording ? (
                     <div className="flex items-center gap-3 bg-muted/20 rounded-md px-3 py-2 animate-pulse">
                         <div className="h-2 w-2 rounded-full bg-red-500" />

@@ -3250,16 +3250,10 @@ export function CanvasView({
                     <DropdownMenuContent align="end" className="w-56">
                         {isMobile && (
                             <div className="p-2 border-b border-border/50">
-                                {onToggleTabs && (
-                                    <div className="flex items-center gap-2 px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground rounded-sm cursor-pointer" onClick={onToggleTabs}>
-                                        <PanelTop className="h-4 w-4 text-muted-foreground" />
-                                        <span>{showTabs ? "Hide Tabs" : "Show Tabs"}</span>
-                                    </div>
-                                )}
-                                <div className="flex items-center gap-2 px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground rounded-sm cursor-pointer" onClick={() => setLocalShowNotes(!localShowNotes)}>
-                                    <MessageSquare className="h-4 w-4 text-muted-foreground" />
+                                <DropdownMenuItem onClick={() => setLocalShowNotes(!localShowNotes)} className="cursor-pointer">
+                                    <MessageSquare className="mr-2 h-4 w-4 text-muted-foreground" />
                                     <span>{localShowNotes ? "Close Notes" : "Open Notes"}</span>
-                                </div>
+                                </DropdownMenuItem>
                             </div>
                         )}
                         <div className="p-2">

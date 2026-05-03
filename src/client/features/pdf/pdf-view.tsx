@@ -185,6 +185,20 @@ export function PdfView({
         return saved ? Math.min(Math.max(parseFloat(saved), 0.5), 3.0) : 1.0
     })
 
+    // Reset or clamp scale for ebooks on mobile when first opening
+    // This prevents desktop-saved large scales from ruining the mobile reading experience.
+    useEffect(() => {
+        if (isMobile && isEbookFile) {
+            const saved = localStorage.getItem(SCALE_KEY(url))
+            if (!saved) {
+                setScale(1.0)
+            } else {
+                const s = parseFloat(saved)
+                if (s > 1.3) setScale(1.0)
+            }
+        }
+    }, [url, isMobile, isEbookFile])
+
     useEffect(() => {
         localStorage.setItem(SCALE_KEY(url), String(scale))
     }, [url, scale])
@@ -383,7 +397,14 @@ export function PdfView({
                     className="flex-1 min-h-0 relative"
                     style={{ touchAction: 'pan-x pan-y pinch-zoom' }}
                     onClick={() => {
-                        if (isMobile) {
+                        if (anyExpanded) {
+                            const nextShow = !showHeader
+                            setShowHeader(nextShow)
+                            if (nextShow) {
+                                if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current)
+                                hideTimeoutRef.current = setTimeout(() => setShowHeader(false), 3000)
+                            }
+                        } else if (isMobile) {
                             setIsHeaderVisible(v => !v)
                             if (!isHeaderVisible) resetAutoHide()
                         }
@@ -423,6 +444,24 @@ export function PdfView({
                                     scale={scale}
                                     scrollPosition={doc.scrollPosition}
                                     onAddHighlight={handleAddHighlight}
+                                    onPdfInit={async (pdf) => {
+                                        if (isMobile) {
+                                            try {
+                                                const page = await pdf.getPage(1)
+                                                const viewport = page.getViewport({ scale: 1 })
+                                                const containerWidth = contentRef.current?.clientWidth || window.innerWidth
+                                                // 32px for padding/margins
+                                                const fitScale = (containerWidth - 32) / viewport.width
+                                                // Only override if we really need to fit it. 
+                                                // On mobile we want to ensure it always fits when opening.
+                                                setScale(Math.min(Math.max(fitScale, 0.1), 3.0))
+                                                // Also, dispatch a zoom event so PdfRenderer recenters if it needs to, 
+                                                // though the state update might be enough.
+                                            } catch (e) {
+                                                console.error('Failed to auto-fit PDF scale on mobile', e)
+                                            }
+                                        }
+                                    }}
                                 />
                             )}
                         </Suspense>

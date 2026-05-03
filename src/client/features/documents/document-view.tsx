@@ -457,26 +457,18 @@ export function DocumentView({
                             <div className="p-2">
                                 {isMobile && (
                                     <>
-                                        <div className="flex items-center justify-between px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground rounded-sm cursor-pointer" onClick={() => setIsEditing(!isEditing)}>
+                                        <DropdownMenuItem className="cursor-pointer" onClick={() => setIsEditing(!isEditing)}>
                                             <div className="flex items-center gap-2">
                                                 {isEditing ? <Eye className="h-4 w-4 text-muted-foreground" /> : <Pencil className="h-4 w-4 text-muted-foreground" />}
                                                 <span>{isEditing ? t('viewMode') : t('editMode')}</span>
                                             </div>
-                                        </div>
-                                        {onToggleTabs && (
-                                            <div className="flex items-center justify-between px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground rounded-sm cursor-pointer" onClick={onToggleTabs}>
-                                                <div className="flex items-center gap-2">
-                                                    <PanelTop className="h-4 w-4 text-muted-foreground" />
-                                                    <span>{showTabs ? t('hideTabs') : t('showTabs')}</span>
-                                                </div>
-                                            </div>
-                                        )}
-                                        <div className="flex items-center justify-between px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground rounded-sm cursor-pointer" onClick={() => setLocalShowNotes(!localShowNotes)}>
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem className="cursor-pointer" onClick={() => setLocalShowNotes(!localShowNotes)}>
                                             <div className="flex items-center gap-2">
                                                 <MessageSquare className="h-4 w-4 text-muted-foreground" />
                                                 <span>{localShowNotes ? t('closeNotes') : t('openNotes')}</span>
                                             </div>
-                                        </div>
+                                        </DropdownMenuItem>
                                         <DropdownMenuSeparator />
                                     </>
                                 )}

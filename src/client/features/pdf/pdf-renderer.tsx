@@ -122,11 +122,12 @@ interface PdfRendererProps {
     scale: number
     scrollPosition?: string | null
     onAddHighlight?: (text: string, page: number) => void
+    onPdfInit?: (pdf: pdfjs.PDFDocumentProxy) => void
 }
 
 const SCROLL_KEY = (url: string) => `pdf-scroll:${url}`
 
-export const PdfRenderer = forwardRef<any, PdfRendererProps>(({ documentId, url, invertColors, scale, scrollPosition, onAddHighlight }, ref) => {
+export const PdfRenderer = forwardRef<any, PdfRendererProps>(({ documentId, url, invertColors, scale, scrollPosition, onAddHighlight, onPdfInit }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null)
     const [selection, setSelection] = useState<{ text: string, page: number, rect: DOMRect } | null>(null)
 
@@ -169,6 +170,7 @@ export const PdfRenderer = forwardRef<any, PdfRendererProps>(({ documentId, url,
                 setCachedDoc(url, doc)
                 setPdf(doc)
                 setLoading(false)
+                if (onPdfInit) onPdfInit(doc)
             } catch (err: any) {
                 if (!active) return
                 console.error('Error loading PDF:', err)
