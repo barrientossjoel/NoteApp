@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { useMediaQuery } from '../../hooks/useMediaQuery'
-import { GripVertical, Plus, Trash2, Type, Move, MousePointer2, Image, Maximize, Minimize, X, Check, Link, PanelLeft, PanelTop, FileText, MessageSquare, Frame, ArrowRight, Square, Circle, FolderDown, Upload, ExternalLink, ZoomIn, ZoomOut, Table, MoreVertical, Pencil, Link2 } from 'lucide-react'
+import { GripVertical, Plus, Trash2, Type, Move, MousePointer2, Image, Maximize, Minimize, X, Check, Link, PanelLeft, PanelTop, FileText, MessageSquare, Frame, ArrowRight, Square, Circle, FolderDown, Upload, ExternalLink, ZoomIn, ZoomOut, Table, MoreVertical, Pencil, Share2 } from 'lucide-react'
 import { cn } from '../../lib/utils/utils'
 import { Button } from '../../components/ui/button'
 import { Input } from '../../components/ui/input'
@@ -110,6 +110,7 @@ export function CanvasView({
     const [focusTarget, setFocusTarget] = useState<'title' | 'content' | null>(null)
     const [localShowNotes, setLocalShowNotes] = useState(false)
     const [isImportOpen, setIsImportOpen] = useState(false)
+    const [shareOpen, setShareOpen] = useState(false)
     const fileInputRef = useRef<HTMLInputElement>(null)
 
     const breadcrumbs = useMemo(() => {
@@ -736,8 +737,6 @@ export function CanvasView({
                     </>
                 )}
 
-                <ShareDialog elementId={doc.id} elementType="canvas" />
-
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                         <Button variant="ghost" size="icon" className="h-9 w-9">
@@ -754,8 +753,8 @@ export function CanvasView({
                             </div>
                         )}
                         <div className="p-2">
-                            <DropdownMenuItem onClick={() => navigator.clipboard.writeText(`${window.location.origin}/${doc.id}`)}>
-                                <Link2 className="mr-2 h-4 w-4" />
+                            <DropdownMenuItem onClick={() => setShareOpen(true)}>
+                                <Share2 className="mr-2 h-4 w-4" />
                                 <span>Share</span>
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
@@ -781,7 +780,13 @@ export function CanvasView({
                 </DropdownMenu>
             </div>
 
-            {/* Fullscreen Toggle (Bottom Right) */}
+            <ShareDialog
+                elementId={doc.id}
+                elementType="canvas"
+                open={shareOpen}
+                onOpenChange={setShareOpen}
+            />
+
             <div className="absolute bottom-6 right-6 flex flex-col items-end gap-2 z-50">
                 {isMobile ? (
                     <div className="text-[10px] text-muted-foreground opacity-50 hover:opacity-100 transition-opacity">
