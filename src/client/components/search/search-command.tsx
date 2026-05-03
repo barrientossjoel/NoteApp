@@ -52,7 +52,21 @@ export function SearchCommand({
         const tagSet = new Set<string>()
         documents.forEach(doc => {
             if (doc.tags) {
-                doc.tags.split(',').forEach(tag => tagSet.add(tag.trim()))
+                try {
+                    const parsed = JSON.parse(doc.tags);
+                    if (Array.isArray(parsed)) {
+                        parsed.forEach(t => {
+                            if (typeof t === 'string' && t.trim()) tagSet.add(t.trim())
+                        })
+                    } else {
+                        throw new Error('Not an array');
+                    }
+                } catch (e) {
+                    doc.tags.split(',').forEach(tag => {
+                        const t = tag.trim().replace(/^\[|\]$/g, '').replace(/^"|"$/g, '').trim();
+                        if (t) tagSet.add(t);
+                    })
+                }
             }
         })
         if (tagSet.size === 0) {
@@ -169,7 +183,15 @@ export function SearchCommand({
                                                         </span>
                                                     </div>
                                                     <div className={cn("text-[13px] truncate mt-0.5 transition-colors", isSelected ? "text-[#8ab4f8]/60" : "text-muted-foreground/60")}>
-                                                        {doc.content ? doc.content.replace(/[#*`>]/g, '').substring(0, 60) + '...' : '...'}
+                                                        {doc.type === 'canvas' ? 'Canvas Workspace' : 
+                                                         doc.type === 'pdf' ? 'PDF Document' : 
+                                                         doc.content ? doc.content
+                                                            .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+                                                            .replace(/[-*]\s+\[[ x]\]/gi, '')
+                                                            .replace(/[#*`>_~-]/g, '')
+                                                            .replace(/\s+/g, ' ')
+                                                            .trim()
+                                                            .substring(0, 80) + '...' : '...'}
                                                     </div>
                                                 </div>
                                             </button>
@@ -183,9 +205,9 @@ export function SearchCommand({
                         {allTags.length > 0 && (
                             <div>
                                 <div className="px-3 pb-2 text-[11px] font-semibold text-muted-foreground tracking-wider uppercase">TAGS</div>
-                                <div className="px-3 flex flex-wrap gap-4">
+                                <div className="px-3 flex flex-wrap gap-2">
                                     {allTags.map(tag => (
-                                        <span key={tag} className="text-[13px] text-muted-foreground hover:text-neutral-200 cursor-pointer transition-colors font-medium">
+                                        <span key={tag} className="px-2.5 py-1 bg-white/5 hover:bg-white/10 border border-white/5 rounded-md text-[12px] text-muted-foreground hover:text-neutral-200 cursor-pointer transition-colors font-medium">
                                             {tag}
                                         </span>
                                     ))}
