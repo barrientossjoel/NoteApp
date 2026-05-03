@@ -39,6 +39,7 @@ import { useCanvasSync } from './hooks/use-canvas-sync'
 import { useCanvasCamera } from './hooks/use-canvas-camera'
 import { useCanvasInteraction } from './hooks/use-canvas-interaction'
 import { calculateBezierControls, getArrowMidpoint, getBestDynamicEnd } from './utils/canvas-geometry'
+import { useKeyboardShortcuts, matchesShortcut } from '../../context/KeyboardShortcutsContext'
 
 export function CanvasView({
     document: doc,
@@ -326,19 +327,25 @@ export function CanvasView({
         return () => clearTimeout(timer)
     }, [nodes, camera, doc, onUpdateDocument])
 
+    const { shortcuts } = useKeyboardShortcuts()
+    const shortcutsRef = React.useRef(shortcuts)
+    React.useEffect(() => { shortcutsRef.current = shortcuts }, [shortcuts])
+
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             const target = e.target as HTMLElement
             const isInput = ['INPUT', 'TEXTAREA'].includes(target.tagName) || target.isContentEditable
-            if (e.code === 'Space' && !isInput) setIsSpacePressed(true)
-            if (e.code === 'Delete' && selection.size > 0 && !isModalOpen && !isInput) deleteSelection()
+            if (matchesShortcut(e, shortcutsRef.current.canvasPan) && !isInput) setIsSpacePressed(true)
+            if (matchesShortcut(e, shortcutsRef.current.canvasDelete) && selection.size > 0 && !isModalOpen && !isInput) deleteSelection()
             if (e.code === 'Escape') {
                 if (isModalOpen) setIsModalOpen(false)
                 else if (editingId) setEditingId(null)
                 else if (selection.size > 0) setSelection(new Set())
             }
         }
-        const handleKeyUp = (e: KeyboardEvent) => { if (e.code === 'Space') setIsSpacePressed(false) }
+        const handleKeyUp = (e: KeyboardEvent) => {
+            if (matchesShortcut(e, shortcutsRef.current.canvasPan)) setIsSpacePressed(false)
+        }
         const handleWindowPaste = (e: ClipboardEvent) => {
             const target = e.target as HTMLElement
             const isInput = ['INPUT', 'TEXTAREA'].includes(target.tagName) || target.isContentEditable

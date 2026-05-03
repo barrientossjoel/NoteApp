@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useMemo } from 'react'
+import { useKeyboardShortcuts, matchesShortcut } from '../../context/KeyboardShortcutsContext'
 import {
     Group as PanelGroup,
     Panel,
@@ -294,22 +295,25 @@ export function Workspace({
     }
 
     // Keyboard shortcuts - using capture phase so nothing (e.g. react-pdf, iframes) can swallow them
+    const { shortcuts } = useKeyboardShortcuts()
+    const shortcutsRef = React.useRef(shortcuts)
+    React.useEffect(() => { shortcutsRef.current = shortcuts }, [shortcuts])
+
     React.useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.altKey) {
-                if (e.key === 'h' || e.key === 'H') {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    handleSplitPane(activePaneId, 'horizontal')
-                } else if (e.key === 'v' || e.key === 'V') {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    handleSplitPane(activePaneId, 'vertical')
-                } else if (e.key === 'q' || e.key === 'Q') {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    handleClosePane(activePaneId)
-                }
+            const s = shortcutsRef.current
+            if (matchesShortcut(e, s.splitHorizontal)) {
+                e.preventDefault()
+                e.stopPropagation()
+                handleSplitPane(activePaneId, 'horizontal')
+            } else if (matchesShortcut(e, s.splitVertical)) {
+                e.preventDefault()
+                e.stopPropagation()
+                handleSplitPane(activePaneId, 'vertical')
+            } else if (matchesShortcut(e, s.closePane)) {
+                e.preventDefault()
+                e.stopPropagation()
+                handleClosePane(activePaneId)
             }
         }
 

@@ -24,8 +24,17 @@ import { Button } from '../../../components/ui/button'
 import { PanelLeft } from 'lucide-react'
 import { useWorkspaces } from '../../../hooks/useWorkspaces'
 import { MobileNav } from '../../../components/layout/mobile-nav'
+import { KeyboardShortcutsProvider, useKeyboardShortcuts, matchesShortcut } from '../../../context/KeyboardShortcutsContext'
 
 export default function NotesApp() {
+  return (
+    <KeyboardShortcutsProvider>
+      <NotesAppInner />
+    </KeyboardShortcutsProvider>
+  )
+}
+
+function NotesAppInner() {
   const isMobile = useMediaQuery('(max-width: 768px)')
   const { documents, setDocuments, isLoading, error, refresh } = useNotesData();
   const {
@@ -64,10 +73,11 @@ export default function NotesApp() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [isSearchOpen, setIsSearchOpen] = useState(false)
 
-  // Global search shortcut
+  // Global search shortcut (configurable)
+  const { shortcuts } = useKeyboardShortcuts()
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
-      if (e.key === "b" && (e.altKey || e.metaKey)) {
+      if (matchesShortcut(e, shortcuts.globalSearch)) {
         e.preventDefault()
         setIsSearchOpen((open) => !open)
       }
@@ -75,7 +85,7 @@ export default function NotesApp() {
 
     document.addEventListener("keydown", down)
     return () => document.removeEventListener("keydown", down)
-  }, [])
+  }, [shortcuts.globalSearch])
 
   // Validate currentView against documents when loaded
   useEffect(() => {

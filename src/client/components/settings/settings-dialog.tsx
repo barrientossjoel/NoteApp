@@ -11,7 +11,7 @@ import {
 import { Badge } from "../../components/ui/badge"
 import { Button } from "../../components/ui/button"
 import { Input } from "../../components/ui/input"
-import { Search, Sun, Moon, Monitor, ChevronLeft } from "lucide-react"
+import { Search, Sun, Moon, Monitor, ChevronLeft, RotateCcw } from "lucide-react"
 import { cn } from "../../lib/utils/utils"
 import { useTheme } from "../theme-provider"
 import { useMediaQuery } from "../../hooks/useMediaQuery"
@@ -19,6 +19,8 @@ import { useAuth } from "../../context/AuthContext"
 import { useLanguage } from "../../context/LanguageContext"
 import { Avatar, AvatarFallback, AvatarImage } from "../../components/ui/avatar"
 import { CollaborationSettings } from "./collaboration-settings"
+import { ShortcutEditorRow } from "./shortcut-editor"
+import { useKeyboardShortcuts, type ShortcutId } from "../../context/KeyboardShortcutsContext"
 
 interface ShortcutItem {
     label: string
@@ -34,8 +36,6 @@ const SHORTCUTS = [
     {
         name: "shortcutWorkspace",
         items: [
-            { label: "labelSplitHV", keys: ["keyAlt", "+", "H / V"] },
-            { label: "labelClosePane", keys: ["keyAlt", "+", "Q"] },
             { label: "labelResizePane", keys: ["keyAlt", "+", "keyDrag"] },
             { label: "labelCloseTab", keys: ["keyMiddleClick"] },
         ]
@@ -80,6 +80,7 @@ export function SettingsDialog({
     const { theme, setTheme } = useTheme()
     const { user, logout } = useAuth()
     const isMobile = useMediaQuery('(max-width: 768px)')
+    const { shortcuts, setShortcut, resetShortcut, resetAll } = useKeyboardShortcuts()
 
     const normalizedShortcuts = React.useMemo(() => {
         return SHORTCUTS.map(category => ({
@@ -327,38 +328,12 @@ export function SettingsDialog({
 
                             {/* Shortcuts Content */}
                             {(!isSearching && activeTab === 'shortcuts') && (
-                                <div className="space-y-[clamp(1.5rem,4vw,2.5rem)] animate-in fade-in duration-300">
-                                    <div>
-                                        <h3 className="text-[clamp(1.125rem,2.5vw,1.25rem)] font-medium text-foreground mb-[clamp(0.75rem,2vw,1rem)]">Shortcuts</h3>
-                                        <div className="grid gap-[clamp(1.5rem,3vw,2rem)]">
-                                            {SHORTCUTS.map((category) => (
-                                                <div key={category.name} className="space-y-[clamp(0.75rem,1.5vw,1rem)]">
-                                                    <h5 className="text-[clamp(10px,1.2vw,11px)] font-bold text-muted-foreground uppercase tracking-widest">{category.name}</h5>
-                                                    <div className="rounded-lg border border-border overflow-hidden divide-y divide-border bg-card">
-                                                        {category.items.map((item) => (
-                                                            <div key={item.label} className="flex flex-col sm:flex-row sm:items-center justify-between p-[clamp(0.75rem,2vw,1rem)] gap-2 sm:gap-4">
-                                                                <span className="text-[clamp(13px,1.5vw,14px)] text-foreground/80">{item.label}</span>
-                                                                <div className="flex items-center gap-1.5 flex-wrap">
-                                                                    {item.keys.map((key, kIdx) => (
-                                                                        <React.Fragment key={kIdx}>
-                                                                            {key === "+" ? (
-                                                                                <span className="text-muted-foreground/50 text-[clamp(10px,1.2vw,12px)] font-bold">+</span>
-                                                                            ) : (
-                                                                                <Badge variant="secondary" className="h-6 px-2 font-mono text-[clamp(9px,1vw,10px)] border-border shadow-sm">
-                                                                                    {key}
-                                                                                </Badge>
-                                                                            )}
-                                                                        </React.Fragment>
-                                                                    ))}
-                                                                </div>
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                </div>
+                                <ShortcutsTab
+                                    shortcuts={shortcuts}
+                                    onSave={setShortcut}
+                                    onReset={resetShortcut}
+                                    onResetAll={resetAll}
+                                />
                             )}
 
                             {/* Collaboration Content */}
@@ -425,5 +400,74 @@ export function SettingsDialog({
                 </div>
             </DialogContent>
         </Dialog>
+    )
+}
+
+// ─── ShortcutsTab ─────────────────────────────────────────────────────────────
+
+interface ShortcutsTabProps {
+    shortcuts: import('../../context/KeyboardShortcutsContext').ShortcutsMap
+    onSave: (id: import('../../context/KeyboardShortcutsContext').ShortcutId, cfg: import('../../context/KeyboardShortcutsContext').ShortcutConfig) => void
+    onReset: (id: import('../../context/KeyboardShortcutsContext').ShortcutId) => void
+    onResetAll: () => void
+}
+
+function ShortcutsTab({ shortcuts, onSave, onReset, onResetAll }: ShortcutsTabProps) {
+    const { t } = useLanguage()
+
+    const CONFIGURABLE_SHORTCUTS: Array<{ id: ShortcutId; label: string; group: string }> = [
+        { id: 'splitHorizontal', label: t('labelSplitHorizontal'), group: t('shortcutWorkspace') },
+        { id: 'splitVertical',   label: t('labelSplitVertical'),   group: t('shortcutWorkspace') },
+        { id: 'closePane',       label: t('labelClosePaneShortcut'), group: t('shortcutWorkspace') },
+        { id: 'globalSearch',    label: t('labelGlobalSearch'),    group: t('shortcutWorkspace') },
+        { id: 'canvasPan',       label: t('labelCanvasPan'),       group: t('shortcutCanvas') },
+        { id: 'canvasDelete',    label: t('labelCanvasDelete'),    group: t('shortcutCanvas') },
+    ]
+
+    // Group shortcuts by category
+    const groups = CONFIGURABLE_SHORTCUTS.reduce<Record<string, typeof CONFIGURABLE_SHORTCUTS>>((acc, s) => {
+        if (!acc[s.group]) acc[s.group] = []
+        acc[s.group].push(s)
+        return acc
+    }, {})
+
+    return (
+        <div className="space-y-[clamp(1.5rem,4vw,2.5rem)] animate-in fade-in duration-300">
+            <div className="flex items-center justify-between">
+                <div>
+                    <h3 className="text-[clamp(1.125rem,2.5vw,1.25rem)] font-medium text-foreground">{t('shortcuts')}</h3>
+                    <p className="text-[11px] text-muted-foreground mt-1">{t('shortcutHelp')}</p>
+                </div>
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-[12px] text-muted-foreground hover:text-foreground gap-1.5 shrink-0"
+                    onClick={onResetAll}
+                    title={t('shortcutResetAll')}
+                >
+                    <RotateCcw className="h-3 w-3" />
+                    {t('shortcutResetAll')}
+                </Button>
+            </div>
+
+            {Object.entries(groups).map(([group, items]) => (
+                <div key={group}>
+                    <h5 className="text-[clamp(10px,1.2vw,11px)] font-bold text-muted-foreground uppercase tracking-widest mb-3">{group}</h5>
+                    <div className="rounded-lg border border-border overflow-visible divide-y divide-border bg-card">
+                        {items.map(({ id, label }) => (
+                            <ShortcutEditorRow
+                                key={id}
+                                id={id}
+                                label={label}
+                                config={shortcuts[id]}
+                                shortcuts={shortcuts}
+                                onSave={(cfg) => onSave(id, cfg)}
+                                onReset={() => onReset(id)}
+                            />
+                        ))}
+                    </div>
+                </div>
+            ))}
+        </div>
     )
 }

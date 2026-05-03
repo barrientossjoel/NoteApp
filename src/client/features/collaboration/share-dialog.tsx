@@ -11,11 +11,20 @@ import { Avatar, AvatarFallback } from '../../components/ui/avatar';
 interface ShareDialogProps {
     elementId: string;
     elementType: 'document' | 'canvas';
+    /** Controlled mode — when provided, no trigger button is rendered */
+    open?: boolean;
+    onOpenChange?: (open: boolean) => void;
 }
 
-export function ShareDialog({ elementId, elementType }: ShareDialogProps) {
+export function ShareDialog({ elementId, elementType, open: controlledOpen, onOpenChange: controlledOnOpenChange }: ShareDialogProps) {
     const { t } = useLanguage();
-    const [open, setOpen] = useState(false);
+    const [internalOpen, setInternalOpen] = useState(false);
+
+    const isControlled = controlledOpen !== undefined;
+    const open = isControlled ? controlledOpen : internalOpen;
+    const setOpen = isControlled
+        ? (controlledOnOpenChange ?? setInternalOpen)
+        : setInternalOpen;
     const [email, setEmail] = useState('');
     const [permission, setPermission] = useState('view');
     const [shares, setShares] = useState<any[]>([]);
@@ -68,12 +77,14 @@ export function ShareDialog({ elementId, elementType }: ShareDialogProps) {
 
     return (
         <Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger asChild>
-                <Button variant="outline" size="sm" className="gap-2 shrink-0 hidden sm:flex">
-                    <Share2 className="h-4 w-4" />
-                    {t('share')}
-                </Button>
-            </DialogTrigger>
+            {!isControlled && (
+                <DialogTrigger asChild>
+                    <Button variant="outline" size="sm" className="gap-2 shrink-0 hidden sm:flex">
+                        <Share2 className="h-4 w-4" />
+                        {t('share')}
+                    </Button>
+                </DialogTrigger>
+            )}
             <DialogContent className="sm:max-w-md">
                 <DialogHeader>
                     <DialogTitle>{t('share')}</DialogTitle>
