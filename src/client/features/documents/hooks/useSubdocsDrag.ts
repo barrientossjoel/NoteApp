@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { useDragInertia } from '../../../hooks/useDragInertia'
 
 export interface UseDragZonesProps<T extends string> {
     currentZone: T
@@ -26,6 +27,8 @@ export function useDragZones<T extends string>({
     const [isDragging, setIsDragging] = useState(false)
     const [hoverZone, setHoverZone] = useState<T | null>(null)
     const [dragContext, setDragContext] = useState<{ width: number, height: number, startX: number, startY: number } | null>(null)
+
+    const { applyMovement } = useDragInertia(isDragging, floatingRef)
 
     const startDrag = (e: React.MouseEvent, panelElement: HTMLElement | null, ignoreSelector?: string) => {
         if (ignoreSelector && (e.target as HTMLElement).closest(ignoreSelector)) return
@@ -95,7 +98,8 @@ export function useDragZones<T extends string>({
                 const x = e.clientX - rect.left - dragOffset.current.x
                 const y = e.clientY - rect.top - dragOffset.current.y
                 
-                floatingRef.current.style.transform = `translate3d(${x}px, ${y}px, 0)`
+                floatingRef.current.style.transform = `translate3d(${x}px, ${y}px, 0) rotate(calc(var(--drag-vx, 0) * 0.2deg))`
+                applyMovement(e.movementX)
             }
         }
         

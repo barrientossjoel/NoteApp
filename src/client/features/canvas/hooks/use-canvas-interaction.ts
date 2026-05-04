@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { CanvasNode, Camera } from '../types'
 import { calculateBezierControls, getBestDynamicEnd } from '../utils/canvas-geometry'
+import { useDragInertia } from '../../../hooks/useDragInertia'
 
 interface InteractionProps {
     nodes: CanvasNode[];
@@ -49,6 +50,8 @@ export function useCanvasInteraction({
     const [snapTargetId, setSnapTargetId] = useState<string | null>(null)
     const [editingId, setEditingId] = useState<string | null>(null)
     const dragStartPosition = useRef<{ x: number, y: number } | null>(null)
+
+    const { applyMovement: applyInertiaMovement } = useDragInertia(!!draggedNodeId, wrapperRef as React.RefObject<HTMLElement>)
 
     const getGroupNodes = useCallback((nodeId: string, currentNodes: CanvasNode[] = nodes) => {
         const node = currentNodes.find(n => n.id === nodeId)
@@ -307,12 +310,7 @@ export function useCanvasInteraction({
             setArrowEndPreview({ x: mouseX, y: mouseY })
         } else if (draggedNodeId) {
             setHasMoved(true)
-            if (wrapperRef.current) {
-                const targetV = parseFloat(wrapperRef.current.style.getPropertyValue('--drag-target-vx') || '0');
-                const newTargetV = targetV + (e.movementX * 0.55);
-                const clampedV = Math.max(-20, Math.min(20, newTargetV));
-                wrapperRef.current.style.setProperty('--drag-target-vx', clampedV.toString());
-            }
+            applyInertiaMovement(e.movementX)
 
             const dx = (e.clientX - lastMousePos.x) / camera.zoom
             const dy = (e.clientY - lastMousePos.y) / camera.zoom
@@ -626,33 +624,6 @@ export function useCanvasInteraction({
             setSelection(new Set())
         }
     }, [selection, setNodes]);
-
-    // Smooth inertia simulation loop for X-axis dragging tilt
-    useEffect(() => {
-        if (!draggedNodeId) return;
-        let frame: number;
-        const loop = () => {
-            if (wrapperRef.current) {
-                const currentV = parseFloat(wrapperRef.current.style.getPropertyValue('--drag-vx') || '0');
-                const targetV = parseFloat(wrapperRef.current.style.getPropertyValue('--drag-target-vx') || '0');
-
-                // Lerp current velocity towards target for "smooth" fluidity
-                const newV = currentV + (targetV - currentV) * 0.14;
-                wrapperRef.current.style.setProperty('--drag-vx', newV.toString());
-
-                // Decay the target velocity aggressively so when mouse stops, it relaxes
-                const newTargetV = targetV * 0.81;
-                if (Math.abs(newTargetV) < 0.1) {
-                    wrapperRef.current.style.setProperty('--drag-target-vx', '0');
-                } else {
-                    wrapperRef.current.style.setProperty('--drag-target-vx', newTargetV.toString());
-                }
-            }
-            frame = requestAnimationFrame(loop);
-        };
-        frame = requestAnimationFrame(loop);
-        return () => cancelAnimationFrame(frame);
-    }, [draggedNodeId, wrapperRef]);
 
     return {
         draggedNodeId, setDraggedNodeId,
