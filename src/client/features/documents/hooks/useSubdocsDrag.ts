@@ -18,6 +18,7 @@ export function useDragZones<T extends string>({
     direction = 'horizontal'
 }: UseDragZonesProps<T>) {
     const dragging = useRef(false)
+    const isDraggingRef = useRef(false)
     const dragStartPos = useRef(0)
     const dragOffset = useRef({ x: 0, y: 0 })
     const floatingRef = useRef<HTMLDivElement>(null)
@@ -29,6 +30,7 @@ export function useDragZones<T extends string>({
     const startDrag = (e: React.MouseEvent, panelElement: HTMLElement | null, ignoreSelector?: string) => {
         if (ignoreSelector && (e.target as HTMLElement).closest(ignoreSelector)) return
         dragging.current = true
+        isDraggingRef.current = false
         dragStartPos.current = direction === 'horizontal' ? e.clientX : e.clientY
         
         if (panelElement) {
@@ -47,16 +49,7 @@ export function useDragZones<T extends string>({
                 startX: rect.left - containerRect.left,
                 startY: rect.top - containerRect.top
             })
-            
-            // Set initial position
-            if (floatingRef.current) {
-                floatingRef.current.style.transform = `translate3d(${rect.left - containerRect.left}px, ${rect.top - containerRect.top}px, 0)`
-            }
         }
-        
-        setIsDragging(true)
-        setHoverZone(currentZone)
-        e.preventDefault()
     }
 
     useEffect(() => {
@@ -78,6 +71,20 @@ export function useDragZones<T extends string>({
 
         const onMove = (e: MouseEvent) => {
             if (!dragging.current) return
+            
+            if (!isDraggingRef.current) {
+                const currentPos = direction === 'horizontal' ? e.clientX : e.clientY
+                if (Math.abs(currentPos - dragStartPos.current) > dragThreshold) {
+                    isDraggingRef.current = true
+                    setIsDragging(true)
+                    setHoverZone(currentZone)
+                } else {
+                    return // not dragged enough yet
+                }
+            }
+            
+            e.preventDefault()
+            
             const zone = calculateZone(e)
             if (zone) setHoverZone(zone)
             
@@ -94,13 +101,16 @@ export function useDragZones<T extends string>({
         
         const onUp = (e: MouseEvent) => {
             if (!dragging.current) return
+            
+            const wasDragging = isDraggingRef.current
+            
             dragging.current = false
+            isDraggingRef.current = false
             setIsDragging(false)
             setHoverZone(null)
             setDragContext(null)
             
-            const currentPos = direction === 'horizontal' ? e.clientX : e.clientY
-            if (Math.abs(currentPos - dragStartPos.current) > dragThreshold) {
+            if (wasDragging) {
                 const zone = calculateZone(e)
                 if (zone) onZoneChange(zone)
             }
@@ -113,7 +123,7 @@ export function useDragZones<T extends string>({
             window.removeEventListener('mousemove', onMove)
             window.removeEventListener('mouseup', onUp)
         }
-    }, [onZoneChange, containerId, dragThreshold, direction, zones])
+    }, [onZoneChange, containerId, dragThreshold, direction, zones, currentZone])
 
     return {
         isDragging,
