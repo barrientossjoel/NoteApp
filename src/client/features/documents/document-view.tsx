@@ -556,7 +556,7 @@ export function DocumentView({
             )}
 
             {/* Content Area — flex row: [left panel?] [scroll area] [right panel?] [notes?] */}
-            <div className="flex-1 flex overflow-hidden">
+            <div id="document-content-area" className="flex-1 flex overflow-hidden relative">
                 {/* Unified Subdocs Renderer */}
                 {renderSubdocs('left')}
 

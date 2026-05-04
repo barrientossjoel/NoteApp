@@ -1,8 +1,9 @@
 import React, { useState, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { ChevronDown, ChevronRight, FileText } from 'lucide-react'
 import type { Document } from '../../../../core/types/notes'
 import { cn } from '../../../lib/utils/utils'
-import { useSubdocsDrag } from '../hooks/useSubdocsDrag'
+import { useDragZones } from '../hooks/useSubdocsDrag'
 import { SnapPosition } from '../lib/subdocs-utils'
 
 interface SubdocsPanelProps {
@@ -40,7 +41,20 @@ export const SubdocsPanel = React.memo(function SubdocsPanel({
     const rootChildren = childrenMap.get(parentId) || []
     const [expanded, setExpanded] = useState<Record<string, boolean>>({})
 
-    const { isDragging, hoverZone, onHeaderMouseDown } = useSubdocsDrag({ snap, onSnapChange })
+    const { isDragging, hoverZone, startDrag, floatingRef, dragContext } = useDragZones({
+        currentZone: snap,
+        onZoneChange: onSnapChange,
+        zones: ['left', 'center', 'right'] as const,
+        containerId: 'document-content-area'
+    })
+
+    const panelRef = React.useRef<HTMLDivElement>(null)
+    const onHeaderMouseDown = (e: React.MouseEvent) => startDrag(e, panelRef.current, '[data-collapse-btn]')
+
+    const [portalContainer, setPortalContainer] = useState<HTMLElement | null>(null)
+    React.useEffect(() => {
+        setPortalContainer(document.getElementById('document-content-area'))
+    }, [])
 
     const toggleExpand = React.useCallback((id: string, e: React.MouseEvent) => {
         e.stopPropagation()
@@ -81,10 +95,42 @@ export const SubdocsPanel = React.memo(function SubdocsPanel({
     const isCenter = snap === 'center'
     const effectiveWidth = collapsed ? 32 : panelWidth
 
+    const panelContent = (
+        <>
+            <div
+                className={cn(
+                    'flex items-center gap-1.5 px-3 py-2 bg-muted/20 border-b border-border/30 cursor-grab active:cursor-grabbing hover:bg-muted/40 transition-colors shrink-0',
+                    isDragging && 'cursor-grabbing'
+                )}
+                onMouseDown={onHeaderMouseDown}
+            >
+                <FileText className="h-3 w-3 text-muted-foreground shrink-0" />
+                {(!collapsed || isCenter) && <span className="text-xs font-medium text-muted-foreground flex-1 truncate">Subdocumentos</span>}
+                <button
+                    data-collapse-btn
+                    className="ml-auto h-4 w-4 flex items-center justify-center rounded hover:bg-muted transition-colors shrink-0"
+                    onClick={(e) => { e.stopPropagation(); onCollapsedChange(!collapsed) }}
+                >
+                    <ChevronDown className={cn(
+                        'h-3 w-3 text-muted-foreground transition-transform',
+                        !isCenter && !collapsed && '-rotate-90',
+                        !isCenter && collapsed && 'rotate-90',
+                        isCenter && collapsed && 'rotate-180'
+                    )} />
+                </button>
+            </div>
+            {!collapsed && (
+                <div className={cn('flex flex-col py-1 overflow-y-auto', !isCenter && 'flex-1', isCenter && 'max-h-56')}>
+                    {renderTree(rootChildren, 0)}
+                </div>
+            )}
+        </>
+    )
+
     return (
         <>
-            {isDragging && (
-                <div className="fixed inset-0 z-[9999] flex pointer-events-none">
+            {isDragging && portalContainer && createPortal(
+                <div className="absolute inset-0 z-[9999] flex pointer-events-none">
                     {(['left', 'center', 'right'] as const).map(zone => (
                         <div
                             key={zone}
@@ -94,47 +140,37 @@ export const SubdocsPanel = React.memo(function SubdocsPanel({
                             )}
                         />
                     ))}
-                </div>
+                    {dragContext && (
+                        <div 
+                            ref={floatingRef}
+                            className="absolute z-[10000] flex flex-col bg-background/80 backdrop-blur-sm border border-border shadow-xl rounded-md pointer-events-none overflow-hidden"
+                            style={{ 
+                                width: dragContext.width, 
+                                height: dragContext.height,
+                                transform: `translate3d(${dragContext.startX}px, ${dragContext.startY}px, 0)`,
+                                willChange: 'transform'
+                            }}
+                        >
+                            {panelContent}
+                        </div>
+                    )}
+                </div>,
+                portalContainer
             )}
 
             <div
+                ref={panelRef}
                 className={cn(
-                    'flex flex-col bg-muted/30 select-none shrink-0 overflow-hidden transition-[width] duration-200',
+                    'flex flex-col bg-muted/30 select-none shrink-0 overflow-hidden transition-[width,opacity] duration-200',
                     !isCenter && 'h-full',
                     snap === 'left' && 'border-r border-border/40',
                     snap === 'right' && 'border-l border-border/40',
                     isCenter && 'rounded-xl border border-border/40 shadow-sm mb-6 w-full',
-                    isDragging && 'ring-1 ring-primary/40'
+                    isDragging && 'opacity-50 ring-1 ring-primary/40'
                 )}
                 style={!isCenter ? { width: effectiveWidth } : undefined}
             >
-                <div
-                    className={cn(
-                        'flex items-center gap-1.5 px-3 py-2 bg-muted/20 border-b border-border/30 cursor-grab active:cursor-grabbing hover:bg-muted/40 transition-colors shrink-0',
-                        isDragging && 'cursor-grabbing'
-                    )}
-                    onMouseDown={onHeaderMouseDown}
-                >
-                    <FileText className="h-3 w-3 text-muted-foreground shrink-0" />
-                    {(!collapsed || isCenter) && <span className="text-xs font-medium text-muted-foreground flex-1 truncate">Subdocumentos</span>}
-                    <button
-                        data-collapse-btn
-                        className="ml-auto h-4 w-4 flex items-center justify-center rounded hover:bg-muted transition-colors shrink-0"
-                        onClick={(e) => { e.stopPropagation(); onCollapsedChange(!collapsed) }}
-                    >
-                        <ChevronDown className={cn(
-                            'h-3 w-3 text-muted-foreground transition-transform',
-                            !isCenter && !collapsed && '-rotate-90',
-                            !isCenter && collapsed && 'rotate-90',
-                            isCenter && collapsed && 'rotate-180'
-                        )} />
-                    </button>
-                </div>
-                {!collapsed && (
-                    <div className={cn('flex flex-col py-1 overflow-y-auto', !isCenter && 'flex-1', isCenter && 'max-h-56')}>
-                        {renderTree(rootChildren, 0)}
-                    </div>
-                )}
+                {panelContent}
             </div>
         </>
     )
