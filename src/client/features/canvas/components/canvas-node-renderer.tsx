@@ -28,7 +28,7 @@ export const MemoizedCanvasNode = React.memo(({ node, envRef, triggers }: Canvas
 
                 (node.type === 'arrow' || node.type === 'shape' || node.type === 'note')
                     ? "overflow-visible bg-transparent border-none shadow-none"
-                    : "rounded-lg shadow-sm overflow-hidden bg-muted/50 backdrop-blur-sm border border-foreground/20",
+                    : "rounded-lg shadow-sm overflow-visible bg-muted/50 backdrop-blur-sm border border-foreground/20",
                 node.type === 'table' && "overflow-visible",
 
                 "transition-shadow origin-[50%_-50px]",
@@ -55,8 +55,6 @@ export const MemoizedCanvasNode = React.memo(({ node, envRef, triggers }: Canvas
                     envRef.current.handleNodeTouchStart(e, node)
                 }
             }}
-            onTouchMove={envRef.current.clearTouchTimer}
-            onTouchEnd={envRef.current.clearTouchTimer}
             onClick={(e) => {
                 e.stopPropagation()
                 if (!e.shiftKey && envRef.current.selection.size <= 1) {
@@ -445,6 +443,36 @@ export const MemoizedCanvasNode = React.memo(({ node, envRef, triggers }: Canvas
                     }}
                 />
             ) : null}
+
+            {/* Connection handles — appear on hover for non-arrow nodes */}
+            {node.type !== 'arrow' && ([
+                { side: 'top',    style: { top: '-6px',  left: '50%',  transform: 'translateX(-50%)' } },
+                { side: 'bottom', style: { bottom: '-6px', left: '50%',  transform: 'translateX(-50%)' } },
+                { side: 'left',   style: { left: '-6px', top: '50%',   transform: 'translateY(-50%)' } },
+                { side: 'right',  style: { right: '-6px', top: '50%',  transform: 'translateY(-50%)' } },
+            ] as const).map(({ side, style }) => (
+                <div
+                    key={side}
+                    className="absolute w-3 h-3 rounded-full bg-primary border-2 border-background shadow-md opacity-0 group-hover:opacity-100 transition-opacity duration-150 cursor-crosshair z-[200] hover:scale-125"
+                    style={style}
+                    onMouseDown={(e) => {
+                        e.stopPropagation()
+                        e.preventDefault()
+                        const sideOffsets: Record<string, { x: number; y: number }> = {
+                            top:    { x: node.width / 2,  y: 0 },
+                            bottom: { x: node.width / 2,  y: node.height },
+                            left:   { x: 0,               y: node.height / 2 },
+                            right:  { x: node.width,      y: node.height / 2 },
+                        }
+                        const offset = sideOffsets[side]
+                        const start = { x: node.x + offset.x, y: node.y + offset.y }
+                        envRef.current.setArrowStart(start)
+                        envRef.current.setArrowStartNodeId(node.id)
+                        envRef.current.setArrowStartSide(side)
+                        envRef.current.setIsCreatingArrow(true)
+                    }}
+                />
+            ))}
         </div>
     )
 });

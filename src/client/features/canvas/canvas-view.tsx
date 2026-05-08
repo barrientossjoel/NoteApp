@@ -374,7 +374,8 @@ export function CanvasView({
         setDraggedHandle, initiateEditImage, setResizingNodeId, setArrowStart,
         setArrowStartNodeId, setArrowStartSide, setIsCreatingArrow, setArrowEndPreview,
         handleImageUpload, isPanning, isSpacePressed, isCreatingArrow, arrowStart, arrowStartNodeId,
-        arrowStartSide, calculateBezierControls, resizingNodeId, nodes, hasMoved, getBestDynamicEnd
+        arrowStartSide, calculateBezierControls, resizingNodeId, nodes, hasMoved, getBestDynamicEnd,
+        getArrowMidpoint
     })
 
     return (
