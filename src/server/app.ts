@@ -5,6 +5,7 @@ import { messagesRouter } from './routes/messages.js';
 import { uploadsRouter } from './routes/uploads.js';
 import { authRouter } from './routes/auth.js';
 import { sharesRouter } from './routes/shares.js';
+import { landingRouter } from './routes/landing.js';
 import { globalErrorHandler } from './middleware/error-handler.js';
 
 const app = new Hono().basePath('/api');
@@ -21,6 +22,7 @@ app.route('/documents', documentsRouter);
 app.route('/messages', messagesRouter);
 app.route('/uploads', uploadsRouter);
 app.route('/shares', sharesRouter);
+app.route('/landing', landingRouter);
 
 app.get('/health', (c) => c.json({ status: 'ok', time: new Date().toISOString() }));
 

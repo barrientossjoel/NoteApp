@@ -36,17 +36,23 @@ export function SearchCommand({
 }: SearchCommandProps) {
     const { t } = useLanguage()
     const [query, setQuery] = React.useState("")
+    const [filterType, setFilterType] = React.useState<'all' | 'text' | 'canvas' | 'books'>('all')
     const [selectedIndex, setSelectedIndex] = React.useState(0)
     const inputRef = React.useRef<HTMLInputElement>(null)
 
     const filteredDocuments = React.useMemo(() => {
-        if (!query) return documents.slice(0, 4)
-        return documents
+        let docs = documents
+        if (filterType === 'text') docs = docs.filter(d => d.type === 'text' || !d.type)
+        else if (filterType === 'canvas') docs = docs.filter(d => d.type === 'canvas')
+        else if (filterType === 'books') docs = docs.filter(d => d.type === 'pdf' || d.type === 'epub')
+
+        if (!query) return docs.slice(0, 4)
+        return docs
             .filter((doc) =>
                 (doc.title || t('untitledDocument')).toLowerCase().includes(query.toLowerCase())
             )
             .slice(0, 4)
-    }, [query, documents, t])
+    }, [query, documents, t, filterType])
 
     const allTags = React.useMemo(() => {
         const tagSet = new Set<string>()
@@ -128,7 +134,7 @@ export function SearchCommand({
 
     return (
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-[640px] p-0 overflow-hidden border border-white/10 shadow-2xl bg-[#1e1e1e]/60 backdrop-blur-3xl rounded-xl [&>button.absolute]:hidden">
+            <DialogContent className="max-w-[640px] p-0 overflow-hidden border border-white/10 shadow-2xl bg-black/10 backdrop-blur-md rounded-xl [&>button.absolute]:hidden">
                 <div className="p-3 pb-0">
                     <div className="flex items-center px-4 h-[52px] rounded-lg border border-white/10 bg-black/20">
                         <Search className="w-5 h-5 mr-3 text-muted-foreground" />
@@ -143,6 +149,12 @@ export function SearchCommand({
                             onKeyDown={handleKeyDown}
                             className="flex-1 h-full bg-transparent border-0 focus:border-0 outline-none focus:outline-none focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0 shadow-none placeholder:text-muted-foreground/50 text-[15px]"
                         />
+                    </div>
+                    <div className="flex items-center gap-2 mt-3 px-1 overflow-x-auto pb-1 no-scrollbar">
+                        <button onClick={() => setFilterType('all')} className={cn("px-3 py-1 rounded-full text-xs font-medium transition-colors whitespace-nowrap", filterType === 'all' ? "bg-white/10 text-white" : "text-muted-foreground hover:bg-white/5")}>Todos</button>
+                        <button onClick={() => setFilterType('text')} className={cn("px-3 py-1 rounded-full text-xs font-medium transition-colors whitespace-nowrap", filterType === 'text' ? "bg-white/10 text-white" : "text-muted-foreground hover:bg-white/5")}>Documentos</button>
+                        <button onClick={() => setFilterType('canvas')} className={cn("px-3 py-1 rounded-full text-xs font-medium transition-colors whitespace-nowrap", filterType === 'canvas' ? "bg-white/10 text-white" : "text-muted-foreground hover:bg-white/5")}>Canvas</button>
+                        <button onClick={() => setFilterType('books')} className={cn("px-3 py-1 rounded-full text-xs font-medium transition-colors whitespace-nowrap", filterType === 'books' ? "bg-white/10 text-white" : "text-muted-foreground hover:bg-white/5")}>Libros (PDF/EPUB)</button>
                     </div>
                 </div>
 
@@ -166,23 +178,23 @@ export function SearchCommand({
                                                 className={cn(
                                                     "w-full flex items-start px-3 py-3 rounded-lg text-sm transition-colors text-left group border border-transparent",
                                                     isSelected
-                                                        ? "bg-[#2b3343]/80 border-white/5"
+                                                        ? "bg-neutral-800/40 border-white/5"
                                                         : "hover:bg-white/5"
                                                 )}
                                             >
-                                                <div className={cn("mt-0.5 mr-3 w-8 h-8 rounded shrink-0 flex items-center justify-center transition-colors", isSelected ? "bg-[#384b6b] text-[#8ab4f8]" : "bg-white/5 text-muted-foreground")}>
+                                                <div className={cn("mt-0.5 mr-3 w-8 h-8 rounded shrink-0 flex items-center justify-center transition-colors", isSelected ? "bg-white/20 text-white" : "bg-white/5 text-muted-foreground")}>
                                                     <FileText className="w-4 h-4" />
                                                 </div>
                                                 <div className="flex-1 overflow-hidden">
                                                     <div className="flex items-center justify-between">
-                                                        <span className={cn("font-medium truncate transition-colors", isSelected ? "text-[#8ab4f8]" : "text-neutral-200")}>
+                                                        <span className={cn("font-medium truncate transition-colors", isSelected ? "text-white" : "text-neutral-200")}>
                                                             {doc.title || t('untitledDocument')}
                                                         </span>
-                                                        <span className={cn("text-xs shrink-0 ml-4 transition-colors", isSelected ? "text-[#8ab4f8]/70" : "text-muted-foreground")}>
+                                                        <span className={cn("text-xs shrink-0 ml-4 transition-colors", isSelected ? "text-white/70" : "text-muted-foreground")}>
                                                             {formatTimeAgo(doc.createdAt || doc.updatedAt)}
                                                         </span>
                                                     </div>
-                                                    <div className={cn("text-[13px] truncate mt-0.5 transition-colors", isSelected ? "text-[#8ab4f8]/60" : "text-muted-foreground/60")}>
+                                                    <div className={cn("text-[13px] truncate mt-0.5 transition-colors", isSelected ? "text-white/60" : "text-muted-foreground/60")}>
                                                         {doc.type === 'canvas' ? 'Canvas Workspace' : 
                                                          doc.type === 'pdf' ? 'PDF Document' : 
                                                          doc.content ? doc.content
@@ -233,7 +245,7 @@ export function SearchCommand({
                                                 className={cn(
                                                     "w-full flex items-center px-4 py-2.5 rounded-lg text-[14px] transition-colors text-left font-medium",
                                                     isSelected
-                                                        ? "bg-white/10 text-white"
+                                                        ? "bg-neutral-800/40 text-white"
                                                         : "text-muted-foreground hover:bg-white/5 hover:text-neutral-300"
                                                 )}
                                             >
