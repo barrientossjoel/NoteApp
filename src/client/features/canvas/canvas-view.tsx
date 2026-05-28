@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { useMediaQuery } from '../../hooks/useMediaQuery'
-import { GripVertical, Plus, Trash2, Type, Move, MousePointer2, Image, Maximize, Minimize, X, Check, Link, PanelLeft, PanelTop, FileText, MessageSquare, Frame, ArrowRight, Square, Circle, FolderDown, Upload, ExternalLink, ZoomIn, ZoomOut, Table, MoreVertical, Pencil, Share2 } from 'lucide-react'
+import { GripVertical, Plus, Trash2, Type, Move, MousePointer2, Image, Maximize, Minimize, X, Check, Link, PanelLeft, PanelTop, FileText, MessageSquare, Frame, ArrowRight, Square, Circle, FolderDown, Upload, ExternalLink, ZoomIn, ZoomOut, Table, MoreVertical, Pencil, Share2, Eraser } from 'lucide-react'
 import { cn } from '../../lib/utils/utils'
 import { Button } from '../../components/ui/button'
 import { Input } from '../../components/ui/input'
@@ -84,6 +84,8 @@ export function CanvasView({
         dragOffset, setDragOffset, selection, setSelection, isSpacePressed, setIsSpacePressed,
         hasMoved, setHasMoved, selectionBox, setSelectionBox, selectionCandidates, setSelectionCandidates,
         preDragOrder, setPreDragOrder, isCreatingArrow, setIsCreatingArrow, arrowStart, setArrowStart,
+        isDrawingMode, setIsDrawingMode, isEraserMode, setIsEraserMode, pencilColor, setPencilColor,
+        pencilWidth, setPencilWidth, currentPath,
         arrowStartNodeId, setArrowStartNodeId, arrowStartSide, setArrowStartSide,
         arrowEndPreview, setArrowEndPreview, draggedHandle, setDraggedHandle, snapTargetId, setSnapTargetId,
         editingId, setEditingId, dragStartPosition,
@@ -373,7 +375,8 @@ export function CanvasView({
         setEditingCaretOffset, updateNodeContent, setNodes, onOpenDocument, onUpdateDocument,
         setDraggedHandle, initiateEditImage, setResizingNodeId, setArrowStart,
         setArrowStartNodeId, setArrowStartSide, setIsCreatingArrow, setArrowEndPreview,
-        handleImageUpload, isPanning, isSpacePressed, isCreatingArrow, arrowStart, arrowStartNodeId,
+        setIsDrawingMode, setIsEraserMode, setPencilColor, setPencilWidth,
+        handleImageUpload, isPanning, isSpacePressed, isCreatingArrow, isDrawingMode, isEraserMode, pencilColor, pencilWidth, currentPath, arrowStart, arrowStartNodeId,
         arrowStartSide, calculateBezierControls, resizingNodeId, nodes, hasMoved, getBestDynamicEnd,
         getArrowMidpoint
     })
@@ -489,7 +492,7 @@ export function CanvasView({
                     }
                 }}
                 tabIndex={0}
-                style={{ cursor: isPanning ? 'grabbing' : isSpacePressed ? 'grab' : isCreatingArrow ? 'crosshair' : 'default' }}
+                style={{ cursor: isPanning ? 'grabbing' : isSpacePressed ? 'grab' : (isCreatingArrow || isDrawingMode || isEraserMode) ? 'crosshair' : 'default' }}
             >
                 <div
                     style={{
@@ -595,6 +598,24 @@ export function CanvasView({
                     </div>
                 )
             }
+            {/* Pencil Path Preview */}
+            {
+                isDrawingMode && currentPath && currentPath.length > 0 && (
+                    <div className="absolute inset-0 pointer-events-none" style={{ transform: `translate(${camera.x}px, ${camera.y}px) scale(${camera.zoom})`, transformOrigin: '0 0' }}>
+                        <svg className="absolute inset-0 w-full h-full overflow-visible">
+                            <path
+                                d={`M ${currentPath.map(p => `${p.x} ${p.y}`).join(' L ')}`}
+                                stroke={pencilColor}
+                                strokeWidth={pencilWidth}
+                                fill="none"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                className="opacity-70"
+                            />
+                        </svg>
+                    </div>
+                )
+            }
 
             {/* Toolbar (Pill Shape) — Desktop: centered relative to the canvas, offset for zoom UI */}
             {!isMobile && (
@@ -607,16 +628,104 @@ export function CanvasView({
                                     <MousePointer2 className="h-4 w-4" />
                                 </Button>
                             </div>
-                            <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full hover:bg-background/50" onClick={() => setIsCreatingArrow(true)} title="Add Arrow">
+                             <Button
+                                variant="ghost"
+                                size="icon"
+                                className={cn("h-9 w-9 rounded-full hover:bg-background/50", isCreatingArrow && "bg-primary/20 text-primary")}
+                                onClick={() => {
+                                    setIsCreatingArrow(!isCreatingArrow)
+                                    setIsDrawingMode(false)
+                                    setIsEraserMode(false)
+                                }}
+                                title="Add Arrow"
+                            >
                                 <ArrowRight className="h-4 w-4" />
                             </Button>
-                            <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full hover:bg-background/50" onClick={() => addNote()} title="Add Text Note">
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className={cn("h-9 w-9 rounded-full hover:bg-background/50", isDrawingMode && "bg-primary/20 text-primary")}
+                                        title="Pencil Tool"
+                                        onClick={() => setIsEraserMode(false)}
+                                    >
+                                        <Pencil className="h-4 w-4" />
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="center" side="top" className="rounded-xl p-3 bg-secondary shadow-lg border-none mb-2 w-48">
+                                    <div className="space-y-3">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-xs font-medium">Color</span>
+                                            <div className="flex gap-1">
+                                                {['#3b82f6', '#ef4444', '#22c55e', '#f59e0b', '#000000'].map(c => (
+                                                    <button
+                                                        key={c}
+                                                        className={cn(
+                                                            "w-4 h-4 rounded-full border border-white/20",
+                                                            pencilColor === c && "ring-2 ring-primary ring-offset-1 ring-offset-secondary"
+                                                        )}
+                                                        style={{ backgroundColor: c }}
+                                                        onClick={() => {
+                                                            setPencilColor(c)
+                                                            setIsDrawingMode(true)
+                                                            setIsCreatingArrow(false)
+                                                        }}
+                                                    />
+                                                ))}
+                                            </div>
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-xs font-medium">Thickness</span>
+                                                <span className="text-[10px] text-muted-foreground">{pencilWidth}px</span>
+                                            </div>
+                                            <input
+                                                type="range"
+                                                min="1"
+                                                max="20"
+                                                value={pencilWidth}
+                                                onChange={(e) => {
+                                                    setPencilWidth(parseInt(e.target.value))
+                                                    setIsDrawingMode(true)
+                                                    setIsCreatingArrow(false)
+                                                }}
+                                                className="w-full h-1.5 bg-background rounded-lg appearance-none cursor-pointer accent-primary"
+                                            />
+                                        </div>
+                                        <Button
+                                            className={cn("w-full h-8 text-xs rounded-lg", isDrawingMode ? "bg-primary" : "bg-muted")}
+                                            onClick={() => {
+                                                setIsDrawingMode(!isDrawingMode)
+                                                setIsCreatingArrow(false)
+                                                setIsEraserMode(false)
+                                            }}
+                                        >
+                                            {isDrawingMode ? 'Drawing Active' : 'Activate Pencil'}
+                                        </Button>
+                                    </div>
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className={cn("h-9 w-9 rounded-full hover:bg-background/50", isEraserMode && "bg-primary/20 text-primary")}
+                                onClick={() => {
+                                    setIsEraserMode(!isEraserMode)
+                                    setIsDrawingMode(false)
+                                    setIsCreatingArrow(false)
+                                }}
+                                title="Eraser Tool"
+                            >
+                                <Eraser className="h-4 w-4" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full hover:bg-background/50" onClick={() => { addNote(); setIsDrawingMode(false); setIsEraserMode(false); }} title="Add Text Note">
                                 <Type className="h-4 w-4" />
                             </Button>
-                            <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full hover:bg-background/50" onClick={() => addTable()} title="Add Table">
+                            <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full hover:bg-background/50" onClick={() => { addTable(); setIsDrawingMode(false); setIsEraserMode(false); }} title="Add Table">
                                 <Table className="h-4 w-4" />
                             </Button>
-                            <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full hover:bg-background/50" onClick={() => initiateAddImage()} title="Add Image">
+                            <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full hover:bg-background/50" onClick={() => { initiateAddImage(); setIsDrawingMode(false); setIsEraserMode(false); }} title="Add Image">
                                 <Image className="h-4 w-4" />
                             </Button>
                             <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full hover:bg-background/50" onClick={() => setIsImportOpen(true)} title="Import Document">
@@ -629,10 +738,10 @@ export function CanvasView({
                                     </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="center" side="top" className="rounded-xl p-1 bg-secondary shadow-lg border-none mb-2">
-                                    <DropdownMenuItem onClick={() => addShape('rectangle')} className="rounded-lg gap-2 cursor-pointer focus:bg-background/50">
+                                    <DropdownMenuItem onClick={() => { addShape('rectangle'); setIsDrawingMode(false); setIsEraserMode(false); }} className="rounded-lg gap-2 cursor-pointer focus:bg-background/50">
                                         <Square className="h-4 w-4" /><span>Rectangle</span>
                                     </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => addShape('circle')} className="rounded-lg gap-2 cursor-pointer focus:bg-background/50">
+                                    <DropdownMenuItem onClick={() => { addShape('circle'); setIsDrawingMode(false); setIsEraserMode(false); }} className="rounded-lg gap-2 cursor-pointer focus:bg-background/50">
                                         <Circle className="h-4 w-4" /><span>Circle</span>
                                     </DropdownMenuItem>
                                 </DropdownMenuContent>
@@ -664,16 +773,94 @@ export function CanvasView({
                     <div className="flex flex-col items-center gap-1 pb-2 border-b border-border/10 mb-1">
                         <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full opacity-50"><MousePointer2 className="h-4 w-4" /></Button>
                     </div>
-                    <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full hover:bg-background/50" onClick={() => setIsCreatingArrow(true)} title="Add Arrow">
+                    <Button variant="ghost" size="icon" className={cn("h-9 w-9 rounded-full hover:bg-background/50", isCreatingArrow && "bg-primary/20 text-primary")} onClick={() => { setIsCreatingArrow(!isCreatingArrow); setIsDrawingMode(false); setIsEraserMode(false); }} title="Add Arrow">
                         <ArrowRight className="h-4 w-4" />
                     </Button>
-                    <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full hover:bg-background/50" onClick={() => addNote()} title="Add Text Note">
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className={cn("h-9 w-9 rounded-full hover:bg-background/50", isDrawingMode && "bg-primary/20 text-primary")}
+                                title="Pencil Tool"
+                                onClick={() => setIsEraserMode(false)}
+                            >
+                                <Pencil className="h-4 w-4" />
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="center" side="right" className="rounded-xl p-3 bg-secondary shadow-lg border-none ml-2 w-48">
+                            <div className="space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-xs font-medium">Color</span>
+                                    <div className="flex gap-1">
+                                        {['#3b82f6', '#ef4444', '#22c55e', '#f59e0b', '#000000'].map(c => (
+                                            <button
+                                                key={c}
+                                                className={cn(
+                                                    "w-4 h-4 rounded-full border border-white/20",
+                                                    pencilColor === c && "ring-2 ring-primary ring-offset-1 ring-offset-secondary"
+                                                )}
+                                                style={{ backgroundColor: c }}
+                                                onClick={() => {
+                                                    setPencilColor(c)
+                                                    setIsDrawingMode(true)
+                                                    setIsCreatingArrow(false)
+                                                }}
+                                            />
+                                        ))}
+                                    </div>
+                                </div>
+                                <div className="space-y-1.5">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-xs font-medium">Thickness</span>
+                                        <span className="text-[10px] text-muted-foreground">{pencilWidth}px</span>
+                                    </div>
+                                    <input
+                                        type="range"
+                                        min="1"
+                                        max="20"
+                                        value={pencilWidth}
+                                        onChange={(e) => {
+                                            setPencilWidth(parseInt(e.target.value))
+                                            setIsDrawingMode(true)
+                                            setIsCreatingArrow(false)
+                                        }}
+                                        className="w-full h-1.5 bg-background rounded-lg appearance-none cursor-pointer accent-primary"
+                                    />
+                                </div>
+                                <Button
+                                    className={cn("w-full h-8 text-xs rounded-lg", isDrawingMode ? "bg-primary" : "bg-muted")}
+                                    onClick={() => {
+                                        setIsDrawingMode(!isDrawingMode)
+                                        setIsCreatingArrow(false)
+                                        setIsEraserMode(false)
+                                    }}
+                                >
+                                    {isDrawingMode ? 'Drawing Active' : 'Activate Pencil'}
+                                </Button>
+                            </div>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        className={cn("h-9 w-9 rounded-full hover:bg-background/50", isEraserMode && "bg-primary/20 text-primary")}
+                        onClick={() => {
+                            setIsEraserMode(!isEraserMode)
+                            setIsDrawingMode(false)
+                            setIsCreatingArrow(false)
+                        }}
+                        title="Eraser Tool"
+                    >
+                        <Eraser className="h-4 w-4" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full hover:bg-background/50" onClick={() => { addNote(); setIsDrawingMode(false); setIsEraserMode(false); }} title="Add Text Note">
                         <Type className="h-4 w-4" />
                     </Button>
-                    <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full hover:bg-background/50" onClick={() => addTable()} title="Add Table">
+                    <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full hover:bg-background/50" onClick={() => { addTable(); setIsDrawingMode(false); setIsEraserMode(false); }} title="Add Table">
                         <Table className="h-4 w-4" />
                     </Button>
-                    <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full hover:bg-background/50" onClick={() => initiateAddImage()} title="Add Image">
+                    <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full hover:bg-background/50" onClick={() => { initiateAddImage(); setIsDrawingMode(false); setIsEraserMode(false); }} title="Add Image">
                         <Image className="h-4 w-4" />
                     </Button>
                     <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full hover:bg-background/50" onClick={() => setIsImportOpen(true)} title="Import Document">
@@ -686,10 +873,10 @@ export function CanvasView({
                             </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="center" side="right" className="rounded-xl p-1 bg-secondary shadow-lg border-none ml-2">
-                            <DropdownMenuItem onClick={() => addShape('rectangle')} className="rounded-lg gap-2 cursor-pointer focus:bg-background/50">
+                            <DropdownMenuItem onClick={() => { addShape('rectangle'); setIsDrawingMode(false); setIsEraserMode(false); }} className="rounded-lg gap-2 cursor-pointer focus:bg-background/50">
                                 <Square className="h-4 w-4" /><span>Rectangle</span>
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => addShape('circle')} className="rounded-lg gap-2 cursor-pointer focus:bg-background/50">
+                            <DropdownMenuItem onClick={() => { addShape('circle'); setIsDrawingMode(false); setIsEraserMode(false); }} className="rounded-lg gap-2 cursor-pointer focus:bg-background/50">
                                 <Circle className="h-4 w-4" /><span>Circle</span>
                             </DropdownMenuItem>
                         </DropdownMenuContent>

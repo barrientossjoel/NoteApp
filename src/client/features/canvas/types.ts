@@ -6,9 +6,12 @@ export interface CanvasNode {
     y: number
     width: number
     height: number
-    type: 'note' | 'image' | 'document' | 'arrow' | 'shape' | 'table'
+    type: 'note' | 'image' | 'document' | 'arrow' | 'shape' | 'table' | 'pencil'
     content: string
     shapeType?: 'rectangle' | 'circle'
+    path?: { x: number, y: number }[]
+    strokeColor?: string
+    strokeWidth?: number
     startNodeId?: string
     endNodeId?: string
     isDynamicEnd?: boolean

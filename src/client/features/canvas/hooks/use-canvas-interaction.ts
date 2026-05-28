@@ -49,6 +49,11 @@ export function useCanvasInteraction({
     } | null>(null)
     const [snapTargetId, setSnapTargetId] = useState<string | null>(null)
     const [editingId, setEditingId] = useState<string | null>(null)
+    const [isDrawingMode, setIsDrawingMode] = useState(false)
+    const [isEraserMode, setIsEraserMode] = useState(false)
+    const [pencilColor, setPencilColor] = useState('#3b82f6') // default blue
+    const [pencilWidth, setPencilWidth] = useState(3)
+    const [currentPath, setCurrentPath] = useState<{ x: number, y: number }[] | null>(null)
     const dragStartPosition = useRef<{ x: number, y: number } | null>(null)
 
     const { applyMovement: applyInertiaMovement } = useDragInertia(!!draggedNodeId, wrapperRef as React.RefObject<HTMLElement>)
@@ -156,6 +161,43 @@ export function useCanvasInteraction({
                 }
             })
             setSelectionCandidates(candidates)
+            return
+        }
+
+        if (isEraserMode && e.buttons === 1) {
+            const rect = containerRef.current?.getBoundingClientRect()
+            if (!rect) return
+            const x = (e.clientX - rect.left - camera.x) / camera.zoom
+            const y = (e.clientY - rect.top - camera.y) / camera.zoom
+
+            setNodes(prev => {
+                const newNodes = prev.filter(n => {
+                    if (n.type === 'pencil' && n.path) {
+                        return !n.path.some(p => Math.hypot(n.x + p.x - x, n.y + p.y - y) < 20);
+                    } else if (n.type === 'arrow') {
+                        const sx = n.points?.start.x ?? n.x;
+                        const sy = n.points?.start.y ?? n.y;
+                        const ex = n.points?.end.x ?? n.x + (n.width || 0);
+                        const ey = n.points?.end.y ?? n.y + (n.height || 0);
+                        const midX = (sx + ex) / 2;
+                        const midY = (sy + ey) / 2;
+                        return !(Math.hypot(sx - x, sy - y) < 30 || Math.hypot(ex - x, ey - y) < 30 || Math.hypot(midX - x, midY - y) < 30);
+                    } else {
+                        return !(x >= n.x && x <= n.x + (n.width || 0) && y >= n.y && y <= n.y + (n.height || 0));
+                    }
+                });
+                if (newNodes.length !== prev.length) setSelection(new Set());
+                return newNodes;
+            });
+            return;
+        }
+
+        if (isDrawingMode && currentPath) {
+            const rect = containerRef.current?.getBoundingClientRect()
+            if (!rect) return
+            const x = (e.clientX - rect.left - camera.x) / camera.zoom
+            const y = (e.clientY - rect.top - camera.y) / camera.zoom
+            setCurrentPath(prev => prev ? [...prev, { x, y }] : null)
             return
         }
 
@@ -364,6 +406,9 @@ export function useCanvasInteraction({
                             const maxY = Math.max(newPoints.start.y, newPoints.end.y, newPoints.control?.y ?? newPoints.end.y, newPoints.control2?.y ?? newPoints.end.y)
                             return { ...n, x: minX, y: minY, width: Math.max(1, maxX - minX), height: Math.max(1, maxY - minY), points: newPoints as any }
                         }
+                        if (n.type === 'pencil' && n.path) {
+                            return { ...n, x: newX, y: newY, path: n.path.map(p => ({ x: p.x + dx, y: p.y + dy })) }
+                        }
                         return { ...n, x: newX, y: newY }
                     }
                     if (n.type === 'arrow' && n.points) {
@@ -454,6 +499,30 @@ export function useCanvasInteraction({
 
     const handleMouseUp = useCallback((e: React.MouseEvent, setIsPanning: (p: boolean) => void) => {
         setIsPanning(false)
+        if (isDrawingMode && currentPath && currentPath.length > 1) {
+            const minX = Math.min(...currentPath.map(p => p.x))
+            const minY = Math.min(...currentPath.map(p => p.y))
+            const maxX = Math.max(...currentPath.map(p => p.x))
+            const maxY = Math.max(...currentPath.map(p => p.y))
+
+            const newNode: CanvasNode = {
+                id: Math.random().toString(36).substring(7),
+                type: 'pencil',
+                x: minX,
+                y: minY,
+                width: maxX - minX,
+                height: maxY - minY,
+                content: '',
+                path: currentPath,
+                strokeColor: pencilColor,
+                strokeWidth: pencilWidth
+            }
+            setNodes((prev: CanvasNode[]) => [...prev, newNode])
+            setSelection(new Set([newNode.id]))
+            setCurrentPath(null)
+            return
+        }
+
         if (isCreatingArrow && arrowStart && arrowStartNodeId) {
             const rect = containerRef.current?.getBoundingClientRect()
             if (rect) {
@@ -567,16 +636,45 @@ export function useCanvasInteraction({
             return
         }
         if (e.button === 0) {
+            const rect = containerRef.current?.getBoundingClientRect()
+            const x = rect ? (e.clientX - rect.left - camera.x) / camera.zoom : 0
+            const y = rect ? (e.clientY - rect.top - camera.y) / camera.zoom : 0
+
+            if (isDrawingMode) {
+                setCurrentPath([{ x, y }])
+                return
+            }
+
+            if (isEraserMode) {
+                setNodes(prev => {
+                    const newNodes = prev.filter(n => {
+                        if (n.type === 'pencil' && n.path) {
+                            return !n.path.some(p => Math.hypot(n.x + p.x - x, n.y + p.y - y) < 20);
+                        } else if (n.type === 'arrow') {
+                            const sx = n.points?.start.x ?? n.x;
+                            const sy = n.points?.start.y ?? n.y;
+                            const ex = n.points?.end.x ?? n.x + (n.width || 0);
+                            const ey = n.points?.end.y ?? n.y + (n.height || 0);
+                            const midX = (sx + ex) / 2;
+                            const midY = (sy + ey) / 2;
+                            return !(Math.hypot(sx - x, sy - y) < 30 || Math.hypot(ex - x, ey - y) < 30 || Math.hypot(midX - x, midY - y) < 30);
+                        } else {
+                            return !(x >= n.x && x <= n.x + (n.width || 0) && y >= n.y && y <= n.y + (n.height || 0));
+                        }
+                    });
+                    if (newNodes.length !== prev.length) setSelection(new Set());
+                    return newNodes;
+                });
+                return;
+            }
+
             if (e.target === containerRef.current) {
                 if (!e.shiftKey) setSelection(new Set())
                 setEditingId(null)
-                const rect = containerRef.current.getBoundingClientRect()
-                const x = (e.clientX - rect.left - camera.x) / camera.zoom
-                const y = (e.clientY - rect.top - camera.y) / camera.zoom
                 setSelectionBox({ start: { x, y }, end: { x, y } })
             }
         }
-    }, [isSpacePressed, camera, containerRef]);
+    }, [isSpacePressed, camera, containerRef, isDrawingMode, isEraserMode, setNodes]);
 
     const handleTouchStart = useCallback((e: React.TouchEvent, isPanning: boolean, setIsPanning: (p: boolean) => void) => {
         if (e.touches.length === 2) {
@@ -637,6 +735,11 @@ export function useCanvasInteraction({
         selectionCandidates, setSelectionCandidates,
         preDragOrder, setPreDragOrder,
         isCreatingArrow, setIsCreatingArrow,
+        isDrawingMode, setIsDrawingMode,
+        isEraserMode, setIsEraserMode,
+        pencilColor, setPencilColor,
+        pencilWidth, setPencilWidth,
+        currentPath,
         arrowStart, setArrowStart,
         arrowStartNodeId, setArrowStartNodeId,
         arrowStartSide, setArrowStartSide,

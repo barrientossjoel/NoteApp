@@ -32,7 +32,8 @@ export const MemoizedCanvasNode = React.memo(({ node, envRef, triggers }: Canvas
                 node.type === 'table' && "overflow-visible",
 
                 "transition-shadow origin-[50%_-50px]",
-                (!envRef.current.draggedNodeId || envRef.current.draggedNodeId !== node.id) ? "scale-100" : ""
+                (!envRef.current.draggedNodeId || envRef.current.draggedNodeId !== node.id) ? "scale-100" : "",
+                (envRef.current.isDrawingMode || envRef.current.isEraserMode) && "pointer-events-none"
             )}
             style={{
                 transform: (envRef.current.draggedNodeId === node.id && envRef.current.hasMoved && node.type !== 'arrow')
@@ -442,6 +443,17 @@ export const MemoizedCanvasNode = React.memo(({ node, envRef, triggers }: Canvas
                         boxSizing: 'border-box',
                     }}
                 />
+            ) : node.type === 'pencil' ? (
+                <svg className="w-full h-full overflow-visible pointer-events-none">
+                    <path
+                        d={node.path ? `M ${node.path.map(p => `${p.x - node.x} ${p.y - node.y}`).join(' L ')}` : ''}
+                        stroke={node.strokeColor || 'currentColor'}
+                        strokeWidth={node.strokeWidth || 2}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        fill="none"
+                    />
+                </svg>
             ) : null}
 
             {/* Connection handles — appear on hover for non-arrow nodes */}
