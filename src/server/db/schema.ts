@@ -30,6 +30,7 @@ export const documents = sqliteTable('documents', {
     order: integer('order').default(0),
     type: text('type', { enum: ['text', 'canvas', 'pdf'] }).default('text'),
     scrollPosition: text('scroll_position'),
+    embedding: text('embedding'), // Re-added for AI semantic search
     createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
     updatedAt: integer('updated_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
 });
@@ -40,6 +41,7 @@ export const messages = sqliteTable('messages', {
     content: text('content').notNull(),
     type: text('type', { enum: ['text', 'audio'] }).notNull().default('text'),
     documentId: text('document_id'), // Nullable for global notes
+    embedding: text('embedding'), // Re-added for AI semantic search
     createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
 });
 
@@ -57,4 +59,13 @@ export const documentShares = sqliteTable('document_shares', {
     sharedWithEmail: text('shared_with_email').notNull(),
     permission: text('permission', { enum: ['view', 'edit'] }).notNull().default('view'),
     createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
+});
+
+export const landingSearchData = sqliteTable('landing_search_data', {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    type: text('type', { enum: ['text', 'canvas', 'pdf', 'epub'] }).notNull(),
+    title: text('title').notNull(),
+    dateStr: text('date_str').notNull(), // e.g., '2h ago'
+    description: text('description').notNull(),
+    order: integer('order').default(0),
 });

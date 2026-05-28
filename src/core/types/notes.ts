@@ -12,7 +12,7 @@ export interface Document {
   date?: string; // Mapped from createdAt in actions
   createdAt?: string | Date | null;
   updatedAt?: string | Date | null;
-  type?: 'text' | 'canvas' | 'pdf';
+  type?: 'text' | 'canvas' | 'pdf' | 'epub';
   scrollPosition?: string | null;
   children?: Document[]; // For recursive tree structure on client
 }
