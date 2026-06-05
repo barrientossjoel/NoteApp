@@ -33,13 +33,35 @@ import { Editor } from '../../components/editor/editor'
 import { ShareDialog } from '../collaboration/share-dialog'
 
 // New modular imports
-import { CanvasNode, Camera, CanvasViewProps } from './types'
+import { CanvasNode, Camera, CanvasViewProps, CanvasEnv } from './types'
 import { MemoizedCanvasNode } from './components/canvas-node-renderer'
+import { CanvasToolbar } from './components/canvas-toolbar'
 import { useCanvasSync } from './hooks/use-canvas-sync'
 import { useCanvasCamera } from './hooks/use-canvas-camera'
 import { useCanvasInteraction } from './hooks/use-canvas-interaction'
-import { calculateBezierControls, getArrowMidpoint, getBestDynamicEnd } from './utils/canvas-geometry'
+import { calculateBezierControls, getArrowMidpoint, getBestDynamicEnd, shortenLineEnd, ARROW_STROKE_PAD, generateId, toCanvasCoords } from './utils/canvas-geometry'
 import { useKeyboardShortcuts, matchesShortcut } from '../../context/KeyboardShortcutsContext'
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/** Returns true when the event target is an editable input element. */
+const isInputFocused = (target: HTMLElement): boolean =>
+    ['INPUT', 'TEXTAREA'].includes(target.tagName) || target.isContentEditable;
+
+/** Factory: creates a centered image CanvasNode at the current viewport centre. */
+const createImageNode = (
+    content: string,
+    camera: Camera,
+    containerRef: React.RefObject<HTMLDivElement>
+): CanvasNode => ({
+    id: generateId(),
+    type: 'image',
+    x: -camera.x / camera.zoom + (containerRef.current?.clientWidth  || window.innerWidth)  / 2 / camera.zoom - 150,
+    y: -camera.y / camera.zoom + (containerRef.current?.clientHeight || window.innerHeight) / 2 / camera.zoom - 100,
+    width: 300,
+    height: 200,
+    content,
+});
 
 export function CanvasView({
     document: doc,
@@ -53,7 +75,7 @@ export function CanvasView({
 }: CanvasViewProps) {
     // 1. Core State & Refs
     const containerRef = useRef<HTMLDivElement>(null)
-    const envRef = useRef<any>({})
+    const envRef = useRef<CanvasEnv>({} as CanvasEnv)
     const wrapperRef = useRef<HTMLDivElement>(null)
     const isMobile = useMediaQuery('(max-width: 768px)')
 
@@ -91,7 +113,8 @@ export function CanvasView({
         editingId, setEditingId, dragStartPosition,
         handleNodeMouseDown, handleMouseDown: rawHandleMouseDown, handleMouseMove: rawHandleMouseMove, handleMouseUp: rawHandleMouseUp,
         handleTouchStart: rawHandleTouchStart, handleTouchMove: rawHandleTouchMove, handleTouchEnd: rawHandleTouchEnd,
-        moveToFront, getGroupNodes, addNote, addTable, addShape, updateNodeContent, deleteSelection
+        moveToFront, getGroupNodes, addNote, addTable, addShape, updateNodeContent, completeArrowConnection, deleteSelection,
+        shapeDrawingMode, setShapeDrawingMode, activeTool, setActiveTool
     } = useCanvasInteraction({ nodes, setNodes, camera, containerRef, wrapperRef, onOpenDocument });
 
     const handleWheel = (e: React.WheelEvent) => rawHandleWheel(e, containerRef)
@@ -134,34 +157,17 @@ export function CanvasView({
     const handleImageUpload = (file: File) => {
         const reader = new FileReader()
         reader.onload = (e) => {
-            const content = e.target?.result as string
-            const newNode: CanvasNode = {
-                id: Math.random().toString(36).substring(7),
-                type: 'image',
-                x: -camera.x / camera.zoom + (containerRef.current?.clientWidth || window.innerWidth) / 2 / camera.zoom - 150,
-                y: -camera.y / camera.zoom + (containerRef.current?.clientHeight || window.innerHeight) / 2 / camera.zoom - 100,
-                width: 300,
-                height: 200,
-                content: content
-            }
-            setNodes(prev => [...prev, newNode])
-            setSelection(new Set([newNode.id]))
+            const node = createImageNode(e.target?.result as string, camera, containerRef)
+            setNodes(prev => [...prev, node])
+            setSelection(new Set([node.id]))
         }
         reader.readAsDataURL(file)
     }
 
     const addImageNodeFromUrl = useCallback((url: string) => {
-        const newNode: CanvasNode = {
-            id: Math.random().toString(36).substring(7),
-            type: 'image',
-            x: -camera.x / camera.zoom + (containerRef.current?.clientWidth || window.innerWidth) / 2 / camera.zoom - 150,
-            y: -camera.y / camera.zoom + (containerRef.current?.clientHeight || window.innerHeight) / 2 / camera.zoom - 100,
-            width: 300,
-            height: 200,
-            content: url
-        }
-        setNodes(prev => [...prev, newNode])
-        setSelection(new Set([newNode.id]))
+        const node = createImageNode(url, camera, containerRef)
+        setNodes(prev => [...prev, node])
+        setSelection(new Set([node.id]))
     }, [camera, setNodes, setSelection, containerRef])
 
     const triggerFileUpload = () => fileInputRef.current?.click()
@@ -199,7 +205,7 @@ export function CanvasView({
 
     const handleImportDocument = (importedDoc: Document) => {
         const newNode: CanvasNode = {
-            id: Math.random().toString(36).substring(7),
+            id: generateId(),
             type: 'document',
             x: -camera.x / camera.zoom + (containerRef.current?.clientWidth || window.innerWidth) / 2 / camera.zoom - 150,
             y: -camera.y / camera.zoom + (containerRef.current?.clientHeight || window.innerHeight) / 2 / camera.zoom - 100,
@@ -211,7 +217,7 @@ export function CanvasView({
     }
 
     const handleGroup = () => {
-        const groupId = Math.random().toString(36).substring(7)
+        const groupId = generateId()
         setNodes(prev => prev.map(n => selection.has(n.id) ? { ...n, groupId } : n))
         setContextMenu(null)
     }
@@ -277,17 +283,9 @@ export function CanvasView({
     const confirmImageModal = () => {
         if (!imageUrlInput) return
         if (modalMode === 'create') {
-            const newNode: CanvasNode = {
-                id: Math.random().toString(36).substring(7),
-                type: 'image',
-                x: ((containerRef.current?.clientWidth || window.innerWidth) / 2 - camera.x) / camera.zoom - 150,
-                y: ((containerRef.current?.clientHeight || window.innerHeight) / 2 - camera.y) / camera.zoom - 100,
-                width: 300,
-                height: 200,
-                content: imageUrlInput
-            }
-            setNodes(prev => [...prev, newNode])
-            setSelection(new Set([newNode.id]))
+            const node = createImageNode(imageUrlInput, camera, containerRef)
+            setNodes(prev => [...prev, node])
+            setSelection(new Set([node.id]))
         } else if (modalMode === 'edit' && pendingNodeId) {
             updateNodeContent(pendingNodeId, imageUrlInput)
         }
@@ -330,17 +328,20 @@ export function CanvasView({
     }, [nodes, camera, doc, onUpdateDocument])
 
     const { shortcuts } = useKeyboardShortcuts()
-    const shortcutsRef = React.useRef(shortcuts)
-    React.useEffect(() => { shortcutsRef.current = shortcuts }, [shortcuts])
+    const shortcutsRef = useRef(shortcuts)
+    useEffect(() => { shortcutsRef.current = shortcuts }, [shortcuts])
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             const target = e.target as HTMLElement
-            const isInput = ['INPUT', 'TEXTAREA'].includes(target.tagName) || target.isContentEditable
-            if (matchesShortcut(e, shortcutsRef.current.canvasPan) && !isInput) setIsSpacePressed(true)
-            if (matchesShortcut(e, shortcutsRef.current.canvasDelete) && selection.size > 0 && !isModalOpen && !isInput) deleteSelection()
+            if (matchesShortcut(e, shortcutsRef.current.canvasPan) && !isInputFocused(target)) setIsSpacePressed(true)
+            if (matchesShortcut(e, shortcutsRef.current.canvasDelete) && selection.size > 0 && !isModalOpen && !isInputFocused(target)) deleteSelection()
             if (e.code === 'Escape') {
-                if (isModalOpen) setIsModalOpen(false)
+                if (shapeDrawingMode) setShapeDrawingMode(null)
+                else if (isCreatingArrow) setIsCreatingArrow(false)
+                else if (isDrawingMode) setIsDrawingMode(false)
+                else if (isEraserMode) setIsEraserMode(false)
+                else if (isModalOpen) setIsModalOpen(false)
                 else if (editingId) setEditingId(null)
                 else if (selection.size > 0) setSelection(new Set())
             }
@@ -349,9 +350,7 @@ export function CanvasView({
             if (matchesShortcut(e, shortcutsRef.current.canvasPan)) setIsSpacePressed(false)
         }
         const handleWindowPaste = (e: ClipboardEvent) => {
-            const target = e.target as HTMLElement
-            const isInput = ['INPUT', 'TEXTAREA'].includes(target.tagName) || target.isContentEditable
-            if (!isInput) handlePaste(e as any)
+            if (!isInputFocused(e.target as HTMLElement)) handlePaste(e as any)
         }
         const handleClick = () => setContextMenu(null)
 
@@ -365,7 +364,7 @@ export function CanvasView({
             window.removeEventListener('paste', handleWindowPaste)
             window.removeEventListener('click', handleClick)
         }
-    }, [selection, isModalOpen, editingId, handlePaste, deleteSelection])
+    }, [selection, isModalOpen, editingId, handlePaste, deleteSelection, shapeDrawingMode, isCreatingArrow, isDrawingMode, isEraserMode, setIsCreatingArrow, setIsDrawingMode, setIsEraserMode])
 
     // Environment for memoized nodes
     Object.assign(envRef.current, {
@@ -378,7 +377,7 @@ export function CanvasView({
         setIsDrawingMode, setIsEraserMode, setPencilColor, setPencilWidth,
         handleImageUpload, isPanning, isSpacePressed, isCreatingArrow, isDrawingMode, isEraserMode, pencilColor, pencilWidth, currentPath, arrowStart, arrowStartNodeId,
         arrowStartSide, calculateBezierControls, resizingNodeId, nodes, hasMoved, getBestDynamicEnd,
-        getArrowMidpoint
+        shapeDrawingMode, getArrowMidpoint, completeArrowConnection
     })
 
     return (
@@ -467,11 +466,7 @@ export function CanvasView({
             {/* Canvas Layers */}
             <div
                 ref={containerRef}
-                className={cn(
-                    "flex-1 relative overflow-hidden bg-background select-none touch-none",
-                    isPanning && "cursor-grabbing",
-                    isSpacePressed && "cursor-grab"
-                )}
+                className="flex-1 relative overflow-hidden bg-background select-none touch-none"
                 onWheel={handleWheel}
                 onTouchStart={handleTouchStart}
                 onTouchMove={handleTouchMove}
@@ -492,7 +487,7 @@ export function CanvasView({
                     }
                 }}
                 tabIndex={0}
-                style={{ cursor: isPanning ? 'grabbing' : isSpacePressed ? 'grab' : (isCreatingArrow || isDrawingMode || isEraserMode) ? 'crosshair' : 'default' }}
+                style={{ cursor: isPanning ? 'grabbing' : isSpacePressed ? 'grab' : (isCreatingArrow || isDrawingMode || isEraserMode || shapeDrawingMode) ? 'crosshair' : 'default' }}
             >
                 <div
                     style={{
@@ -532,25 +527,16 @@ export function CanvasView({
                     })}
 
                     {/* Multi-selection Bounding Box */}
-                    {(() => {
-                        const bounds = getSelectionBounds()
-                        if (!bounds || selection.size <= 1 || draggedNodeId) return null
-                        return (
-                            <div
-                                className="absolute border-2 border-primary/30 border-dashed pointer-events-none rounded-lg z-[145]"
-                                style={{
-                                    left: bounds.x - 4,
-                                    top: bounds.y - 4,
-                                    width: bounds.width + 8,
-                                    height: bounds.height + 8
-                                }}
-                            >
-                                <div className="absolute -top-6 left-0 bg-primary/10 text-primary text-[10px] px-1 rounded backdrop-blur-sm shadow-sm border border-primary/20">
-                                    {selection.size} items selected
-                                </div>
+                    {(() => { const b = getSelectionBounds(); return b && selection.size > 1 && !draggedNodeId && (
+                        <div
+                            className="absolute border-2 border-primary/30 border-dashed pointer-events-none rounded-lg z-[145]"
+                            style={{ left: b.x - 4, top: b.y - 4, width: b.width + 8, height: b.height + 8 }}
+                        >
+                            <div className="absolute -top-6 left-0 bg-primary/10 text-primary text-[10px] px-1 rounded backdrop-blur-sm shadow-sm border border-primary/20">
+                                {selection.size} items selected
                             </div>
-                        )
-                    })()}
+                        </div>
+                    ); })()}
                     {/* Rubber Band Selection Box */}
                     {selectionBox && (
                         <div
@@ -567,37 +553,28 @@ export function CanvasView({
             </div>
 
             {/* Arrow Preview Layer */}
-            {
-                isCreatingArrow && arrowStart && arrowEndPreview && (
+            {isCreatingArrow && arrowStart && arrowEndPreview && (() => {
+                const end = shortenLineEnd(arrowStart.x, arrowStart.y, arrowEndPreview.x, arrowEndPreview.y, ARROW_STROKE_PAD);
+                return (
                     <div className="absolute inset-0 pointer-events-none" style={{ transform: `translate(${camera.x}px, ${camera.y}px) scale(${camera.zoom})`, transformOrigin: '0 0' }}>
                         <svg className="absolute inset-0 w-full h-full overflow-visible">
                             <defs>
-                                <marker
-                                    id="arrowhead-preview"
-                                    markerWidth="10"
-                                    markerHeight="7"
-                                    refX="9"
-                                    refY="3.5"
-                                    orient="auto"
-                                >
+                                <marker id="arrowhead-preview" markerWidth="10" markerHeight="7" refX="7" refY="3.5" orient="auto">
                                     <polygon points="0 0, 10 3.5, 0 7" fill="currentColor" className="text-foreground" />
                                 </marker>
                             </defs>
                             <line
-                                x1={arrowStart!.x}
-                                y1={arrowStart!.y}
-                                x2={arrowEndPreview!.x}
-                                y2={arrowEndPreview!.y}
-                                stroke="currentColor"
-                                strokeWidth="2"
+                                x1={arrowStart.x} y1={arrowStart.y}
+                                x2={end.x} y2={end.y}
+                                stroke="currentColor" strokeWidth="2" strokeLinecap="butt"
                                 markerEnd="url(#arrowhead-preview)"
-                                className="text-foreground/50 dashed"
+                                className="text-foreground/50"
                                 strokeDasharray="5,5"
                             />
                         </svg>
                     </div>
-                )
-            }
+                );
+            })()}
             {/* Pencil Path Preview */}
             {
                 isDrawingMode && currentPath && currentPath.length > 0 && (
@@ -617,288 +594,27 @@ export function CanvasView({
                 )
             }
 
-            {/* Toolbar (Pill Shape) — Desktop: centered relative to the canvas, offset for zoom UI */}
-            {!isMobile && (
-                <div className="absolute bottom-6 inset-x-0 flex justify-center pointer-events-none z-50">
-                    {/* pr-40 reserves space for the zoom controls on the right so the pill stays visually centred */}
-                    <div className="pr-40 pointer-events-none flex justify-center">
-                        <div className="flex gap-1 p-1 bg-secondary shadow-lg items-center flex-row rounded-full px-2 h-12 pointer-events-auto">
-                            <div className="flex items-center gap-1 flex-row pr-2 border-r border-border/10 mr-1">
-                                <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full opacity-50">
-                                    <MousePointer2 className="h-4 w-4" />
-                                </Button>
-                            </div>
-                             <Button
-                                variant="ghost"
-                                size="icon"
-                                className={cn("h-9 w-9 rounded-full hover:bg-background/50", isCreatingArrow && "bg-primary/20 text-primary")}
-                                onClick={() => {
-                                    setIsCreatingArrow(!isCreatingArrow)
-                                    setIsDrawingMode(false)
-                                    setIsEraserMode(false)
-                                }}
-                                title="Add Arrow"
-                            >
-                                <ArrowRight className="h-4 w-4" />
-                            </Button>
-                            <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                    <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className={cn("h-9 w-9 rounded-full hover:bg-background/50", isDrawingMode && "bg-primary/20 text-primary")}
-                                        title="Pencil Tool"
-                                        onClick={() => setIsEraserMode(false)}
-                                    >
-                                        <Pencil className="h-4 w-4" />
-                                    </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="center" side="top" className="rounded-xl p-3 bg-secondary shadow-lg border-none mb-2 w-48">
-                                    <div className="space-y-3">
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-xs font-medium">Color</span>
-                                            <div className="flex gap-1">
-                                                {['#3b82f6', '#ef4444', '#22c55e', '#f59e0b', '#000000'].map(c => (
-                                                    <button
-                                                        key={c}
-                                                        className={cn(
-                                                            "w-4 h-4 rounded-full border border-white/20",
-                                                            pencilColor === c && "ring-2 ring-primary ring-offset-1 ring-offset-secondary"
-                                                        )}
-                                                        style={{ backgroundColor: c }}
-                                                        onClick={() => {
-                                                            setPencilColor(c)
-                                                            setIsDrawingMode(true)
-                                                            setIsCreatingArrow(false)
-                                                        }}
-                                                    />
-                                                ))}
-                                            </div>
-                                        </div>
-                                        <div className="space-y-1.5">
-                                            <div className="flex items-center justify-between">
-                                                <span className="text-xs font-medium">Thickness</span>
-                                                <span className="text-[10px] text-muted-foreground">{pencilWidth}px</span>
-                                            </div>
-                                            <input
-                                                type="range"
-                                                min="1"
-                                                max="20"
-                                                value={pencilWidth}
-                                                onChange={(e) => {
-                                                    setPencilWidth(parseInt(e.target.value))
-                                                    setIsDrawingMode(true)
-                                                    setIsCreatingArrow(false)
-                                                }}
-                                                className="w-full h-1.5 bg-background rounded-lg appearance-none cursor-pointer accent-primary"
-                                            />
-                                        </div>
-                                        <Button
-                                            className={cn("w-full h-8 text-xs rounded-lg", isDrawingMode ? "bg-primary" : "bg-muted")}
-                                            onClick={() => {
-                                                setIsDrawingMode(!isDrawingMode)
-                                                setIsCreatingArrow(false)
-                                                setIsEraserMode(false)
-                                            }}
-                                        >
-                                            {isDrawingMode ? 'Drawing Active' : 'Activate Pencil'}
-                                        </Button>
-                                    </div>
-                                </DropdownMenuContent>
-                            </DropdownMenu>
-                            <Button
-                                variant="ghost"
-                                size="icon"
-                                className={cn("h-9 w-9 rounded-full hover:bg-background/50", isEraserMode && "bg-primary/20 text-primary")}
-                                onClick={() => {
-                                    setIsEraserMode(!isEraserMode)
-                                    setIsDrawingMode(false)
-                                    setIsCreatingArrow(false)
-                                }}
-                                title="Eraser Tool"
-                            >
-                                <Eraser className="h-4 w-4" />
-                            </Button>
-                            <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full hover:bg-background/50" onClick={() => { addNote(); setIsDrawingMode(false); setIsEraserMode(false); }} title="Add Text Note">
-                                <Type className="h-4 w-4" />
-                            </Button>
-                            <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full hover:bg-background/50" onClick={() => { addTable(); setIsDrawingMode(false); setIsEraserMode(false); }} title="Add Table">
-                                <Table className="h-4 w-4" />
-                            </Button>
-                            <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full hover:bg-background/50" onClick={() => { initiateAddImage(); setIsDrawingMode(false); setIsEraserMode(false); }} title="Add Image">
-                                <Image className="h-4 w-4" />
-                            </Button>
-                            <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full hover:bg-background/50" onClick={() => setIsImportOpen(true)} title="Import Document">
-                                <FileText className="h-4 w-4" />
-                            </Button>
-                            <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                    <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full hover:bg-background/50" title="Add Shape">
-                                        <Square className="h-4 w-4" />
-                                    </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="center" side="top" className="rounded-xl p-1 bg-secondary shadow-lg border-none mb-2">
-                                    <DropdownMenuItem onClick={() => { addShape('rectangle'); setIsDrawingMode(false); setIsEraserMode(false); }} className="rounded-lg gap-2 cursor-pointer focus:bg-background/50">
-                                        <Square className="h-4 w-4" /><span>Rectangle</span>
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => { addShape('circle'); setIsDrawingMode(false); setIsEraserMode(false); }} className="rounded-lg gap-2 cursor-pointer focus:bg-background/50">
-                                        <Circle className="h-4 w-4" /><span>Circle</span>
-                                    </DropdownMenuItem>
-                                </DropdownMenuContent>
-                            </DropdownMenu>
-                            <div className="flex items-center gap-1 flex-row pl-2 border-l border-border/10 ml-1">
-                                <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className={cn("h-9 w-9 rounded-full hover:bg-background/50 hover:text-destructive", selection.size === 0 && "opacity-50 pointer-events-none")}
-                                    onClick={() => {
-                                        if (selection.size > 0) {
-                                            setNodes(prev => prev.filter(n => !selection.has(n.id)))
-                                            setSelection(new Set())
-                                        }
-                                    }}
-                                    title="Delete Selection"
-                                >
-                                    <Trash2 className="h-4 w-4" />
-                                </Button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Toolbar (Pill Shape) — Mobile: vertical left side */}
-            {isMobile && (
-                <div className="absolute left-4 top-1/2 -translate-y-1/2 flex flex-col gap-1 p-1 bg-secondary shadow-lg z-50 items-center rounded-3xl py-2 w-12">
-                    <div className="flex flex-col items-center gap-1 pb-2 border-b border-border/10 mb-1">
-                        <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full opacity-50"><MousePointer2 className="h-4 w-4" /></Button>
-                    </div>
-                    <Button variant="ghost" size="icon" className={cn("h-9 w-9 rounded-full hover:bg-background/50", isCreatingArrow && "bg-primary/20 text-primary")} onClick={() => { setIsCreatingArrow(!isCreatingArrow); setIsDrawingMode(false); setIsEraserMode(false); }} title="Add Arrow">
-                        <ArrowRight className="h-4 w-4" />
-                    </Button>
-                    <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                            <Button
-                                variant="ghost"
-                                size="icon"
-                                className={cn("h-9 w-9 rounded-full hover:bg-background/50", isDrawingMode && "bg-primary/20 text-primary")}
-                                title="Pencil Tool"
-                                onClick={() => setIsEraserMode(false)}
-                            >
-                                <Pencil className="h-4 w-4" />
-                            </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="center" side="right" className="rounded-xl p-3 bg-secondary shadow-lg border-none ml-2 w-48">
-                            <div className="space-y-3">
-                                <div className="flex items-center justify-between">
-                                    <span className="text-xs font-medium">Color</span>
-                                    <div className="flex gap-1">
-                                        {['#3b82f6', '#ef4444', '#22c55e', '#f59e0b', '#000000'].map(c => (
-                                            <button
-                                                key={c}
-                                                className={cn(
-                                                    "w-4 h-4 rounded-full border border-white/20",
-                                                    pencilColor === c && "ring-2 ring-primary ring-offset-1 ring-offset-secondary"
-                                                )}
-                                                style={{ backgroundColor: c }}
-                                                onClick={() => {
-                                                    setPencilColor(c)
-                                                    setIsDrawingMode(true)
-                                                    setIsCreatingArrow(false)
-                                                }}
-                                            />
-                                        ))}
-                                    </div>
-                                </div>
-                                <div className="space-y-1.5">
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-xs font-medium">Thickness</span>
-                                        <span className="text-[10px] text-muted-foreground">{pencilWidth}px</span>
-                                    </div>
-                                    <input
-                                        type="range"
-                                        min="1"
-                                        max="20"
-                                        value={pencilWidth}
-                                        onChange={(e) => {
-                                            setPencilWidth(parseInt(e.target.value))
-                                            setIsDrawingMode(true)
-                                            setIsCreatingArrow(false)
-                                        }}
-                                        className="w-full h-1.5 bg-background rounded-lg appearance-none cursor-pointer accent-primary"
-                                    />
-                                </div>
-                                <Button
-                                    className={cn("w-full h-8 text-xs rounded-lg", isDrawingMode ? "bg-primary" : "bg-muted")}
-                                    onClick={() => {
-                                        setIsDrawingMode(!isDrawingMode)
-                                        setIsCreatingArrow(false)
-                                        setIsEraserMode(false)
-                                    }}
-                                >
-                                    {isDrawingMode ? 'Drawing Active' : 'Activate Pencil'}
-                                </Button>
-                            </div>
-                        </DropdownMenuContent>
-                    </DropdownMenu>
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        className={cn("h-9 w-9 rounded-full hover:bg-background/50", isEraserMode && "bg-primary/20 text-primary")}
-                        onClick={() => {
-                            setIsEraserMode(!isEraserMode)
-                            setIsDrawingMode(false)
-                            setIsCreatingArrow(false)
-                        }}
-                        title="Eraser Tool"
-                    >
-                        <Eraser className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full hover:bg-background/50" onClick={() => { addNote(); setIsDrawingMode(false); setIsEraserMode(false); }} title="Add Text Note">
-                        <Type className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full hover:bg-background/50" onClick={() => { addTable(); setIsDrawingMode(false); setIsEraserMode(false); }} title="Add Table">
-                        <Table className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full hover:bg-background/50" onClick={() => { initiateAddImage(); setIsDrawingMode(false); setIsEraserMode(false); }} title="Add Image">
-                        <Image className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full hover:bg-background/50" onClick={() => setIsImportOpen(true)} title="Import Document">
-                        <FileText className="h-4 w-4" />
-                    </Button>
-                    <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full hover:bg-background/50" title="Add Shape">
-                                <Square className="h-4 w-4" />
-                            </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="center" side="right" className="rounded-xl p-1 bg-secondary shadow-lg border-none ml-2">
-                            <DropdownMenuItem onClick={() => { addShape('rectangle'); setIsDrawingMode(false); setIsEraserMode(false); }} className="rounded-lg gap-2 cursor-pointer focus:bg-background/50">
-                                <Square className="h-4 w-4" /><span>Rectangle</span>
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => { addShape('circle'); setIsDrawingMode(false); setIsEraserMode(false); }} className="rounded-lg gap-2 cursor-pointer focus:bg-background/50">
-                                <Circle className="h-4 w-4" /><span>Circle</span>
-                            </DropdownMenuItem>
-                        </DropdownMenuContent>
-                    </DropdownMenu>
-                    <div className="flex flex-col items-center gap-1 pt-2 border-t border-border/10 mt-1">
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            className={cn("h-9 w-9 rounded-full hover:bg-background/50 hover:text-destructive", selection.size === 0 && "opacity-50 pointer-events-none")}
-                            onClick={() => {
-                                if (selection.size > 0) {
-                                    setNodes(prev => prev.filter(n => !selection.has(n.id)))
-                                    setSelection(new Set())
-                                }
-                            }}
-                            title="Delete Selection"
-                        >
-                            <Trash2 className="h-4 w-4" />
-                        </Button>
-                    </div>
-                </div>
-            )}
+            <CanvasToolbar
+                isMobile={isMobile}
+                activeTool={activeTool}
+                setActiveTool={setActiveTool}
+                pencilColor={pencilColor}
+                setPencilColor={setPencilColor}
+                pencilWidth={pencilWidth}
+                setPencilWidth={setPencilWidth}
+                selectionSize={selection.size}
+                onAddNote={() => { addNote(); setActiveTool('select'); }}
+                onAddTable={() => { addTable(); setActiveTool('select'); }}
+                onAddShape={(shape) => addShape(shape)}
+                onInitiateAddImage={() => { initiateAddImage(); setActiveTool('select'); }}
+                onImportDocument={() => setIsImportOpen(true)}
+                onDeleteSelection={() => {
+                    if (selection.size > 0) {
+                        setNodes(prev => prev.filter(n => !selection.has(n.id)))
+                        setSelection(new Set())
+                    }
+                }}
+            />
             {/* Toolbar (Top Right) */}
             <div className="absolute top-0 right-4 z-50 pointer-events-auto flex items-center gap-1 h-16">
                 {!isMobile && (

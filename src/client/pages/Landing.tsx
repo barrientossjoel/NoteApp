@@ -146,6 +146,14 @@ export default function Landing() {
                     <span className="text-2xl font-semibold tracking-tight text-foreground lowercase" style={{ fontFamily: "'Playfair Display', serif" }}>closure</span>
                 </div>
 
+                {/* Main Navigation Links */}
+                <div className="hidden md:flex items-center gap-8 absolute left-1/2 -translate-x-1/2">
+                    <a href="#features" className="text-sm font-medium text-neutral-400 hover:text-foreground transition-colors">Features</a>
+                    <a href="#company" className="text-sm font-medium text-neutral-400 hover:text-foreground transition-colors">Company</a>
+                    <a href="#pricing" className="text-sm font-medium text-neutral-400 hover:text-foreground transition-colors">Pricing</a>
+                    <a href="#contact" className="text-sm font-medium text-neutral-400 hover:text-foreground transition-colors">Contact</a>
+                </div>
+
                 {/* Desktop Menu */}
                 <div className="hidden md:flex items-center gap-6">
                     <button aria-label="Toggle language" onClick={toggleLanguage} className="flex items-center justify-center text-neutral-400 hover:text-foreground transition-colors group">
@@ -196,11 +204,6 @@ export default function Landing() {
 
             {/* Hero Section */}
             <main className="relative z-10 flex flex-col items-center justify-center px-4 pt-32 pb-24 text-center">
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-sm text-neutral-300 mb-8 backdrop-blur-sm">
-                    <Sparkles className="w-4 h-4 text-indigo-400" />
-                    <span>{t.badge}</span>
-                </div>
-
                 <style>{`@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400..900;1,400..900&display=swap');`}</style>
                 <h1 className="text-[54px] md:text-[84px] lg:text-[112px] font-medium tracking-tight max-w-5xl mx-auto text-foreground mb-8 leading-[0.9]" style={{ fontFamily: "'Playfair Display', serif" }}>
                     {t.heroP1} <br className="hidden md:block" /> <span className="italic font-normal">{t.heroP2}</span>
@@ -228,11 +231,17 @@ export default function Landing() {
                     className="mt-20 relative w-full max-w-7xl mx-auto perspective-[2000px] will-change-transform"
                     style={{ opacity: 0, transform: 'translateY(100px) scale(0.9) rotateX(15deg)' }}
                 >
-                    <div className="relative transform-gpu transition-transform duration-700 ease-out z-10 shadow-[0_0_50px_rgba(0,0,0,0.5)] rounded-2xl hover:scale-[1.02]">
-                        <img src="/mockup.avif" alt="App Preview" className="w-full h-auto object-contain drop-shadow-2xl rounded-2xl" />
+                    {/* Outer ambient glow (difuminado) */}
+                    <div className="absolute -inset-[4px] bg-gradient-to-b from-white/30 via-white/5 to-transparent rounded-[20px] blur-2xl -z-10 pointer-events-none" />
+                    <div className="absolute -top-[10%] left-1/2 -translate-x-1/2 w-[90%] h-[400px] bg-white/10 blur-[120px] rounded-[100%] -z-10 pointer-events-none" />
+                    
+                    {/* Inner direct glow (directo y claro) */}
+                    <div className="absolute -inset-[1px] bg-gradient-to-b from-white/60 via-white/10 to-transparent rounded-[18px] blur-[3px] -z-10 pointer-events-none" />
+                    <div className="absolute -inset-[2px] bg-gradient-to-b from-white/40 via-white/0 to-transparent rounded-[20px] blur-[8px] -z-10 pointer-events-none" />
+                    
+                    <div className="relative transform-gpu transition-transform duration-700 ease-out z-10 shadow-[0_0_80px_rgba(255,255,255,0.1)] rounded-2xl hover:scale-[1.02] border border-white/20 bg-[#050505]">
+                        <img src="/mockup.avif" alt="App Preview" className="w-full h-auto object-contain rounded-2xl" />
                     </div>
-                    {/* Glow behind mockup */}
-                    <div className="absolute -top-[5%] left-1/2 -translate-x-1/2 w-[80%] h-[300px] bg-white/30 blur-[120px] rounded-[100%] -z-10 pointer-events-none" />
                 </div>
             </main>
 

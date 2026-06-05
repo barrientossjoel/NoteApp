@@ -1,6 +1,6 @@
-import { useState, useRef, useCallback, useEffect } from 'react'
+import { useState, useRef, useCallback } from 'react'
 import { CanvasNode, Camera } from '../types'
-import { calculateBezierControls, getBestDynamicEnd } from '../utils/canvas-geometry'
+import { calculateBezierControls, getBestDynamicEnd, generateId, toCanvasCoords, sideToPoint, offsetToSide, arrowBounds, shouldEraseNode, updateConnectedArrow, rotateControlPoints } from '../utils/canvas-geometry'
 import { useDragInertia } from '../../../hooks/useDragInertia'
 
 interface InteractionProps {
@@ -30,7 +30,13 @@ export function useCanvasInteraction({
     const [selectionBox, setSelectionBox] = useState<{ start: { x: number, y: number }, end: { x: number, y: number } } | null>(null)
     const [selectionCandidates, setSelectionCandidates] = useState<Set<string>>(new Set())
     const [preDragOrder, setPreDragOrder] = useState<string[] | null>(null)
-    const [isCreatingArrow, setIsCreatingArrow] = useState(false)
+    const [activeTool, setActiveTool] = useState<'select' | 'pencil' | 'eraser' | 'arrow' | 'shape-rectangle' | 'shape-circle'>('select')
+
+    const isCreatingArrow = activeTool === 'arrow'
+    const setIsCreatingArrow = useCallback((val: boolean) => {
+        setActiveTool(val ? 'arrow' : 'select')
+    }, [])
+
     const [arrowStart, setArrowStart] = useState<{ x: number, y: number } | null>(null)
     const [arrowStartNodeId, setArrowStartNodeId] = useState<string | null>(null)
     const [arrowStartSide, setArrowStartSide] = useState<string | null>(null)
@@ -49,12 +55,28 @@ export function useCanvasInteraction({
     } | null>(null)
     const [snapTargetId, setSnapTargetId] = useState<string | null>(null)
     const [editingId, setEditingId] = useState<string | null>(null)
-    const [isDrawingMode, setIsDrawingMode] = useState(false)
-    const [isEraserMode, setIsEraserMode] = useState(false)
+
+    const isDrawingMode = activeTool === 'pencil'
+    const setIsDrawingMode = useCallback((val: boolean) => {
+        setActiveTool(val ? 'pencil' : 'select')
+    }, [])
+
+    const isEraserMode = activeTool === 'eraser'
+    const setIsEraserMode = useCallback((val: boolean) => {
+        setActiveTool(val ? 'eraser' : 'select')
+    }, [])
+
     const [pencilColor, setPencilColor] = useState('#3b82f6') // default blue
     const [pencilWidth, setPencilWidth] = useState(3)
     const [currentPath, setCurrentPath] = useState<{ x: number, y: number }[] | null>(null)
+
+    const shapeDrawingMode = activeTool === 'shape-rectangle' ? 'rectangle' : activeTool === 'shape-circle' ? 'circle' : null
+    const setShapeDrawingMode = useCallback((val: 'rectangle' | 'circle' | null) => {
+        setActiveTool(val === 'rectangle' ? 'shape-rectangle' : val === 'circle' ? 'shape-circle' : 'select')
+    }, [])
+
     const dragStartPosition = useRef<{ x: number, y: number } | null>(null)
+    const resizeAnchor = useRef<{ x: number, y: number } | null>(null)
 
     const { applyMovement: applyInertiaMovement } = useDragInertia(!!draggedNodeId, wrapperRef as React.RefObject<HTMLElement>)
 
@@ -110,13 +132,19 @@ export function useCanvasInteraction({
         } else {
             setPreDragOrder(null)
         }
+
+        if (e.altKey && newSelection.size === 1) {
+            setResizingNodeId(node.id)
+            setHasMoved(false)
+            return
+        }
+
         setDraggedNodeId(node.id)
         setHasMoved(false)
 
         const rect = containerRef.current?.getBoundingClientRect()
         if (!rect) return
-        const mouseCanvasX = (e.clientX - rect.left - camera.x) / camera.zoom
-        const mouseCanvasY = (e.clientY - rect.top - camera.y) / camera.zoom
+        const { x: mouseCanvasX, y: mouseCanvasY } = toCanvasCoords(e.clientX, e.clientY, rect, camera)
 
         setDragOffset({
             x: mouseCanvasX - node.x,
@@ -126,376 +154,308 @@ export function useCanvasInteraction({
         setLastMousePos({ x: e.clientX, y: e.clientY })
     }, [selection, nodes, camera, containerRef, getGroupNodes, moveToFront, onOpenDocument]);
 
+    const handlePanningMode = useCallback((e: React.MouseEvent, setCamera: (c: any) => void) => {
+        const dx = e.clientX - lastMousePos.x
+        const dy = e.clientY - lastMousePos.y
+        setCamera((prev: any) => ({ ...prev, x: prev.x + dx, y: prev.y + dy }))
+        setLastMousePos({ x: e.clientX, y: e.clientY })
+    }, [lastMousePos]);
+
+    const handleSelectionBoxMode = useCallback((e: React.MouseEvent) => {
+        const rect = containerRef.current?.getBoundingClientRect()
+        if (!rect || !selectionBox) return
+        const x = (e.clientX - rect.left - camera.x) / camera.zoom
+        const y = (e.clientY - rect.top - camera.y) / camera.zoom
+        setSelectionBox(prev => prev ? { ...prev, end: { x, y } } : null)
+
+        const x1 = Math.min(selectionBox.start.x, x)
+        const y1 = Math.min(selectionBox.start.y, y)
+        const x2 = Math.max(selectionBox.start.x, x)
+        const y2 = Math.max(selectionBox.start.y, y)
+
+        const candidates = new Set<string>()
+        nodes.forEach(node => {
+            const nodeWidth = node.width || 0
+            const nodeHeight = node.height || 0
+            if (
+                node.x < x2 &&
+                node.x + nodeWidth > x1 &&
+                node.y < y2 &&
+                node.y + nodeHeight > y1
+            ) {
+                candidates.add(node.id)
+            }
+        })
+        setSelectionCandidates(candidates)
+    }, [camera, containerRef, nodes, selectionBox]);
+
+    const handleEraserModeMouseMove = useCallback((e: React.MouseEvent) => {
+        const rect = containerRef.current?.getBoundingClientRect()
+        if (!rect) return
+        const { x, y } = toCanvasCoords(e.clientX, e.clientY, rect, camera)
+
+        setNodes(prev => {
+            const newNodes = prev.filter(n => !shouldEraseNode(n, x, y));
+            if (newNodes.length !== prev.length) setSelection(new Set());
+            return newNodes;
+        });
+    }, [camera, containerRef, setNodes]);
+
+    const handleDrawingModeMouseMove = useCallback((e: React.MouseEvent) => {
+        const rect = containerRef.current?.getBoundingClientRect()
+        if (!rect) return
+        const pt = toCanvasCoords(e.clientX, e.clientY, rect, camera)
+        setCurrentPath(prev => prev ? [...prev, pt] : null)
+    }, [camera, containerRef]);
+
+    const handleDraggedHandleMode = useCallback((e: React.MouseEvent) => {
+        if (!draggedHandle) return
+        const rect = containerRef.current?.getBoundingClientRect()
+        if (!rect) return
+        const { x: mouseX, y: mouseY } = toCanvasCoords(e.clientX, e.clientY, rect, camera)
+
+        let currentSnapNodeId: string | null = null
+        let snapPoint: { x: number, y: number } | null = null
+
+        if (draggedHandle.type === 'start' || draggedHandle.type === 'end') {
+            const targetX = mouseX - draggedHandle.offsetX
+            const targetY = mouseY - draggedHandle.offsetY
+            const SNAP_THRESHOLD = 20 / camera.zoom
+            const HOVER_THRESHOLD = 100 / camera.zoom
+
+            nodes.forEach(other => {
+                if (other.id === draggedHandle.nodeId || other.type === 'arrow') return
+
+                const centerX = other.x + (other.width || 0) / 2
+                const centerY = other.y + (other.height || 0) / 2
+
+                const isInside =
+                    targetX >= other.x - HOVER_THRESHOLD &&
+                    targetX <= other.x + (other.width || 0) + HOVER_THRESHOLD &&
+                    targetY >= other.y - HOVER_THRESHOLD &&
+                    targetY <= other.y + (other.height || 0) + HOVER_THRESHOLD
+
+                if (isInside) {
+                    currentSnapNodeId = other.id
+                    let bestPoint = { x: centerX, y: centerY }
+                    let minD = Infinity
+
+                    if (other.shapeType === 'circle') {
+                        const vx = targetX - centerX
+                        const vy = targetY - centerY
+                        const mag = Math.sqrt(vx * vx + vy * vy)
+                        const radius = (other.width || 0) / 2
+                        if (mag > 0) {
+                            bestPoint = {
+                                x: centerX + (vx / mag) * radius,
+                                y: centerY + (vy / mag) * radius
+                            }
+                            minD = Math.abs(mag - radius)
+                        }
+                    } else {
+                        const edges = [
+                            { x: Math.max(other.x, Math.min(other.x + (other.width || 0), targetX)), y: other.y },
+                            { x: Math.max(other.x, Math.min(other.x + (other.width || 0), targetX)), y: other.y + (other.height || 0) },
+                            { x: other.x, y: Math.max(other.y, Math.min(other.y + (other.height || 0), targetY)) },
+                            { x: other.x + (other.width || 0), y: Math.max(other.y, Math.min(other.y + (other.height || 0), targetY)) }
+                        ]
+                        edges.forEach(edge => {
+                            const d = Math.sqrt(Math.pow(targetX - edge.x, 2) + Math.pow(targetY - edge.y, 2))
+                            if (d < minD) {
+                                minD = d
+                                bestPoint = edge
+                            }
+                        })
+                    }
+                    if (minD < SNAP_THRESHOLD) snapPoint = bestPoint
+                }
+            })
+        }
+        setSnapTargetId(currentSnapNodeId)
+
+        setNodes(prev => prev.map(n => {
+            if (n.id !== draggedHandle.nodeId || !n.points) return n
+            const newPoints = { ...n.points }
+            const targetX = mouseX - draggedHandle.offsetX
+            const targetY = mouseY - draggedHandle.offsetY
+
+            if (!newPoints.control) {
+                newPoints.control = {
+                    x: (newPoints.start.x + newPoints.end.x) / 2,
+                    y: (newPoints.start.y + newPoints.end.y) / 2
+                }
+            }
+
+            const targetNode = nodes.find(other => other.id === currentSnapNodeId)
+            const targetCenterX = targetNode ? targetNode.x + (targetNode.width || 0) / 2 : 0
+            const targetCenterY = targetNode ? targetNode.y + (targetNode.height || 0) / 2 : 0
+
+            if (draggedHandle.type === 'start') {
+                if (!draggedHandle.initialPoints) return n
+                const initial = draggedHandle.initialPoints
+                const finalX = snapPoint ? snapPoint.x : targetX
+                const finalY = snapPoint ? snapPoint.y : targetY
+                const startOffset = snapPoint ? { x: snapPoint.x - targetCenterX, y: snapPoint.y - targetCenterY } : undefined
+
+                const rotated = rotateControlPoints(initial, { x: finalX, y: finalY }, initial.end)
+                newPoints.start = { x: finalX, y: finalY }
+                newPoints.control = rotated.control
+                newPoints.control2 = rotated.control2
+                return { ...n, startNodeId: currentSnapNodeId || undefined, startOffset, points: newPoints }
+            } else if (draggedHandle.type === 'end') {
+                if (!draggedHandle.initialPoints) return n
+                const initial = draggedHandle.initialPoints
+                const finalX = snapPoint ? snapPoint.x : targetX
+                const finalY = snapPoint ? snapPoint.y : targetY
+                const endOffset = snapPoint ? { x: snapPoint.x - targetCenterX, y: snapPoint.y - targetCenterY } : undefined
+
+                const rotated = rotateControlPoints(initial, initial.start, { x: finalX, y: finalY })
+                newPoints.end = { x: finalX, y: finalY }
+                newPoints.control = rotated.control
+                newPoints.control2 = rotated.control2
+                return { ...n, endNodeId: currentSnapNodeId || undefined, endOffset, points: newPoints }
+            } else if (draggedHandle.type === 'control') {
+                newPoints.control = { x: targetX, y: targetY }
+            } else if (draggedHandle.type === 'control2') {
+                newPoints.control2 = { x: targetX, y: targetY }
+            }
+
+            return { ...n, ...arrowBounds(newPoints), points: newPoints }
+        }))
+    }, [camera, containerRef, draggedHandle, nodes, setNodes]);
+
+    const handleDraggedNodeMode = useCallback((e: React.MouseEvent) => {
+        if (!draggedNodeId) return
+        setHasMoved(true)
+        applyInertiaMovement(e.movementX)
+
+        const dx = (e.clientX - lastMousePos.x) / camera.zoom
+        const dy = (e.clientY - lastMousePos.y) / camera.zoom
+        if (dx === 0 && dy === 0) return
+
+        setNodes(prev => {
+            const mainNode = prev.find(n => n.id === draggedNodeId)
+            if (!mainNode) return prev
+            return prev.map(n => {
+                if (selection.has(n.id)) {
+                    const newX = n.x + dx
+                    const newY = n.y + dy
+                    if (n.type === 'arrow' && n.points) {
+                        const shouldMoveStart = !n.startNodeId || selection.has(n.startNodeId)
+                        const shouldMoveEnd = !n.endNodeId || selection.has(n.endNodeId)
+                        const newPoints = {
+                            ...n.points,
+                            start: shouldMoveStart ? { x: n.points.start.x + dx, y: n.points.start.y + dy } : n.points.start,
+                            end: shouldMoveEnd ? { x: n.points.end.x + dx, y: n.points.end.y + dy } : n.points.end,
+                            control: n.points.control ? { x: n.points.control.x + dx, y: n.points.control.y + dy } : undefined,
+                            control2: n.points.control2 ? { x: n.points.control2.x + dx, y: n.points.control2.y + dy } : undefined
+                        }
+                        const recalculated = updateConnectedArrow(n, prev, selection, dx, dy);
+                        if (recalculated) Object.assign(newPoints, recalculated);
+                        return { ...n, ...arrowBounds(newPoints), points: newPoints as any }
+                    }
+                    if (n.type === 'pencil' && n.path) {
+                        return { ...n, x: newX, y: newY, path: n.path.map(p => ({ x: p.x + dx, y: p.y + dy })) }
+                    }
+                    return { ...n, x: newX, y: newY }
+                }
+                if (n.type === 'arrow' && n.points) {
+                    let updated = false; const newPoints = { ...n.points }
+                    if (n.startNodeId && selection.has(n.startNodeId)) { newPoints.start = { x: newPoints.start.x + dx, y: newPoints.start.y + dy }; updated = true }
+                    if (n.endNodeId && selection.has(n.endNodeId)) { newPoints.end = { x: newPoints.end.x + dx, y: newPoints.end.y + dy }; updated = true }
+                    if (updated) {
+                        const recalculated = updateConnectedArrow(n, prev, selection, dx, dy);
+                        if (recalculated) Object.assign(newPoints, recalculated);
+                        return { ...n, ...arrowBounds(newPoints), points: newPoints }
+                    }
+                }
+                return n
+            })
+        })
+        setLastMousePos({ x: e.clientX, y: e.clientY })
+    }, [camera, draggedNodeId, lastMousePos, selection, setNodes]);
+
+    const handleResizingNodeMode = useCallback((e: React.MouseEvent) => {
+        if (!resizingNodeId) return
+        const rect = containerRef.current?.getBoundingClientRect()
+        if (!rect) return
+        const node = nodes.find(n => n.id === resizingNodeId)
+        if (!node) return
+        const { x: mouseX, y: mouseY } = toCanvasCoords(e.clientX, e.clientY, rect, camera)
+
+        const anchor = resizeAnchor.current
+        const isDrawingShape = anchor !== null
+
+        const newX = isDrawingShape ? Math.min(anchor.x, mouseX) : node.x
+        const newY = isDrawingShape ? Math.min(anchor.y, mouseY) : node.y
+        const newWidth = isDrawingShape
+            ? Math.max(20, Math.abs(mouseX - anchor.x))
+            : Math.max(20, mouseX - node.x)
+        const newHeight = isDrawingShape
+            ? Math.max(20, Math.abs(mouseY - anchor.y))
+            : Math.max(20, mouseY - node.y)
+
+        setNodes(prev => {
+            const node = prev.find(n => n.id === resizingNodeId)
+            if (!node) return prev
+
+            const oldCx = node.x + (node.width || 0) / 2
+            const oldCy = node.y + (node.height || 0) / 2
+            const newCx = newX + newWidth / 2
+            const newCy = newY + newHeight / 2
+            const dx = newCx - oldCx
+            const dy = newCy - oldCy
+
+            return prev.map(n => {
+                if (n.id === resizingNodeId) return { ...n, x: newX, y: newY, width: newWidth, height: newHeight }
+
+                if (!isDrawingShape && n.type === 'arrow' && n.points) {
+                    let updated = false
+                    const newPoints = { ...n.points }
+                    if (n.startNodeId === resizingNodeId) { newPoints.start = { x: n.points.start.x + dx, y: n.points.start.y + dy }; updated = true }
+                    if (n.endNodeId === resizingNodeId) { newPoints.end = { x: n.points.end.x + dx, y: n.points.end.y + dy }; updated = true }
+                    if (updated) {
+                        if (n.startNodeId && n.endNodeId) {
+                            const startSide = offsetToSide(n.startOffset)
+                            const endSide = offsetToSide(n.endOffset)
+                            const { cp1, cp2 } = calculateBezierControls(newPoints.start, newPoints.end, startSide, endSide)
+                            newPoints.control = cp1
+                            newPoints.control2 = cp2
+                        }
+                        return { ...n, ...arrowBounds(newPoints), points: newPoints }
+                    }
+                }
+                return n
+            })
+        })
+    }, [camera, containerRef, nodes, resizingNodeId, setNodes]);
+
     const handleMouseMove = useCallback((e: React.MouseEvent, isPanning: boolean, camera: Camera, setCamera: (c: any) => void) => {
         if (isPanning) {
-            const dx = e.clientX - lastMousePos.x
-            const dy = e.clientY - lastMousePos.y
-            setCamera((prev: any) => ({ ...prev, x: prev.x + dx, y: prev.y + dy }))
-            setLastMousePos({ x: e.clientX, y: e.clientY })
-            return
-        }
-
-        if (selectionBox) {
-            const rect = containerRef.current?.getBoundingClientRect()
-            if (!rect) return
-            const x = (e.clientX - rect.left - camera.x) / camera.zoom
-            const y = (e.clientY - rect.top - camera.y) / camera.zoom
-            setSelectionBox(prev => prev ? { ...prev, end: { x, y } } : null)
-
-            const x1 = Math.min(selectionBox.start.x, x)
-            const y1 = Math.min(selectionBox.start.y, y)
-            const x2 = Math.max(selectionBox.start.x, x)
-            const y2 = Math.max(selectionBox.start.y, y)
-
-            const candidates = new Set<string>()
-            nodes.forEach(node => {
-                const nodeWidth = node.width || 0
-                const nodeHeight = node.height || 0
-                if (
-                    node.x < x2 &&
-                    node.x + nodeWidth > x1 &&
-                    node.y < y2 &&
-                    node.y + nodeHeight > y1
-                ) {
-                    candidates.add(node.id)
-                }
-            })
-            setSelectionCandidates(candidates)
-            return
-        }
-
-        if (isEraserMode && e.buttons === 1) {
-            const rect = containerRef.current?.getBoundingClientRect()
-            if (!rect) return
-            const x = (e.clientX - rect.left - camera.x) / camera.zoom
-            const y = (e.clientY - rect.top - camera.y) / camera.zoom
-
-            setNodes(prev => {
-                const newNodes = prev.filter(n => {
-                    if (n.type === 'pencil' && n.path) {
-                        return !n.path.some(p => Math.hypot(n.x + p.x - x, n.y + p.y - y) < 20);
-                    } else if (n.type === 'arrow') {
-                        const sx = n.points?.start.x ?? n.x;
-                        const sy = n.points?.start.y ?? n.y;
-                        const ex = n.points?.end.x ?? n.x + (n.width || 0);
-                        const ey = n.points?.end.y ?? n.y + (n.height || 0);
-                        const midX = (sx + ex) / 2;
-                        const midY = (sy + ey) / 2;
-                        return !(Math.hypot(sx - x, sy - y) < 30 || Math.hypot(ex - x, ey - y) < 30 || Math.hypot(midX - x, midY - y) < 30);
-                    } else {
-                        return !(x >= n.x && x <= n.x + (n.width || 0) && y >= n.y && y <= n.y + (n.height || 0));
-                    }
-                });
-                if (newNodes.length !== prev.length) setSelection(new Set());
-                return newNodes;
-            });
-            return;
-        }
-
-        if (isDrawingMode && currentPath) {
-            const rect = containerRef.current?.getBoundingClientRect()
-            if (!rect) return
-            const x = (e.clientX - rect.left - camera.x) / camera.zoom
-            const y = (e.clientY - rect.top - camera.y) / camera.zoom
-            setCurrentPath(prev => prev ? [...prev, { x, y }] : null)
-            return
-        }
-
-        if (draggedHandle) {
-            const rect = containerRef.current?.getBoundingClientRect()
-            if (!rect) return
-            const mouseX = (e.clientX - rect.left - camera.x) / camera.zoom
-            const mouseY = (e.clientY - rect.top - camera.y) / camera.zoom
-
-            let currentSnapNodeId: string | null = null
-            let snapPoint: { x: number, y: number } | null = null
-
-            if (draggedHandle.type === 'start' || draggedHandle.type === 'end') {
-                const targetX = mouseX - draggedHandle.offsetX
-                const targetY = mouseY - draggedHandle.offsetY
-                const SNAP_THRESHOLD = 20 / camera.zoom
-                const HOVER_THRESHOLD = 100 / camera.zoom
-
-                nodes.forEach(other => {
-                    if (other.id === draggedHandle.nodeId || other.type === 'arrow') return
-
-                    const centerX = other.x + (other.width || 0) / 2
-                    const centerY = other.y + (other.height || 0) / 2
-
-                    const isInside =
-                        targetX >= other.x - HOVER_THRESHOLD &&
-                        targetX <= other.x + (other.width || 0) + HOVER_THRESHOLD &&
-                        targetY >= other.y - HOVER_THRESHOLD &&
-                        targetY <= other.y + (other.height || 0) + HOVER_THRESHOLD
-
-                    if (isInside) {
-                        currentSnapNodeId = other.id
-                        let bestPoint = { x: centerX, y: centerY }
-                        let minD = Infinity
-
-                        if (other.shapeType === 'circle') {
-                            const vx = targetX - centerX
-                            const vy = targetY - centerY
-                            const mag = Math.sqrt(vx * vx + vy * vy)
-                            const radius = (other.width || 0) / 2
-                            if (mag > 0) {
-                                bestPoint = {
-                                    x: centerX + (vx / mag) * radius,
-                                    y: centerY + (vy / mag) * radius
-                                }
-                                minD = Math.abs(mag - radius)
-                            }
-                        } else {
-                            const edges = [
-                                { x: Math.max(other.x, Math.min(other.x + (other.width || 0), targetX)), y: other.y },
-                                { x: Math.max(other.x, Math.min(other.x + (other.width || 0), targetX)), y: other.y + (other.height || 0) },
-                                { x: other.x, y: Math.max(other.y, Math.min(other.y + (other.height || 0), targetY)) },
-                                { x: other.x + (other.width || 0), y: Math.max(other.y, Math.min(other.y + (other.height || 0), targetY)) }
-                            ]
-                            edges.forEach(edge => {
-                                const d = Math.sqrt(Math.pow(targetX - edge.x, 2) + Math.pow(targetY - edge.y, 2))
-                                if (d < minD) {
-                                    minD = d
-                                    bestPoint = edge
-                                }
-                            })
-                        }
-                        if (minD < SNAP_THRESHOLD) snapPoint = bestPoint
-                    }
-                })
-            }
-            setSnapTargetId(currentSnapNodeId)
-
-            setNodes(prev => prev.map(n => {
-                if (n.id !== draggedHandle.nodeId || !n.points) return n
-                const newPoints = { ...n.points }
-                const targetX = mouseX - draggedHandle.offsetX
-                const targetY = mouseY - draggedHandle.offsetY
-
-                if (!newPoints.control) {
-                    newPoints.control = {
-                        x: (newPoints.start.x + newPoints.end.x) / 2,
-                        y: (newPoints.start.y + newPoints.end.y) / 2
-                    }
-                }
-
-                const targetNode = nodes.find(other => other.id === currentSnapNodeId)
-                const targetCenterX = targetNode ? targetNode.x + (targetNode.width || 0) / 2 : 0
-                const targetCenterY = targetNode ? targetNode.y + (targetNode.height || 0) / 2 : 0
-
-                if (draggedHandle.type === 'start') {
-                    if (!draggedHandle.initialPoints) return n
-                    const initial = draggedHandle.initialPoints
-                    const finalX = snapPoint ? snapPoint.x : targetX
-                    const finalY = snapPoint ? snapPoint.y : targetY
-                    const startOffset = snapPoint ? { x: snapPoint.x - targetCenterX, y: snapPoint.y - targetCenterY } : undefined
-
-                    const oldCenter = { x: (initial.start.x + initial.end.x) / 2, y: (initial.start.y + initial.end.y) / 2 }
-                    const newCenter = { x: (finalX + initial.end.x) / 2, y: (finalY + initial.end.y) / 2 }
-                    const vc = { x: initial.control!.x - oldCenter.x, y: initial.control!.y - oldCenter.y }
-                    const vOld = { x: initial.end.x - initial.start.x, y: initial.end.y - initial.start.y }
-                    const vNew = { x: initial.end.x - finalX, y: initial.end.y - finalY }
-                    const rotation = Math.atan2(vNew.y, vNew.x) - Math.atan2(vOld.y, vOld.x)
-                    const cos = Math.cos(rotation); const sin = Math.sin(rotation)
-                    const vcRotated = { x: vc.x * cos - vc.y * sin, y: vc.x * sin + vc.y * cos }
-
-                    newPoints.start = { x: finalX, y: finalY }
-                    newPoints.control = { x: newCenter.x + vcRotated.x, y: newCenter.y + vcRotated.y }
-                    if (newPoints.control2) {
-                        const vc2 = { x: initial.control2!.x - oldCenter.x, y: initial.control2!.y - oldCenter.y }
-                        const vc2Rotated = { x: vc2.x * cos - vc2.y * sin, y: vc2.x * sin + vc2.y * cos }
-                        newPoints.control2 = { x: newCenter.x + vc2Rotated.x, y: newCenter.y + vc2Rotated.y }
-                    }
-                    return { ...n, startNodeId: currentSnapNodeId || undefined, startOffset, points: newPoints }
-                } else if (draggedHandle.type === 'end') {
-                    if (!draggedHandle.initialPoints) return n
-                    const initial = draggedHandle.initialPoints
-                    const finalX = snapPoint ? snapPoint.x : targetX
-                    const finalY = snapPoint ? snapPoint.y : targetY
-                    const endOffset = snapPoint ? { x: snapPoint.x - targetCenterX, y: snapPoint.y - targetCenterY } : undefined
-
-                    const oldCenter = { x: (initial.start.x + initial.end.x) / 2, y: (initial.start.y + initial.end.y) / 2 }
-                    const newCenter = { x: (initial.start.x + finalX) / 2, y: (initial.start.y + finalY) / 2 }
-                    const vc = { x: initial.control!.x - oldCenter.x, y: initial.control!.y - oldCenter.y }
-                    const vOld = { x: initial.end.x - initial.start.x, y: initial.end.y - initial.start.y }
-                    const vNew = { x: finalX - initial.start.x, y: finalY - initial.start.y }
-                    const rotation = Math.atan2(vNew.y, vNew.x) - Math.atan2(vOld.y, vOld.x)
-                    const cos = Math.cos(rotation); const sin = Math.sin(rotation)
-                    const vcRotated = { x: vc.x * cos - vc.y * sin, y: vc.x * sin + vc.y * cos }
-
-                    newPoints.end = { x: finalX, y: finalY }
-                    newPoints.control = { x: newCenter.x + vcRotated.x, y: newCenter.y + vcRotated.y }
-                    if (newPoints.control2) {
-                        const vc2 = { x: initial.control2!.x - oldCenter.x, y: initial.control2!.y - oldCenter.y }
-                        const vc2Rotated = { x: vc2.x * cos - vc2.y * sin, y: vc2.x * sin + vc2.y * cos }
-                        newPoints.control2 = { x: newCenter.x + vc2Rotated.x, y: newCenter.y + vc2Rotated.y }
-                    }
-                    return { ...n, endNodeId: currentSnapNodeId || undefined, endOffset, points: newPoints }
-                } else if (draggedHandle.type === 'control') {
-                    newPoints.control = { x: targetX, y: targetY }
-                } else if (draggedHandle.type === 'control2') {
-                    newPoints.control2 = { x: targetX, y: targetY }
-                }
-
-                const minX = Math.min(newPoints.start.x, newPoints.end.x, newPoints.control?.x ?? newPoints.start.x, newPoints.control2?.x ?? newPoints.start.x)
-                const minY = Math.min(newPoints.start.y, newPoints.end.y, newPoints.control?.y ?? newPoints.start.y, newPoints.control2?.y ?? newPoints.start.y)
-                const maxX = Math.max(newPoints.start.x, newPoints.end.x, newPoints.control?.x ?? newPoints.end.x, newPoints.control2?.x ?? newPoints.end.x)
-                const maxY = Math.max(newPoints.start.y, newPoints.end.y, newPoints.control?.y ?? newPoints.end.y, newPoints.control2?.y ?? newPoints.end.y)
-
-                return { ...n, x: minX, y: minY, width: maxX - minX, height: maxY - minY, points: newPoints }
-            }))
+            handlePanningMode(e, setCamera)
+        } else if (selectionBox) {
+            handleSelectionBoxMode(e)
+        } else if (isEraserMode && e.buttons === 1) {
+            handleEraserModeMouseMove(e)
+        } else if (isDrawingMode && currentPath) {
+            handleDrawingModeMouseMove(e)
+        } else if (draggedHandle) {
+            handleDraggedHandleMode(e)
         } else if (isCreatingArrow && arrowStart) {
             const rect = containerRef.current?.getBoundingClientRect()
-            if (!rect) return
-            const mouseX = (e.clientX - rect.left - camera.x) / camera.zoom
-            const mouseY = (e.clientY - rect.top - camera.y) / camera.zoom
-            setArrowEndPreview({ x: mouseX, y: mouseY })
+            if (rect) setArrowEndPreview(toCanvasCoords(e.clientX, e.clientY, rect, camera))
         } else if (draggedNodeId) {
-            setHasMoved(true)
-            applyInertiaMovement(e.movementX)
-
-            const dx = (e.clientX - lastMousePos.x) / camera.zoom
-            const dy = (e.clientY - lastMousePos.y) / camera.zoom
-            if (dx === 0 && dy === 0) return
-
-            setNodes(prev => {
-                const mainNode = prev.find(n => n.id === draggedNodeId)
-                if (!mainNode) return prev
-                return prev.map(n => {
-                    if (selection.has(n.id)) {
-                        const newX = n.x + dx
-                        const newY = n.y + dy
-                        if (n.type === 'arrow' && n.points) {
-                            const shouldMoveStart = !n.startNodeId || selection.has(n.startNodeId)
-                            const shouldMoveEnd = !n.endNodeId || selection.has(n.endNodeId)
-                            const newPoints = {
-                                ...n.points,
-                                start: shouldMoveStart ? { x: n.points.start.x + dx, y: n.points.start.y + dy } : n.points.start,
-                                end: shouldMoveEnd ? { x: n.points.end.x + dx, y: n.points.end.y + dy } : n.points.end,
-                                control: n.points.control ? { x: n.points.control.x + dx, y: n.points.control.y + dy } : undefined,
-                                control2: n.points.control2 ? { x: n.points.control2.x + dx, y: n.points.control2.y + dy } : undefined
-                            }
-                            if (n.startNodeId && n.endNodeId) {
-                                const startNode = prev.find(node => node.id === n.startNodeId);
-                                const endNode = prev.find(node => node.id === n.endNodeId);
-                                if (startNode && endNode) {
-                                    const sNode = selection.has(startNode.id) ? { ...startNode, x: startNode.x + dx, y: startNode.y + dy } : startNode;
-                                    const eNode = selection.has(endNode.id) ? { ...endNode, x: endNode.x + dx, y: endNode.y + dy } : endNode;
-                                    let s1 = n.startSide || 'right'; let s2 = 'left';
-                                    let startPos = n.points.start; let endPos = n.points.end;
-
-                                    if (n.isDynamicEnd) {
-                                        startPos = { x: sNode.x + (n.startOffset?.x || 0), y: sNode.y + (n.startOffset?.y || 0) };
-                                        const bestEnd = getBestDynamicEnd(startPos, s1, eNode, prev);
-                                        s2 = bestEnd.endSide;
-                                        endPos = { x: eNode.x + (s2 === 'left' ? 0 : s2 === 'right' ? (eNode.width || 0) : (eNode.width || 0) / 2), y: eNode.y + (s2 === 'top' ? 0 : s2 === 'bottom' ? (eNode.height || 0) : (eNode.height || 0) / 2) };
-                                    } else {
-                                        s1 = n.startSide || (n.startOffset ? (Math.abs(n.startOffset.x) > Math.abs(n.startOffset.y) ? (n.startOffset.x > 0 ? 'right' : 'left') : (n.startOffset.y > 0 ? 'bottom' : 'top')) : 'right');
-                                        s2 = n.endOffset ? (Math.abs(n.endOffset.x) > Math.abs(n.endOffset.y) ? (n.endOffset.x > 0 ? 'right' : 'left') : (n.endOffset.y > 0 ? 'bottom' : 'top')) : 'left';
-                                        startPos = { x: sNode.x + (n.startOffset?.x || 0), y: sNode.y + (n.startOffset?.y || 0) };
-                                        endPos = { x: eNode.x + (n.endOffset?.x || 0), y: eNode.y + (n.endOffset?.y || 0) };
-                                    }
-                                    newPoints.start = startPos; newPoints.end = endPos;
-                                    const { cp1, cp2 } = calculateBezierControls(startPos, endPos, s1, s2);
-                                    newPoints.control = cp1; newPoints.control2 = cp2;
-                                }
-                            }
-                            const minX = Math.min(newPoints.start.x, newPoints.end.x, newPoints.control?.x ?? newPoints.start.x, newPoints.control2?.x ?? newPoints.start.x)
-                            const minY = Math.min(newPoints.start.y, newPoints.end.y, newPoints.control?.y ?? newPoints.start.y, newPoints.control2?.y ?? newPoints.start.y)
-                            const maxX = Math.max(newPoints.start.x, newPoints.end.x, newPoints.control?.x ?? newPoints.end.x, newPoints.control2?.x ?? newPoints.end.x)
-                            const maxY = Math.max(newPoints.start.y, newPoints.end.y, newPoints.control?.y ?? newPoints.end.y, newPoints.control2?.y ?? newPoints.end.y)
-                            return { ...n, x: minX, y: minY, width: Math.max(1, maxX - minX), height: Math.max(1, maxY - minY), points: newPoints as any }
-                        }
-                        if (n.type === 'pencil' && n.path) {
-                            return { ...n, x: newX, y: newY, path: n.path.map(p => ({ x: p.x + dx, y: p.y + dy })) }
-                        }
-                        return { ...n, x: newX, y: newY }
-                    }
-                    if (n.type === 'arrow' && n.points) {
-                        let updated = false; const newPoints = { ...n.points }
-                        if (n.startNodeId && selection.has(n.startNodeId)) { newPoints.start = { x: newPoints.start.x + dx, y: newPoints.start.y + dy }; updated = true }
-                        if (n.endNodeId && selection.has(n.endNodeId)) { newPoints.end = { x: newPoints.end.x + dx, y: newPoints.end.y + dy }; updated = true }
-                        if (updated) {
-                            if (n.startNodeId && n.endNodeId) {
-                                const startNode = prev.find(node => node.id === n.startNodeId);
-                                const endNode = prev.find(node => node.id === n.endNodeId);
-                                if (startNode && endNode) {
-                                    const sNode = selection.has(startNode.id) ? { ...startNode, x: startNode.x + dx, y: startNode.y + dy } : startNode;
-                                    const eNode = selection.has(endNode.id) ? { ...endNode, x: endNode.x + dx, y: endNode.y + dy } : endNode;
-                                    let s1 = n.startSide || 'right'; let s2 = 'left';
-                                    let startPos = n.points.start; let endPos = n.points.end;
-                                    if (n.isDynamicEnd) {
-                                        startPos = { x: sNode.x + (n.startOffset?.x || 0), y: sNode.y + (n.startOffset?.y || 0) };
-                                        const bestEnd = getBestDynamicEnd(startPos, s1, eNode, prev);
-                                        s2 = bestEnd.endSide;
-                                        endPos = { x: eNode.x + (s2 === 'left' ? 0 : s2 === 'right' ? (eNode.width || 0) : (eNode.width || 0) / 2), y: eNode.y + (s2 === 'top' ? 0 : s2 === 'bottom' ? (eNode.height || 0) : (eNode.height || 0) / 2) };
-                                    } else {
-                                        s1 = n.startSide || (n.startOffset ? (Math.abs(n.startOffset.x) > Math.abs(n.startOffset.y) ? (n.startOffset.x > 0 ? 'right' : 'left') : (n.startOffset.y > 0 ? 'bottom' : 'top')) : 'right');
-                                        s2 = n.endOffset ? (Math.abs(n.endOffset.x) > Math.abs(n.endOffset.y) ? (n.endOffset.x > 0 ? 'right' : 'left') : (n.endOffset.y > 0 ? 'bottom' : 'top')) : 'left';
-                                        startPos = { x: sNode.x + (n.startOffset?.x || 0), y: sNode.y + (n.startOffset?.y || 0) };
-                                        endPos = { x: eNode.x + (n.endOffset?.x || 0), y: eNode.y + (n.endOffset?.y || 0) };
-                                    }
-                                    newPoints.start = startPos; newPoints.end = endPos;
-                                    const { cp1, cp2 } = calculateBezierControls(startPos, endPos, s1, s2);
-                                    newPoints.control = cp1; newPoints.control2 = cp2;
-                                }
-                            }
-                            const minX = Math.min(newPoints.start.x, newPoints.end.x, newPoints.control?.x ?? newPoints.start.x, newPoints.control2?.x ?? newPoints.start.x)
-                            const minY = Math.min(newPoints.start.y, newPoints.end.y, newPoints.control?.y ?? newPoints.start.y, newPoints.control2?.y ?? newPoints.start.y)
-                            const maxX = Math.max(newPoints.start.x, newPoints.end.x, newPoints.control?.x ?? newPoints.end.x, newPoints.control2?.x ?? newPoints.end.x)
-                            const maxY = Math.max(newPoints.start.y, newPoints.end.y, newPoints.control?.y ?? newPoints.end.y, newPoints.control2?.y ?? newPoints.end.y)
-                            return { ...n, x: minX, y: minY, width: maxX - minX, height: maxY - minY, points: newPoints }
-                        }
-                    }
-                    return n
-                })
-            })
-            setLastMousePos({ x: e.clientX, y: e.clientY })
+            handleDraggedNodeMode(e)
         } else if (resizingNodeId) {
-            const rect = containerRef.current?.getBoundingClientRect()
-            if (!rect) return
-            const node = nodes.find(n => n.id === resizingNodeId)
-            if (!node) return
-            const mouseX = (e.clientX - rect.left - camera.x) / camera.zoom
-            const mouseY = (e.clientY - rect.top - camera.y) / camera.zoom
-            const newWidth = Math.max(100, mouseX - node.x)
-            const newHeight = Math.max(100, mouseY - node.y)
-
-            setNodes(prev => {
-                const node = prev.find(n => n.id === resizingNodeId)
-                if (!node) return prev
-                const dx = (node.x + newWidth / 2) - (node.x + (node.width || 0) / 2)
-                const dy = (node.y + newHeight / 2) - (node.y + (node.height || 0) / 2)
-
-                return prev.map(n => {
-                    if (n.id === resizingNodeId) return { ...n, width: newWidth, height: newHeight }
-                    if (n.type === 'arrow' && n.points) {
-                        let updated = false; const newPoints = { ...n.points }
-                        if (n.startNodeId === resizingNodeId) { newPoints.start = { x: n.points.start.x + dx, y: n.points.start.y + dy }; updated = true }
-                        if (n.endNodeId === resizingNodeId) { newPoints.end = { x: n.points.end.x + dx, y: n.points.end.y + dy }; updated = true }
-                        if (updated) {
-                            if (n.startNodeId && n.endNodeId) {
-                                const getSide = (offset?: { x: number, y: number }) => {
-                                    if (!offset) return null;
-                                    if (Math.abs(offset.x) > Math.abs(offset.y)) return offset.x > 0 ? 'right' : 'left';
-                                    return offset.y > 0 ? 'bottom' : 'top';
-                                };
-                                const startSide = getSide(n.startOffset); const endSide = getSide(n.endOffset);
-                                const { cp1, cp2 } = calculateBezierControls(newPoints.start, newPoints.end, startSide, endSide);
-                                newPoints.control = cp1; newPoints.control2 = cp2;
-                            }
-                            const minX = Math.min(newPoints.start.x, newPoints.end.x, newPoints.control?.x ?? newPoints.start.x, newPoints.control2?.x ?? newPoints.start.x)
-                            const minY = Math.min(newPoints.start.y, newPoints.end.y, newPoints.control?.y ?? newPoints.start.y, newPoints.control2?.y ?? newPoints.start.y)
-                            const maxX = Math.max(newPoints.start.x, newPoints.end.x, newPoints.control?.x ?? newPoints.end.x, newPoints.control2?.x ?? newPoints.end.x)
-                            const maxY = Math.max(newPoints.start.y, newPoints.end.y, newPoints.control?.y ?? newPoints.end.y, newPoints.control2?.y ?? newPoints.end.y)
-                            return { ...n, x: minX, y: minY, width: Math.max(1, maxX - minX), height: Math.max(1, maxY - minY), points: newPoints }
-                        }
-                    }
-                    return n
-                })
-            })
+            handleResizingNodeMode(e)
         }
-    }, [selectionBox, draggedHandle, isCreatingArrow, arrowStart, draggedNodeId, resizingNodeId, camera, nodes, selection, preDragOrder, containerRef, wrapperRef, lastMousePos, setNodes]);
+    }, [
+        selectionBox, isEraserMode, isDrawingMode, currentPath, draggedHandle,
+        isCreatingArrow, arrowStart, draggedNodeId, resizingNodeId, camera, containerRef,
+        handlePanningMode, handleSelectionBoxMode, handleEraserModeMouseMove,
+        handleDrawingModeMouseMove, handleDraggedHandleMode, handleDraggedNodeMode,
+        handleResizingNodeMode
+    ]);
 
     const handleMouseUp = useCallback((e: React.MouseEvent, setIsPanning: (p: boolean) => void) => {
         setIsPanning(false)
@@ -506,7 +466,7 @@ export function useCanvasInteraction({
             const maxY = Math.max(...currentPath.map(p => p.y))
 
             const newNode: CanvasNode = {
-                id: Math.random().toString(36).substring(7),
+                id: generateId(),
                 type: 'pencil',
                 x: minX,
                 y: minY,
@@ -526,13 +486,13 @@ export function useCanvasInteraction({
         if (isCreatingArrow && arrowStart && arrowStartNodeId) {
             const rect = containerRef.current?.getBoundingClientRect()
             if (rect) {
-                const mouseX = (e.clientX - rect.left - camera.x) / camera.zoom
-                const mouseY = (e.clientY - rect.top - camera.y) / camera.zoom
-                const dist = Math.sqrt(Math.pow(mouseX - arrowStart.x, 2) + Math.pow(mouseY - arrowStart.y, 2))
+                const { x: mouseX, y: mouseY } = toCanvasCoords(e.clientX, e.clientY, rect, camera)
+                const dist = Math.hypot(mouseX - arrowStart.x, mouseY - arrowStart.y)
                 if (dist > 10) {
-                    const controls = calculateBezierControls(arrowStart, { x: mouseX, y: mouseY }, arrowStartSide)
+                    const end = { x: mouseX, y: mouseY };
+                    const controls = calculateBezierControls(arrowStart, end, arrowStartSide)
                     const newNode: CanvasNode = {
-                        id: Math.random().toString(36).substring(7),
+                        id: generateId(),
                         type: 'arrow',
                         x: Math.min(arrowStart.x, mouseX),
                         y: Math.min(arrowStart.y, mouseY),
@@ -542,7 +502,7 @@ export function useCanvasInteraction({
                         startNodeId: arrowStartNodeId,
                         points: {
                             start: arrowStart,
-                            end: { x: mouseX, y: mouseY },
+                            end,
                             control: controls.cp1,
                             control2: controls.cp2
                         }
@@ -576,28 +536,33 @@ export function useCanvasInteraction({
             })
             setSelection(newSelection); setSelectionCandidates(new Set())
         }
-        setDraggedNodeId(null); setResizingNodeId(null); setDraggedHandle(null); setSnapTargetId(null); setHasMoved(false); setSelectionBox(null)
+        setDraggedNodeId(null); setResizingNodeId(null); setDraggedHandle(null); setSnapTargetId(null); setHasMoved(false); setSelectionBox(null);
+        resizeAnchor.current = null;
     }, [isCreatingArrow, arrowStart, arrowStartNodeId, arrowStartSide, camera, containerRef, hasMoved, preDragOrder, selection, selectionBox, nodes, setNodes]);
 
     const addNote = useCallback(() => {
         const rect = containerRef.current?.getBoundingClientRect()
         const newNode: CanvasNode = {
-            id: Math.random().toString(36).substring(7),
+            id: generateId(),
             type: 'note',
             x: ((rect?.width || window.innerWidth) / 2 - camera.x) / camera.zoom - 100,
             y: ((rect?.height || window.innerHeight) / 2 - camera.y) / camera.zoom - 75,
-            width: 200,
-            height: 150,
+            width: 150,
+            height: 40,
             content: ''
         }
         setNodes((prev: CanvasNode[]) => [...prev, newNode])
         setSelection(new Set([newNode.id]))
+        setTimeout(() => {
+            const el = document.getElementById(`textarea-${newNode.id}`) as HTMLTextAreaElement;
+            if (el) el.focus();
+        }, 50);
     }, [camera, containerRef, setNodes]);
 
     const addTable = useCallback(() => {
         const rect = containerRef.current?.getBoundingClientRect()
         const newNode: CanvasNode = {
-            id: Math.random().toString(36).substring(7),
+            id: generateId(),
             type: 'table',
             x: ((rect?.width || window.innerWidth) / 2 - camera.x) / camera.zoom - 150,
             y: ((rect?.height || window.innerHeight) / 2 - camera.y) / camera.zoom - 100,
@@ -610,20 +575,8 @@ export function useCanvasInteraction({
     }, [camera, containerRef, setNodes]);
 
     const addShape = useCallback((shapeType: 'rectangle' | 'circle') => {
-        const rect = containerRef.current?.getBoundingClientRect()
-        const newNode: CanvasNode = {
-            id: Math.random().toString(36).substring(7),
-            type: 'shape',
-            shapeType,
-            x: ((rect?.width || window.innerWidth) / 2 - camera.x) / camera.zoom - 100,
-            y: ((rect?.height || window.innerHeight) / 2 - camera.y) / camera.zoom - 100,
-            width: 200,
-            height: 200,
-            content: ''
-        }
-        setNodes(prev => [...prev, newNode])
-        setSelection(new Set([newNode.id]))
-    }, [camera, containerRef, setNodes]);
+        setShapeDrawingMode(shapeType)
+    }, [setShapeDrawingMode]);
 
     const updateNodeContent = useCallback((id: string, content: string) => {
         setNodes((prev: CanvasNode[]) => prev.map((n: CanvasNode) => n.id === id ? { ...n, content } : n))
@@ -637,8 +590,27 @@ export function useCanvasInteraction({
         }
         if (e.button === 0) {
             const rect = containerRef.current?.getBoundingClientRect()
-            const x = rect ? (e.clientX - rect.left - camera.x) / camera.zoom : 0
-            const y = rect ? (e.clientY - rect.top - camera.y) / camera.zoom : 0
+            const { x, y } = rect ? toCanvasCoords(e.clientX, e.clientY, rect, camera) : { x: 0, y: 0 }
+
+            if (shapeDrawingMode) {
+                const id = generateId();
+                const newNode: CanvasNode = {
+                    id,
+                    type: 'shape',
+                    shapeType: shapeDrawingMode,
+                    x,
+                    y,
+                    width: 0,
+                    height: 0,
+                    content: ''
+                };
+                setNodes(prev => [...prev, newNode]);
+                setSelection(new Set([id]));
+                resizeAnchor.current = { x, y };
+                setResizingNodeId(id);
+                setShapeDrawingMode(null);
+                return;
+            }
 
             if (isDrawingMode) {
                 setCurrentPath([{ x, y }])
@@ -647,21 +619,7 @@ export function useCanvasInteraction({
 
             if (isEraserMode) {
                 setNodes(prev => {
-                    const newNodes = prev.filter(n => {
-                        if (n.type === 'pencil' && n.path) {
-                            return !n.path.some(p => Math.hypot(n.x + p.x - x, n.y + p.y - y) < 20);
-                        } else if (n.type === 'arrow') {
-                            const sx = n.points?.start.x ?? n.x;
-                            const sy = n.points?.start.y ?? n.y;
-                            const ex = n.points?.end.x ?? n.x + (n.width || 0);
-                            const ey = n.points?.end.y ?? n.y + (n.height || 0);
-                            const midX = (sx + ex) / 2;
-                            const midY = (sy + ey) / 2;
-                            return !(Math.hypot(sx - x, sy - y) < 30 || Math.hypot(ex - x, ey - y) < 30 || Math.hypot(midX - x, midY - y) < 30);
-                        } else {
-                            return !(x >= n.x && x <= n.x + (n.width || 0) && y >= n.y && y <= n.y + (n.height || 0));
-                        }
-                    });
+                    const newNodes = prev.filter(n => !shouldEraseNode(n, x, y));
                     if (newNodes.length !== prev.length) setSelection(new Set());
                     return newNodes;
                 });
@@ -674,7 +632,7 @@ export function useCanvasInteraction({
                 setSelectionBox({ start: { x, y }, end: { x, y } })
             }
         }
-    }, [isSpacePressed, camera, containerRef, isDrawingMode, isEraserMode, setNodes]);
+    }, [isSpacePressed, camera, containerRef, isDrawingMode, isEraserMode, setNodes, shapeDrawingMode]);
 
     const handleTouchStart = useCallback((e: React.TouchEvent, isPanning: boolean, setIsPanning: (p: boolean) => void) => {
         if (e.touches.length === 2) {
@@ -687,8 +645,7 @@ export function useCanvasInteraction({
             setEditingId(null)
             const rect = containerRef.current?.getBoundingClientRect()
             if (!rect) return
-            const x = (touch.clientX - rect.left - camera.x) / camera.zoom
-            const y = (touch.clientY - rect.top - camera.y) / camera.zoom
+            const { x, y } = toCanvasCoords(touch.clientX, touch.clientY, rect, camera)
             setSelectionBox({ start: { x, y }, end: { x, y } })
         }
     }, [camera, containerRef]);
@@ -716,6 +673,48 @@ export function useCanvasInteraction({
         setSelectionBox(null)
     }, []);
 
+    const completeArrowConnection = useCallback((targetNode: CanvasNode) => {
+        if (!arrowStart || !arrowStartNodeId) return;
+
+        const bestEnd = getBestDynamicEnd(arrowStart, arrowStartSide || 'right', targetNode, nodes);
+        const endPos = {
+            x: targetNode.x + (bestEnd.endSide === 'left' ? 0 : bestEnd.endSide === 'right' ? targetNode.width : targetNode.width / 2),
+            y: targetNode.y + (bestEnd.endSide === 'top' ? 0 : bestEnd.endSide === 'bottom' ? targetNode.height : targetNode.height / 2)
+        };
+        const controls = calculateBezierControls(arrowStart, endPos, arrowStartSide, bestEnd.endSide);
+        const startNode = nodes.find(n => n.id === arrowStartNodeId);
+
+        const newNode: CanvasNode = {
+            id: generateId(),
+            type: 'arrow',
+            x: Math.min(arrowStart.x, endPos.x),
+            y: Math.min(arrowStart.y, endPos.y),
+            width: Math.max(1, Math.abs(endPos.x - arrowStart.x)),
+            height: Math.max(1, Math.abs(endPos.y - arrowStart.y)),
+            content: '',
+            startNodeId: arrowStartNodeId,
+            startSide: arrowStartSide || undefined,
+            endNodeId: targetNode.id,
+            isDynamicEnd: true,
+            startOffset: startNode ? { x: arrowStart.x - startNode.x, y: arrowStart.y - startNode.y } : undefined,
+            endOffset: { x: endPos.x - targetNode.x, y: endPos.y - targetNode.y },
+            points: {
+                start: arrowStart,
+                end: endPos,
+                control: controls.cp1,
+                control2: controls.cp2
+            }
+        };
+
+        setNodes(prev => [...prev, newNode]);
+        setSelection(new Set([newNode.id]));
+        setArrowStart(null);
+        setArrowStartNodeId(null);
+        setArrowStartSide(null);
+        setArrowEndPreview(null);
+        setIsCreatingArrow(false);
+    }, [arrowStart, arrowStartNodeId, arrowStartSide, nodes, setNodes]);
+
     const deleteSelection = useCallback(() => {
         if (selection.size > 0) {
             setNodes(prev => prev.filter(n => !selection.has(n.id)))
@@ -740,6 +739,7 @@ export function useCanvasInteraction({
         pencilColor, setPencilColor,
         pencilWidth, setPencilWidth,
         currentPath,
+        shapeDrawingMode, setShapeDrawingMode,
         arrowStart, setArrowStart,
         arrowStartNodeId, setArrowStartNodeId,
         arrowStartSide, setArrowStartSide,
@@ -761,6 +761,9 @@ export function useCanvasInteraction({
         addTable,
         addShape,
         updateNodeContent,
-        deleteSelection
+        completeArrowConnection,
+        deleteSelection,
+        activeTool,
+        setActiveTool
     }
 }

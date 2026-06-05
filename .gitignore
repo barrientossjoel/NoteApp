@@ -39,3 +39,15 @@ next-env.d.ts
 .env
 /dist/
 /uploads/
+
+# dev scripts and agents
+/dev_scripts/
+.agents/
+AGENTS.md
+*.db
+
+# public images (not pushed)
+/public/canvas_feature.png
+/public/editor_feature.png
+/public/heromockup.avif
+/public/icon3.png
