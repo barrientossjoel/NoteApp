@@ -74,18 +74,18 @@ function getOrCreateProvider(documentId: string | undefined | null) {
         const partyKitHost = import.meta.env.VITE_PARTYKIT_HOST;
         let provider;
         
-        if (partyKitHost) {
+        if (import.meta.env.DEV) {
+            const host = window.location.host;
+            console.log(`[Editor] Connecting to local WS via proxy at ${host} (Room: note-${documentId})`);
+            provider = new WebsocketProvider(`ws://${host}/ws`, `note-${documentId}`, ydoc);
+        } else if (partyKitHost) {
             let host = partyKitHost.replace(/^https?:\/\//, '');
             console.log(`[Editor] Connecting to PartyKit at ${host} (Room: note-${documentId})`);
             provider = new YPartyKitProvider(host, `note-${documentId}`, ydoc);
         } else {
-            let host = import.meta.env.DEV ? `${window.location.hostname}:1234` : window.location.hostname;
-            host = host.replace(/^https?:\/\//, '');
-            console.log(`[Editor] Connecting to local WS at ${host} (Room: note-${documentId})`);
-            
-            provider = import.meta.env.DEV 
-                ? new WebsocketProvider(`ws://${host}`, `note-${documentId}`, ydoc)
-                : new YPartyKitProvider(host, `note-${documentId}`, ydoc);
+            let host = window.location.hostname;
+            console.log(`[Editor] Connecting to fallback YPartyKit at ${host} (Room: note-${documentId})`);
+            provider = new YPartyKitProvider(host, `note-${documentId}`, ydoc);
         }
             
         // Local-first persistence

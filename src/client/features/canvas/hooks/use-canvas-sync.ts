@@ -15,15 +15,15 @@ function getOrCreateCanvasProvider(docId: string | undefined | null) {
         const partyKitHost = import.meta.env.VITE_PARTYKIT_HOST;
         let provider;
         
-        if (partyKitHost) {
+        if (import.meta.env.DEV) {
+            const host = window.location.host;
+            provider = new WebsocketProvider(`ws://${host}/ws`, `board-${docId}`, ydoc);
+        } else if (partyKitHost) {
             let host = partyKitHost.replace(/^https?:\/\//, '');
             provider = new YPartyKitProvider(host, `board-${docId}`, ydoc);
         } else {
-            let host = import.meta.env.DEV ? `${window.location.hostname}:1234` : window.location.hostname;
-            host = host.replace(/^https?:\/\//, '');
-            provider = import.meta.env.DEV 
-                ? new WebsocketProvider(`ws://${host}`, `board-${docId}`, ydoc)
-                : new YPartyKitProvider(host, `board-${docId}`, ydoc);
+            let host = window.location.hostname;
+            provider = new YPartyKitProvider(host, `board-${docId}`, ydoc);
         }
         const idbProvider = new IndexeddbPersistence(`board-${docId}`, ydoc);
         cached = { ydoc, provider, idbProvider, refCount: 0 };
