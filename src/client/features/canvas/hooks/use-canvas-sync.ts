@@ -12,11 +12,19 @@ function getOrCreateCanvasProvider(docId: string | undefined | null) {
     let cached = canvasProviderCache.get(docId);
     if (!cached) {
         const ydoc = new Y.Doc();
-        let host = import.meta.env.DEV ? `${window.location.hostname}:1234` : (import.meta.env.VITE_PARTYKIT_HOST ?? window.location.hostname);
-        host = host.replace(/^https?:\/\//, '');
-        const provider = import.meta.env.DEV 
-            ? new WebsocketProvider(`ws://${host}`, `board-${docId}`, ydoc)
-            : new YPartyKitProvider(host, `board-${docId}`, ydoc);
+        const partyKitHost = import.meta.env.VITE_PARTYKIT_HOST;
+        let provider;
+        
+        if (partyKitHost) {
+            let host = partyKitHost.replace(/^https?:\/\//, '');
+            provider = new YPartyKitProvider(host, `board-${docId}`, ydoc);
+        } else {
+            let host = import.meta.env.DEV ? `${window.location.hostname}:1234` : window.location.hostname;
+            host = host.replace(/^https?:\/\//, '');
+            provider = import.meta.env.DEV 
+                ? new WebsocketProvider(`ws://${host}`, `board-${docId}`, ydoc)
+                : new YPartyKitProvider(host, `board-${docId}`, ydoc);
+        }
         const idbProvider = new IndexeddbPersistence(`board-${docId}`, ydoc);
         cached = { ydoc, provider, idbProvider, refCount: 0 };
         canvasProviderCache.set(docId, cached);

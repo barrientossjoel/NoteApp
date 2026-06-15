@@ -71,16 +71,22 @@ function getOrCreateProvider(documentId: string | undefined | null) {
     let cached = providerCache.get(documentId);
     if (!cached) {
         const ydoc = new Y.Doc();
-        let host = import.meta.env.DEV ? `${window.location.hostname}:1234` : (import.meta.env.VITE_PARTYKIT_HOST ?? window.location.hostname);
+        const partyKitHost = import.meta.env.VITE_PARTYKIT_HOST;
+        let provider;
         
-        // Sanitize host: remove http:// or https:// if present
-        host = host.replace(/^https?:\/\//, '');
-        
-        console.log(`[Editor] Connecting to Yjs at ${host} (Room: note-${documentId})`);
-        
-        const provider = import.meta.env.DEV 
-            ? new WebsocketProvider(`ws://${host}`, `note-${documentId}`, ydoc)
-            : new YPartyKitProvider(host, `note-${documentId}`, ydoc);
+        if (partyKitHost) {
+            let host = partyKitHost.replace(/^https?:\/\//, '');
+            console.log(`[Editor] Connecting to PartyKit at ${host} (Room: note-${documentId})`);
+            provider = new YPartyKitProvider(host, `note-${documentId}`, ydoc);
+        } else {
+            let host = import.meta.env.DEV ? `${window.location.hostname}:1234` : window.location.hostname;
+            host = host.replace(/^https?:\/\//, '');
+            console.log(`[Editor] Connecting to local WS at ${host} (Room: note-${documentId})`);
+            
+            provider = import.meta.env.DEV 
+                ? new WebsocketProvider(`ws://${host}`, `note-${documentId}`, ydoc)
+                : new YPartyKitProvider(host, `note-${documentId}`, ydoc);
+        }
             
         // Local-first persistence
         const idbProvider = new IndexeddbPersistence(`note-${documentId}`, ydoc);
