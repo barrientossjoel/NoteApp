@@ -30,7 +30,7 @@ interface SidebarTreeProps {
     onSelectDocument: (id: string) => void
     onCreateDocument: (parentId?: string | null, type?: 'text' | 'canvas') => void
     onDeleteDocument: (id: string) => void
-    onMoveDocument?: (id: string, newParentId: string | null) => void
+    onMoveDocument?: (id: string, newParentId: string | null, newIndex?: number) => void
     onUpdateDocument: (doc: Document) => void
     onDoubleClickDocument?: (id: string) => void
 }
@@ -222,10 +222,10 @@ export function SidebarTree({ documents, activeDocumentId, onSelectDocument, onC
                 roots.push(node)
             }
         })
-        // Sort alphabetically or logically
-        roots.sort((a, b) => (a.title || '').localeCompare(b.title || ''))
+        // Sort logically
+        roots.sort((a, b) => (a.order || 0) - (b.order || 0) || (a.title || '').localeCompare(b.title || ''))
         roots.forEach(doc => {
-            if (doc.children && doc.children.length > 0) doc.children.sort((a, b) => (a.title || '').localeCompare(b.title || ''))
+            if (doc.children && doc.children.length > 0) doc.children.sort((a, b) => (a.order || 0) - (b.order || 0) || (a.title || '').localeCompare(b.title || ''))
         })
         return roots
     }, [documents])
@@ -256,7 +256,7 @@ export function SidebarTree({ documents, activeDocumentId, onSelectDocument, onC
         }
 
         if (onMoveDocument) {
-            onMoveDocument(draggableId, newParentId);
+            onMoveDocument(draggableId, newParentId, destination.index);
         }
     };
 

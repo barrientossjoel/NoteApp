@@ -5,7 +5,7 @@ import { useMediaQuery } from '../../hooks/useMediaQuery'
 import { useAutoSave } from '../../hooks/useAutoSave'
 import { Button } from "../../components/ui/button"
 import { Input } from "../../components/ui/input"
-import { ChevronLeft, Loader2, Eye, Pencil, Star, Tag, Columns, Rows, MoreVertical, Check, Plus, PanelLeft, PanelTop, MessageSquare, Link2, ChevronDown, ChevronRight, Frame, FileText } from 'lucide-react'
+import { ChevronLeft, Loader2, Eye, Pencil, Star, Tag, Columns, Rows, MoreVertical, Check, Plus, PanelLeft, PanelTop, MessageSquare, Link2, ChevronDown, ChevronRight, Frame, FileText, Share2 } from 'lucide-react'
 import type { Document } from '../../../core/types/notes'
 import { cn } from '../../lib/utils/utils'
 import {
@@ -83,6 +83,7 @@ export function DocumentView({
     const [tags, setTags] = useState<string[]>(tryParseTags(document.tags))
     const [tagInput, setTagInput] = useState('')
     const isMobile = useMediaQuery('(max-width: 768px)')
+    const [shareOpen, setShareOpen] = useState(false)
 
     // Command Menu State
     const [commandMenu, setCommandMenu] = useState<{
@@ -301,7 +302,7 @@ export function DocumentView({
         <div className={cn("flex flex-col h-full animate-in fade-in duration-300", hideBorder ? "bg-muted/50" : "bg-background")}>
             {/* Header / Toolbar */}
             <div className="h-16 flex items-center justify-between px-4 bg-transparent sticky top-0 z-10">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-1 min-w-0">
 
                     {onToggleSidebar && (
                         <Button
@@ -316,43 +317,59 @@ export function DocumentView({
                     )}
 
                     {!isMobile && (
-                        <Breadcrumb>
-                            <BreadcrumbList>
-                                {breadcrumbItems.map((item, index) => {
-                                    const isCurrent = item.id === document.id;
-                                    const isLast = index === breadcrumbItems.length - 1;
+                        <div className="flex-1 min-w-0" style={{ containerType: 'inline-size' }}>
+                            <style>{`
+                                .breadcrumb-ellipsis { display: none; }
+                                @container (max-width: 350px) {
+                                    .breadcrumb-old { display: none !important; }
+                                    .breadcrumb-ellipsis { display: flex !important; }
+                                }
+                            `}</style>
+                            <Breadcrumb className="min-w-0">
+                                <BreadcrumbList className="flex-nowrap overflow-hidden">
+                                    <li className="breadcrumb-ellipsis items-center shrink-0 text-muted-foreground/50">
+                                        ...
+                                        <ChevronRight className="h-3.5 w-3.5 ml-1.5 text-muted-foreground/50 translate-y-[0.5px]" />
+                                    </li>
+                                    {breadcrumbItems.map((item, index) => {
+                                        const isCurrent = item.id === document.id;
+                                        const isLast = index === breadcrumbItems.length - 1;
+                                        const isOld = index < breadcrumbItems.length - 2;
 
-                                    return (
-                                        <div key={item.id} className="flex items-center">
-                                            <BreadcrumbItem>
-                                                {isCurrent ? (
-                                                    <BreadcrumbPage className="font-bold">{item.title || t('untitledDocument')}</BreadcrumbPage>
-                                                ) : (
-                                                    <BreadcrumbLink asChild>
-                                                        <button
-                                                            className={cn(
-                                                                "cursor-pointer hover:text-foreground transition-colors",
-                                                                item.isForward ? "text-muted-foreground/40 italic" : "text-muted-foreground"
-                                                            )}
-                                                            onClick={(e) => {
-                                                                e.preventDefault();
-                                                                e.stopPropagation();
-                                                                if (item.id !== document.id) {
-                                                                    onReplaceDocument?.(item.id);
-                                                                }
-                                                            }}
-                                                        >
-                                                            {item.title || t('untitledDocument')}
-                                                        </button>
-                                                    </BreadcrumbLink>
+                                        return (
+                                            <React.Fragment key={item.id}>
+                                                <BreadcrumbItem className={cn("min-w-0 truncate", isOld && "breadcrumb-old")}>
+                                                    {isCurrent ? (
+                                                        <BreadcrumbPage className="font-bold truncate max-w-[150px] leading-none flex items-center">{item.title || t('untitledDocument')}</BreadcrumbPage>
+                                                    ) : (
+                                                        <BreadcrumbLink asChild className="truncate min-w-0 flex items-center">
+                                                            <button
+                                                                className={cn(
+                                                                    "cursor-pointer hover:text-foreground transition-colors truncate max-w-[120px] leading-none",
+                                                                    item.isForward ? "text-muted-foreground/40 italic" : "text-muted-foreground"
+                                                                )}
+                                                                onClick={(e) => {
+                                                                    e.preventDefault();
+                                                                    e.stopPropagation();
+                                                                    if (item.id !== document.id) {
+                                                                        onReplaceDocument?.(item.id);
+                                                                    }
+                                                                }}
+                                                            >
+                                                                {item.title || t('untitledDocument')}
+                                                            </button>
+                                                        </BreadcrumbLink>
+                                                    )}
+                                                </BreadcrumbItem>
+                                                {!isLast && (
+                                                    <BreadcrumbSeparator className={cn("shrink-0 mx-1.5 flex items-center justify-center [&>svg]:translate-y-[0.5px]", isOld && "breadcrumb-old")} />
                                                 )}
-                                            </BreadcrumbItem>
-                                            {!isLast && <BreadcrumbSeparator />}
-                                        </div>
-                                    );
-                                })}
-                            </BreadcrumbList>
-                        </Breadcrumb>
+                                            </React.Fragment>
+                                        );
+                                    })}
+                                </BreadcrumbList>
+                            </Breadcrumb>
+                        </div>
                     )}
                 </div>
 
@@ -411,9 +428,7 @@ export function DocumentView({
                                     </>
                                 ) : lastSaved ? (
                                     t('saved')
-                                ) : (
-                                    t('allChangesSaved')
-                                )}
+                                ) : null}
                             </span>
 
                             <Button variant="ghost" size="icon" onClick={() => setIsEditing(!isEditing)} title={isEditing ? t('viewMode') : t('editMode')}>
@@ -441,8 +456,6 @@ export function DocumentView({
                             >
                                 <MessageSquare className="h-4 w-4" />
                             </Button>
-
-                            <ShareDialog elementId={document.id} elementType={document.type === 'canvas' ? 'canvas' : 'document'} />
                         </>
                     )}
 
@@ -479,6 +492,11 @@ export function DocumentView({
                                     </div>
                                     {document.isFavorite && <Check className="h-4 w-4 ml-auto" />}
                                 </div>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem className="cursor-pointer" onClick={() => setShareOpen(true)}>
+                                    <Share2 className="h-4 w-4 mr-2 text-muted-foreground" />
+                                    <span>{t('share')}</span>
+                                </DropdownMenuItem>
                                 <DropdownMenuSeparator />
 
 
@@ -539,6 +557,7 @@ export function DocumentView({
                             </div>
                         </DropdownMenuContent>
                     </DropdownMenu>
+                    <ShareDialog open={shareOpen} onOpenChange={setShareOpen} elementId={document.id} elementType={document.type === 'canvas' ? 'canvas' : 'document'} />
                 </div>
             </div>
 

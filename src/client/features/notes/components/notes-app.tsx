@@ -215,7 +215,7 @@ function NotesAppInner() {
     }
   }
 
-  const handleMoveDocument = async (id: string, newParentId: string | null) => {
+  const handleMoveDocument = async (id: string, newParentId: string | null, newIndex?: number) => {
     if (id === newParentId) return; // Prevent moving into itself
 
     // Prevent moving into a descendant (circular dependency)
@@ -226,12 +226,35 @@ function NotesAppInner() {
       current = parent ? parent.parentId : null;
     }
 
+    // Calculate new order
+    const siblings = documents
+      .filter(d => d.parentId === newParentId && d.id !== id)
+      .sort((a, b) => (a.order || 0) - (b.order || 0));
+
+    let newOrder = 0;
+    if (newIndex !== undefined && siblings.length > 0) {
+      if (newIndex === 0) {
+        newOrder = (siblings[0].order || 0) - 1024;
+      } else if (newIndex >= siblings.length) {
+        newOrder = (siblings[siblings.length - 1].order || 0) + 1024;
+      } else {
+        const prevOrder = siblings[newIndex - 1].order || 0;
+        const nextOrder = siblings[newIndex].order || 0;
+        newOrder = Math.floor((prevOrder + nextOrder) / 2);
+        if (newOrder === prevOrder || newOrder === nextOrder) {
+            newOrder = prevOrder + 1; // Basic fallback
+        }
+      }
+    } else if (siblings.length > 0) {
+      newOrder = (siblings[siblings.length - 1].order || 0) + 1024;
+    }
+
     // Optimistic update
     const previousDocuments = [...documents];
-    setDocuments((prev: Document[]) => prev.map(d => d.id === id ? { ...d, parentId: newParentId } : d));
+    setDocuments((prev: Document[]) => prev.map(d => d.id === id ? { ...d, parentId: newParentId, order: newOrder } : d));
 
     try {
-      await updateDocument(id, { parentId: newParentId });
+      await updateDocument(id, { parentId: newParentId, order: newOrder });
     } catch (e) {
       console.error("Failed to move document", e);
       // Revert on error

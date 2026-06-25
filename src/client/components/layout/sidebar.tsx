@@ -248,9 +248,11 @@ export function Sidebar({
               className="flex items-center justify-between px-2 mb-1 cursor-pointer hover:bg-muted/30 rounded py-1 transition-colors"
               onClick={() => setIsLibraryExpanded(!isLibraryExpanded)}
             >
-              <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
-                {isLibraryExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-                <BookOpen className="h-3 w-3 ml-1" />
+              <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center">
+                <div className="h-5 w-5 flex items-center justify-center mr-1">
+                  {isLibraryExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                </div>
+                <BookOpen className="h-3.5 w-3.5 mr-1.5" />
                 {t('library')}
               </h2>
               <button
@@ -340,16 +342,18 @@ export function Sidebar({
       })()}
 
       <div
-        className="flex items-center justify-between px-4 my-2 cursor-pointer hover:bg-muted/30 rounded py-1 transition-colors mx-2"
+        className="flex items-center justify-between px-2 mt-0 mb-2 cursor-pointer hover:bg-muted/30 rounded py-1 transition-colors mx-2"
         onClick={() => setIsDocumentsExpanded(!isDocumentsExpanded)}
       >
-        <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
-          {isDocumentsExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-          <span className="ml-1">{t('documentsHeader')}</span>
+        <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center">
+          <div className="h-5 w-5 flex items-center justify-center mr-1">
+            {isDocumentsExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+          </div>
+          {t('documentsHeader')}
         </h2>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-muted" title="Create New">
+            <Button variant="ghost" className="h-6 w-6 p-0 flex items-center justify-center hover:bg-muted" title="Create New">
               <Plus className="h-3.5 w-3.5" />
             </Button>
           </DropdownMenuTrigger>
