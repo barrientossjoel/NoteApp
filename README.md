@@ -1,4 +1,4 @@
-# NoteApp 📝
+# Nout 
 
 Una aplicación moderna de notas y canvas construida con React, TypeScript, Hono, Drizzle ORM y SQLite (Turso). Permite a los usuarios crear, organizar y visualizar sus ideas de manera eficiente.
 
@@ -35,42 +35,6 @@ Una aplicación moderna de notas y canvas construida con React, TypeScript, Hono
 - **Canvas**: tldraw.
 - **Estado/Gestión**: React Query, Zustand (si aplica), LocalStorage para persistencia de UI.
 
-## 🚀 Instalación y Configuración
-
-### Prerrequisitos
-
-- [Bun](https://bun.sh/) instalado.
-- Cuenta en [Turso](https://turso.tech/) (opcional si usas SQLite local).
-
-### 1. Instalar Dependencias
-
-```bash
-bun install
-```
-
-### 2. Configurar Base de Datos
-
-Crea un archivo `.env` basado en `.env.example`:
-
-```env
-DATABASE_URL=libsql://...
-DATABASE_AUTH_TOKEN=...
-```
-
-Ejecuta las migraciones:
-
-```bash
-bun db:push
-```
-
-### 3. Ejecutar la Aplicación
-
-```bash
-bun run dev
-```
-
-La aplicación estará disponible en `http://localhost:5173` (o el puerto que indique Vite).
-
 ## 🗄️ Estructura de Base de Datos
 
 El esquema principal utiliza una tabla `documents` recursiva:
@@ -81,11 +45,3 @@ El esquema principal utiliza una tabla `documents` recursiva:
 - `content`: JSON o HTML (dependiendo del tipo)
 - `isFavorite`: Booleano
 - `isExpanded`: Estado de la UI en el sidebar
-
-## 🤝 Contribuir
-
-1. Fork el proyecto
-2. Crea una rama (`git checkout -b feature/AmazingFeature`)
-3. Commit tus cambios (`git commit -m 'Add some AmazingFeature'`)
-4. Push a la rama (`git push origin feature/AmazingFeature`)
-5. Abre un Pull Request
